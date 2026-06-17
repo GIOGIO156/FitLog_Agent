@@ -614,7 +614,8 @@ class _GramPerKgDashboard extends StatelessWidget {
                               summary.foodRecords.length,
                             ),
                             color: const Color(0xFF4E9E3B),
-                            onTap: () => navController.setIndex(1),
+                            onTap: () =>
+                                navController.setIndex(RootTabIndex.food),
                           ),
                           const SizedBox(height: 16),
                           _DashboardEnergyLink(
@@ -624,7 +625,8 @@ class _GramPerKgDashboard extends StatelessWidget {
                               summary.workoutSessions.length,
                             ),
                             color: const Color(0xFF3F78C0),
-                            onTap: () => navController.setIndex(2),
+                            onTap: () =>
+                                navController.setIndex(RootTabIndex.workout),
                           ),
                         ],
                       ),
@@ -1456,7 +1458,7 @@ class _TodayRecordsCard extends StatelessWidget {
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-            onTap: () => navController.setIndex(1),
+            onTap: () => navController.setIndex(RootTabIndex.food),
           ),
           const SizedBox(height: 12),
           _RecordRow(
@@ -1472,7 +1474,7 @@ class _TodayRecordsCard extends StatelessWidget {
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-            onTap: () => navController.setIndex(2),
+            onTap: () => navController.setIndex(RootTabIndex.workout),
           ),
         ],
       ),

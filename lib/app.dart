@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'core/localization/language_controller.dart';
 import 'core/localization/localization_extensions.dart';
 import 'core/utils/date_utils.dart';
+import 'core/widgets/fitlog_bottom_nav_bar.dart';
 import 'data/db/app_database.dart';
 import 'data/repositories/custom_exercise_repository.dart';
 import 'data/repositories/food_repository.dart';
@@ -16,6 +17,7 @@ import 'domain/services/carb_taper_review_service.dart';
 import 'domain/services/training_frequency_self_check_service.dart';
 import 'export/csv_export_service.dart';
 import 'export/xlsx_export_service.dart';
+import 'features/ai/ai_page.dart';
 import 'features/food/food_log_page.dart';
 import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
@@ -277,6 +279,7 @@ class _RootShellState extends State<_RootShell> {
   late final List<Widget> _pages = const <Widget>[
     HomePage(),
     FoodLogPage(),
+    AiPage(),
     WorkoutLogPage(),
     ProfilePage(),
   ];
@@ -285,30 +288,39 @@ class _RootShellState extends State<_RootShell> {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final navController = context.watch<RootTabController>();
-    final items = <_ShellNavItem>[
-      _ShellNavItem(
+    final items = <FitLogNavItem>[
+      FitLogNavItem(
         label: strings.navHome,
         icon: Icons.home_outlined,
         activeIcon: Icons.home_rounded,
       ),
-      _ShellNavItem(
+      FitLogNavItem(
         label: strings.navFood,
         icon: Icons.restaurant_menu_outlined,
         activeIcon: Icons.restaurant_menu_rounded,
       ),
-      _ShellNavItem(
+      FitLogNavItem(
+        label: strings.navAi,
+        icon: Icons.auto_awesome_outlined,
+        activeIcon: Icons.auto_awesome_rounded,
+      ),
+      FitLogNavItem(
         label: strings.navWorkout,
         icon: Icons.fitness_center_outlined,
         activeIcon: Icons.fitness_center_rounded,
       ),
-      _ShellNavItem(
+      FitLogNavItem(
         label: strings.navProfile,
         icon: Icons.person_outline_rounded,
         activeIcon: Icons.person_rounded,
       ),
     ];
+    final extendBodyBehindNav = navController.index == RootTabIndex.ai;
 
     return Scaffold(
+      backgroundColor: Colors.white,
+      extendBody: extendBodyBehindNav,
+      resizeToAvoidBottomInset: !extendBodyBehindNav,
       body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -323,116 +335,13 @@ class _RootShellState extends State<_RootShell> {
         ),
         child: IndexedStack(index: navController.index, children: _pages),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final trackWidth = constraints.maxWidth;
-            final segmentWidth = trackWidth / items.length;
-            const indicatorInset = 5.0;
-            const indicatorVerticalMargin = 7.0;
-            final indicatorWidth = segmentWidth - indicatorInset * 2;
-
-            return Container(
-              height: 72,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.97),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: const Color(0xFFE2ECDD)),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: const Color(0xFF13200F).withValues(alpha: 0.08),
-                    blurRadius: 30,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Stack(
-                children: <Widget>[
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 240),
-                    curve: Curves.easeOutCubic,
-                    left: navController.index * segmentWidth + indicatorInset,
-                    top: indicatorVerticalMargin,
-                    width: indicatorWidth,
-                    height: 72 - indicatorVerticalMargin * 2,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF6E3),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: List<Widget>.generate(items.length, (index) {
-                      final item = items[index];
-                      final selected = navController.index == index;
-
-                      return Expanded(
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => navController.setIndex(index),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 7),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                Icon(
-                                  selected ? item.activeIcon : item.icon,
-                                  color: selected
-                                      ? const Color(0xFF4E9E3B)
-                                      : const Color(0xFF7A8973),
-                                  size: 22,
-                                ),
-                                const SizedBox(height: 3),
-                                AnimatedDefaultTextStyle(
-                                  duration: const Duration(milliseconds: 180),
-                                  curve: Curves.easeOutCubic,
-                                  style: _withFontFallback(
-                                    TextStyle(
-                                      fontSize: 11,
-                                      height: 1.0,
-                                      fontWeight: selected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: selected
-                                          ? const Color(0xFF234120)
-                                          : const Color(0xFF7A8973),
-                                    ),
-                                  )!,
-                                  child: Text(
-                                    item.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
+      bottomNavigationBar: FitLogBottomNavBar(
+        items: items,
+        currentIndex: navController.index,
+        onTap: navController.setIndex,
       ),
     );
   }
-}
-
-class _ShellNavItem {
-  const _ShellNavItem({
-    required this.label,
-    required this.icon,
-    required this.activeIcon,
-  });
-
-  final String label;
-  final IconData icon;
-  final IconData activeIcon;
 }
 
 class RefreshNotifier extends ChangeNotifier {
@@ -444,6 +353,16 @@ class RefreshNotifier extends ChangeNotifier {
     _version++;
     notifyListeners();
   }
+}
+
+class RootTabIndex {
+  const RootTabIndex._();
+
+  static const int home = 0;
+  static const int food = 1;
+  static const int ai = 2;
+  static const int workout = 3;
+  static const int profile = 4;
 }
 
 class RootTabController extends ChangeNotifier {

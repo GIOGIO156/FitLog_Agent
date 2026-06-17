@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Agent V1 adds a planned cloud-assisted AI layer around that baseline, but it does not turn the app into an autonomous coach or a full cloud-sync platform.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 now adds the centered AI tab and disabled AI shell, while the cloud-assisted AI layer remains planned for later phases. Agent V1 does not turn the app into an autonomous coach or a full cloud-sync platform.
 
 The durable rule is:
 
@@ -15,7 +15,7 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The copied Local source currently has no app-internal LLM execution.
+The current source has no app-internal LLM execution. Phase 1 implements only the AI navigation entry and disabled chat shell.
 
 Not implemented in the current code:
 
@@ -41,6 +41,7 @@ Existing AI-adjacent features are user-mediated, not app-internal AI:
 | External AI JSON paste | The user manually pastes JSON produced outside the app. FitLog parses it locally. | No | `PasteAiResultPage`, `NutritionCalculator.parseAiFoodJson` |
 | `source = ai_paste` | Saved food records can mark that the source was an AI paste workflow. | No | `AppConstants.sourceAiPaste`, `FoodRecord.source` |
 | Photo AI Analysis | Visible placeholder entry point in Add Food. | No | `AddFoodPage` |
+| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector placeholder, history placeholder, and account/subscription placeholder. It cannot send. | No | `AiPage`, `FitLogBottomNavBar` |
 
 ## V1 Agent Positioning
 
@@ -53,6 +54,7 @@ V1 adds:
 - server-managed model API keys
 - AI Gateway
 - remote LLM and multimodal model calls
+- user-selectable ChatGPT/OpenAI and Qwen provider routing inside AI Chat
 - a centered full-screen AI Chat tab
 - cloud chat history
 - scoped Structured RAG over minimal summaries
@@ -102,6 +104,7 @@ Required elements:
 - full-screen animated background
 - center status copy using the user's display name, such as "I'm listening, RINKO"
 - bottom composer
+- compact model selector for ChatGPT and Qwen near the composer
 - right-top account/subscription status icon
 - left collapsible cloud chat-history sidebar
 - no quick chips
@@ -351,6 +354,8 @@ AI can propose writes only through typed draft objects.
 Current Local baseline:
 
 - App shell: `lib/main.dart`, `lib/app.dart`
+- AI shell: `lib/features/ai/ai_page.dart`
+- Bottom navigation: `lib/core/widgets/fitlog_bottom_nav_bar.dart`
 - Food entry and AI-adjacent paste flow: `lib/features/food/*`
 - Prompt templates: `lib/core/constants/prompt_templates.dart`
 - JSON parser: `lib/domain/services/nutrition_calculator.dart`
@@ -363,7 +368,6 @@ Current Local baseline:
 
 Planned Agent V1 surfaces:
 
-- AI tab route and page
 - cloud auth/session layer
 - Cloud Profile repository
 - AI Gateway client

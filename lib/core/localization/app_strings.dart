@@ -10,7 +10,7 @@ class AppStrings {
 
   String _t(String en, String zh) => isChinese ? zh : en;
 
-  String get appName => _t('FitLog Local', 'FitLog Local');
+  String get appName => _t('FitLog Agent', 'FitLog Agent');
   String get appNameShort => _t('FitLog', 'FitLog');
   String get nicknameLabel => _t('Nickname', '昵称');
   String get nicknameHint => _t('Used for the Home greeting', '用于首页问候语');
@@ -41,10 +41,10 @@ class AppStrings {
     '复制静态 prompt 给外部 AI 工具使用',
   );
   String foodRecordsSummary(int mealCount) =>
-      _t('$mealCount meals logged', '已记录 $mealCount 餐');
+      _t('$mealCount meal${mealCount == 1 ? '' : 's'}', '已记录 $mealCount 餐');
   String workoutRecordsSummary(int sessionCount) => _t(
     '$sessionCount session${sessionCount == 1 ? '' : 's'}',
-    '已记录 $sessionCount 次训练',
+    '已记录 $sessionCount 次',
   );
   String macroProgressText(double current, double target) =>
       '${current.toStringAsFixed(0)} / ${target.toStringAsFixed(0)} g';
@@ -57,8 +57,36 @@ class AppStrings {
 
   String get navHome => _t('Home', '首页');
   String get navFood => _t('Food', '饮食');
+  String get navAi => _t('AI', 'AI');
   String get navWorkout => _t('Workout', '训练');
   String get navProfile => _t('Profile', '我的');
+  String get aiListening => _t("I'm listening", '我在听');
+  String get aiListeningNameSeparator => _t(', ', '，');
+  String get aiSignInRequired =>
+      _t('Sign in to use FitLog AI', '登录后开始使用 FitLog AI');
+  String get aiDisabledBody => _t(
+    'You can draft a prompt now. Sending will be available after account, subscription, and AI Gateway are connected.',
+    '你可以先写下想问的内容。账号、订阅和 AI Gateway 接通后才能发送。',
+  );
+  String get aiComposerHint => _t("Take your time. I'm listening.", '慢慢说，我听着');
+  String get aiSendTooltip => _t('Send', '发送');
+  String get aiAttachTooltip =>
+      _t('Image attachment is not available in Phase 1', 'Phase 1 暂不支持图片附件');
+  String get aiHistoryTooltip => _t('Chat history', '历史会话');
+  String get aiHistoryTitle => _t('Chat history', '历史会话');
+  String get aiHistorySignedOut => _t(
+    'History will be available after cloud accounts and chat storage are implemented.',
+    '云端账号和会话存储实现后，这里会显示历史会话。',
+  );
+  String get aiAccountTooltip => _t('Account and subscription', '账号与订阅');
+  String get aiAccountComingSoon => _t(
+    'Account and subscription controls arrive in Phase 2.',
+    '账号与订阅入口将在 Phase 2 接入。',
+  );
+  String get aiProviderChatGpt => _t('ChatGPT', 'ChatGPT');
+  String get aiProviderQwen => _t('Qwen', '千问');
+  String get aiSignedOutStatus => _t('Signed out', '未登录');
+  String get aiAvailableStatus => _t('Available', '可用');
 
   String get quickActions => _t('Quick Actions', '快捷操作');
   String get addFood => _t('Add Food', '添加食物');
@@ -88,6 +116,7 @@ class AppStrings {
   String get delete => _t('Delete', '删除');
   String get copy => _t('Copy', '复制');
   String get cancel => _t('Cancel', '取消');
+  String get close => _t('Close', '关闭');
   String get date => _t('Date', '日期');
   String get change => _t('Change', '修改');
 

@@ -34,7 +34,7 @@ Write official data only after the user confirms.
 | Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | May surface non-intrusive AI entry hints only if routed to AI page. |
 | Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | Receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
 | Add Food | Food creation workflow. | Manual entry, prompt copy, JSON paste, Photo AI placeholder. | Photo recognition shortcut may call AI Gateway and create Food Draft. |
-| AI | Primary Agent entry. | Not implemented in copied Local source. | Full-screen chat for food drafts, meal decisions, weekly review, and app logic Q&A. |
+| AI | Primary Agent entry. | Phase 1 implements the centered tab, disabled AI shell, soft flowing background, editable composer, provider selector placeholder, history placeholder, and account/subscription placeholder. Sending is disabled. | Real auth gating, AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
 | Workout | Official workout-record management. | Local workout records, custom exercises, draft editor, calorie heuristics. | V1 AI may explain or review workout context but should not silently modify records. |
 | Profile | Account/profile/diet settings. | Local profile and deterministic diet setup. | Login-gated Cloud Profile, subscription status access, offline save disabled. |
 | Export | User-controlled data export. | XLSX and CSV ZIP export. | No default cloud backup/export replacement in V1. |
@@ -56,10 +56,20 @@ Required UI:
 - Full-screen animated AI background.
 - Center status line using the user's display name.
 - Bottom composer.
+- Compact model selector near the composer for `ChatGPT` and `Qwen`.
 - Left collapsible chat-history sidebar.
 - Top-right account/subscription icon.
 - No quick chips.
 - Compact privacy/status hint.
+
+Current Phase 1 behavior:
+
+- The root navigation is `Home | Food | AI | Workout | Profile`.
+- The AI shell defaults to signed-out disabled state.
+- The composer is editable, but send is disabled.
+- The model selector displays `ChatGPT` and `Qwen` as UI only.
+- The history and account/subscription entries are placeholders.
+- No auth, network, AI Gateway, LLM, RAG, chat-history persistence, or official data write occurs from the AI page.
 
 Availability states:
 
@@ -237,6 +247,21 @@ The copied Local baseline already implements:
 - local data clearing with confirmation
 - language switching
 
+## Implemented Agent Phase 1 Scope
+
+The current Agent shell now implements:
+
+- Android install identity separated from FitLog Local.
+- App label and Flutter app title `FitLog Agent`.
+- Five-tab root navigation: `Home | Food | AI | Workout | Profile`.
+- `RootTabIndex` constants so Home links continue routing Food to index `1` and Workout to index `3`.
+- Floating white bottom-navigation pill extracted into `FitLogBottomNavBar`.
+- Full-screen AI shell at `lib/features/ai/ai_page.dart`.
+- Disabled AI state with editable prompt and disabled send button.
+- ChatGPT/Qwen provider selector placeholder.
+- History and account/subscription placeholder entries.
+- AI shell widget tests and root navigation tests.
+
 ## V1 Non-goals
 
 - full cloud sync of food/workout/weight history by default
@@ -252,6 +277,8 @@ The copied Local baseline already implements:
 ## Code References
 
 - App bootstrap: `lib/main.dart`, `lib/app.dart`
+- AI shell: `lib/features/ai/ai_page.dart`
+- Bottom navigation: `lib/core/widgets/fitlog_bottom_nav_bar.dart`
 - Home: `lib/features/home/home_page.dart`
 - Food: `lib/features/food/*`
 - Workout: `lib/features/workout/*`

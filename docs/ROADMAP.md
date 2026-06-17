@@ -27,7 +27,9 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 当前已存在：
 
 - Flutter + Dart App shell。
-- `Home`、`Food`、`Workout`、`Profile` 四个主要页面。
+- `Home`、`Food`、`AI`、`Workout`、`Profile` 五个主要 tab。
+- Phase 1 AI shell：居中 AI tab、不可用 AI 页面、可编辑输入框、ChatGPT/千问模型选择器占位、history 入口占位、账号/订阅入口占位。
+- 浮动白色 bottom navigation pill，pill 外不绘制整行背景色。
 - SQLite 本地数据库。
 - 本地饮食记录、饮食 item、训练记录、训练 set、体重记录。
 - 手动饮食录入。
@@ -45,7 +47,6 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 
 当前尚未存在：
 
-- AI tab。
 - App 内 LLM 调用。
 - AI Gateway。
 - 账号登录。
@@ -186,6 +187,36 @@ AI 行为原则：
 - 错误码和用户可见错误文案分类。
 - V1 不做的范围。
 
+当前锁定结论：
+
+- 后端方案：Supabase。
+  - Auth 使用 Supabase Auth。
+  - 云端数据库使用 Supabase Postgres。
+  - 临时图片对象使用 Supabase Storage 私有临时 bucket。
+  - AI Gateway 使用 Supabase Edge Functions。
+- 登录方式：FitLog 自有邮箱验证码 / OTP 注册登录。
+  - 任意可接收验证码的邮箱都可创建账号。
+  - 未登录前没有正式 Profile。
+  - V1 首版不做游客正式 Profile、Apple 登录、Google 登录或手机号登录。
+- 订阅方案：开发期内部 entitlement。
+  - 服务端维护订阅状态。
+  - 至少准备两个调试账号：一个 subscribed，一个 unsubscribed。
+  - App 只显示 AI 是否可用，不显示用户可见额度。
+  - 生产支付 provider 以后再定，但必须写入同一套服务端 entitlement contract。
+- AI providers：OpenAI / ChatGPT 与千问 / Qwen。
+  - 用户在 AI Chat 输入区选择 `ChatGPT` 或 `千问`。
+  - 工程 provider id 使用 `openai` 和 `qwen`。
+  - 模型 API key 只在服务端 secret 中保存。
+  - Flutter App 不保存模型 key。
+  - 具体文本、vision 和 structured output 模型名由服务端环境配置控制。
+  - API key 创建位置和具体模型名到 Phase 3 接 AI Gateway 时再按官方后台说明填写。
+- 图片策略：App 压缩后上传 Supabase Storage 私有临时 bucket，再把 attachment reference 传给 AI Gateway。
+  - 每次 AI 请求最多 2 张图片。
+  - 单张目标压缩到 1.5 MB 以内。
+  - 压缩后仍超过 5 MB 则拒绝。
+  - 推荐最长边 1600 px。
+  - 临时图片默认 24 小时过期；丢弃 draft、删除会话或删除账号时删除关联图片。
+
 ### 本阶段不实现
 
 - 不新增 AI tab。
@@ -208,19 +239,23 @@ AI 行为原则：
 ### 执行步骤
 
 1. 确认后端选型。
-   - 如果使用 Firebase，锁定 Auth、Firestore、Storage、Cloud Functions 或等价服务边界。
-   - 如果使用 Supabase，锁定 Auth、Postgres、Storage、Edge Functions 边界。
-   - 如果自建后端，锁定 API framework、database、object storage、auth provider。
+   - 已锁定 Supabase。
+   - Phase 2 使用 Supabase Auth + Postgres 实现账号、Cloud Profile 和开发 entitlement。
+   - Phase 3 使用 Supabase Edge Functions 承载 AI Gateway。
+   - Phase 5 使用 Supabase Storage 私有临时 bucket 承载短期图片对象。
 
 2. 确认登录方式。
-   - V1 建议先支持一种主要登录方式，减少首版复杂度。
-   - 明确是否支持游客状态。
-   - 明确未登录前没有正式 Profile。
+   - 已锁定 FitLog 自有邮箱验证码 / OTP。
+   - 任意可收验证码的邮箱可注册/登录。
+   - 不做游客正式 Profile。
+   - 未登录前没有正式 Profile。
 
 3. 确认订阅方案。
-   - V1 用户可见只做订阅制，不做按次额度 UI。
-   - 服务端可以记录请求次数和成本。
+   - 已锁定开发期内部 entitlement。
+   - 先准备 subscribed / unsubscribed 两类调试账号。
+   - 服务端记录请求次数和成本。
    - App 只显示订阅是否有效。
+   - 生产支付 provider 是发布前商业化决策，但不得改变服务端 gating contract。
 
 4. 定义 Cloud Profile。
    - 映射现有 `user_profile` 字段。
@@ -279,6 +314,7 @@ AI 行为原则：
 11. 更新文档。
     - Roadmap 写入最终 Phase。
     - Implementation 文档如有冲突则同步。
+    - API contract 草案记录接口形状和未决技术选择。
     - README 添加 Roadmap 说明。
 
 ### 自动化验证
@@ -300,10 +336,11 @@ AI 行为原则：
 - 是否认可 AI Gateway contract 的字段方向。
 - 是否认可 Cloud Profile 字段归属。
 - 是否认可订阅 gating 而不是用户可见额度 UI。
+- 是否认可 Supabase + 邮箱 OTP + 开发 entitlement + OpenAI/ChatGPT 与 Qwen 双 provider + Supabase Storage 临时图片策略。
 
 ### 阻断条件
 
-以下问题不解决，不能进入 Phase 1：
+以下问题不解决，不能进入 Phase 1。当前这些问题已由 `docs/API_CONTRACT_DRAFT.md` 和 `docs/FitLog_Agent_V1_Implementation.md` 锁定：
 
 - 后端方案未定。
 - 登录方式未定。
@@ -318,6 +355,7 @@ AI 行为原则：
 
 - `docs/ROADMAP.md`
 - `docs/FitLog_Agent_V1_Implementation.md`
+- `docs/API_CONTRACT_DRAFT.md`
 - `README.md`
 - `CHANGELOG.md`
 
@@ -333,8 +371,7 @@ AI 行为原则：
 - AI tab 在正中间。
 - 底部导航是浮动白色 pill。
 - AI 页面是全屏 Chat 空壳。
-- AI 页面有彩色动态背景。
-- 未登录/未联网/未订阅时有灰色 disabled 设计。
+- AI 页面具备流动背景能力；Phase 1 默认未登录不可用，因此显示灰色 disabled 设计。
 - 输入框可以编辑，但不能发送真实消息。
 
 ### 为什么现在做
@@ -343,12 +380,38 @@ AI 行为原则：
 
 如果 AI 页面视觉和导航不先确认，后面接入账号和 AI 后再改，会同时影响状态管理、chat history 和消息流，排错成本更高。
 
+### 当前完成状态
+
+Phase 1 已完成并进入 Phase 2 前待人工复查状态。
+
+已落地：
+
+- Android 安装身份已经与 FitLog Local 分离，App label 为 `FitLog Agent`。
+- Root navigation 已变为 `Home | Food | AI | Workout | Profile`。
+- AI tab 是 index `2`，位于底部导航正中间。
+- Home 中 Food/Workout 快捷入口已使用 `RootTabIndex`，避免 Workout 误跳 AI。
+- 底部导航已抽为 `FitLogBottomNavBar`，只绘制浮动白色 pill 和选中 indicator。
+- AI 页面已新增 `AiPage`，默认是未登录 disabled shell。
+- AI 页面包含灰色低动态背景、中心状态文案、可编辑 composer、禁用 send、ChatGPT/千问选择器占位、history 占位和账号/订阅占位。
+- AI composer 在虚拟键盘弹起时贴近键盘上沿，不再重复叠加 `viewInsets` 间距。
+- AI 页面在键盘弹起时会按键盘高度上移中心状态文案，避免状态文案与模型选择、登录状态和输入框重叠。
+- `extendBody` 只在 AI tab 生效，普通页面内容不再滑到 bottom navigation 后方。
+- Root shell 底色为白色，普通页面 bottom navigation 插槽不再露出浅绿色底条；AI tab 因为启用 `extendBody`，pill 外区域仍露出 AI 页面背景。
+- 未新增 Supabase、HTTP、LLM、图片上传、数据库迁移或客户端模型 API key。
+- README、CHANGELOG、双语 Product/AppGuide/AgentDesign 已同步 Phase 1 已实现范围。
+- 独立 Phase 1 工程计划书的长期信息已合并到本节，后续不再单独维护。
+
+仍未实现：
+
+- 账号登录、订阅校验、Cloud Profile、AI Gateway、LLM 调用、RAG、云端 chat history、图片上传、Food Draft 和确认写入闭环。
+
 ### 本阶段实现
 
 - 新增 `lib/features/ai/`。
 - 新增 AI page。
 - 新增 AI background 动效组件。
 - 新增 AI composer 组件。
+- 新增 AI provider selector 占位，显示 `ChatGPT` / `千问`，但本阶段不真实调用模型。
 - 新增 AI status/header 组件。
 - 新增 history sidebar placeholder。
 - 新增 top-right account/subscription placeholder。
@@ -366,6 +429,7 @@ AI 行为原则：
 - 不实现订阅。
 - 不实现 Cloud Profile。
 - 不实现 AI Gateway。
+- 不创建或填写 OpenAI / Qwen API key。
 - 不实现 chat history 保存。
 - 不实现 RAG。
 - 不实现图片上传。
@@ -374,15 +438,15 @@ AI 行为原则：
 
 ### 代码改动区域
 
-预计改动：
+核心改动：
 
 - `lib/app.dart`
 - `lib/features/ai/ai_page.dart`
-- `lib/features/ai/widgets/*`
 - `lib/core/localization/app_strings.dart`
-- `lib/core/widgets/*`，如需要抽出浮动导航组件
-- `test/home_page_test.dart`
-- 新增 AI page widget tests
+- `lib/core/widgets/fitlog_bottom_nav_bar.dart`
+- `lib/features/home/home_page.dart`
+- `test/ai_page_test.dart`
+- `test/root_navigation_test.dart`
 
 ### 执行步骤
 
@@ -412,6 +476,7 @@ AI 行为原则：
 5. 实现 AI 页面布局。
    - 中心文案。
    - 底部输入框。
+   - 输入区附近提供紧凑模型选择器，可选 `ChatGPT` / `千问`。
    - 右上角状态入口。
    - 左侧 history placeholder。
    - 消息列表可为空。
@@ -462,9 +527,9 @@ flutter build apk --debug
 - 底部导航为 5 个 tab。
 - AI tab 正中间。
 - 底部 pill 之外没有整行绿色背景。
-- 切换到 AI 页面后彩色背景铺满屏幕。
+- 切换到 AI 页面后灰色 disabled 背景铺满屏幕。
 - AI 页面中心文案位置正确。
-- 输入框在底部，不挡导航。
+- 未打开键盘时输入框在底部导航上方；打开键盘后输入框贴近键盘上沿。
 - 右上角状态入口存在。
 - 左侧 history placeholder 可展开/收起或至少有目标位置。
 - disabled 状态为灰色。
@@ -721,6 +786,7 @@ AI Gateway 和 Chat History 是所有后续 AI workflow 的基础。先验证最
 
 - AI Gateway endpoint。
 - 服务端统一管理模型 API key。
+- AI Gateway 根据用户选择路由到 OpenAI 或 Qwen provider adapter。
 - App AI Gateway client。
 - Chat Session model。
 - Chat Message model。
@@ -782,6 +848,7 @@ AI Gateway 和 Chat History 是所有后续 AI workflow 的基础。先验证最
    - 验证 auth token。
    - 验证 subscription active。
    - 构建 provider request。
+   - 根据 `model_choice` 选择 OpenAI 或 Qwen provider adapter。
    - 保存 request metadata。
    - 保存 compact debug summary。
    - 返回 assistant message。

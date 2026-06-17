@@ -425,6 +425,7 @@ AIPage
 │   ├── WeeklyReviewCard
 │   └── AppLogicAnswerCard
 └── Composer
+    ├── model selector
     ├── image attach
     ├── text input
     └── send button
@@ -493,6 +494,7 @@ Chat history 采用左侧可折叠侧栏。
 
 底部输入框支持：
 
+- 在 `ChatGPT` 和 `千问` 之间选择本次对话使用的模型 provider；
 - 输入文字；
 - 上传图片；
 - 删除待上传图片；
@@ -504,6 +506,7 @@ Chat history 采用左侧可折叠侧栏。
 
 - 位于底部导航上方；
 - 半透明或白色玻璃态；
+- 模型选择器靠近输入区，使用紧凑 segmented control 或 menu，不做大卡片；
 - 文字可读性优先；
 - 上传图片后显示缩略图；
 - 发送按钮状态明确。
@@ -762,18 +765,75 @@ V1 不默认全量云同步：
 - 本地导出文件；
 - 本地 SQLite migration。
 
-## 10.2 API key 策略
+## 10.2 Phase 0 技术选型锁定
+
+Phase 0 锁定以下工程选型：
+
+| 事项 | V1 决策 |
+|---|---|
+| 后端方案 | Supabase |
+| Auth | Supabase Auth，首版只做 FitLog 自有邮箱验证码 / OTP 注册登录 |
+| 云端数据库 | Supabase Postgres |
+| 临时图片对象 | Supabase Storage 私有临时 bucket |
+| AI Gateway | Supabase Edge Functions |
+| 订阅状态 | 开发期内部 entitlement 表，种子账号区分 subscribed / unsubscribed |
+| AI providers | OpenAI / ChatGPT 与千问 / Qwen，用户在 AI Chat 输入区选择，服务端 adapter 调用 |
+
+选择 Supabase 的原因：
+
+- V1 需要账号、Cloud Profile、chat history、request logs、debug summaries、document chunks 和临时图片对象，Supabase 的 Auth、Postgres、Storage 和 Edge Functions 能覆盖这些需求。
+- 相比 Firebase，Postgres 表结构更适合 Profile、chat、log 和文档索引这类关系型数据，也更容易做 contract test 和 SQL 层审计。
+- 相比自建后端，Supabase 能减少 Phase 2-3 的基础设施工作量，让工程先验证账号、订阅 gating、Cloud Profile 和 AI Gateway 状态机。
+- 如果后续因为生产支付、部署区域、合规或延迟需要迁移，App 仍应通过 `docs/API_CONTRACT_DRAFT.md` 中的接口 contract 访问后端，避免把业务 UI 绑定到供应商细节。
+
+首版登录方式：
+
+- 用户使用任意可接收验证码的邮箱注册或登录。
+- 未登录前没有正式 Profile。
+- V1 不做游客正式 Profile。
+- Apple、Google、手机号等登录方式不进入首版，避免扩大账号状态矩阵。
+
+订阅方案：
+
+- 开发期先做服务端内部 entitlement，不接真实支付。
+- 至少准备两个调试账号：一个 subscribed，一个 unsubscribed。
+- App 只显示 AI 是否可用，不显示剩余额度。
+- AI Gateway 每次请求仍必须服务端校验 entitlement，不能只相信客户端状态。
+- 生产支付 provider 以后再定，但必须写入同一套服务端 entitlement contract。
+
+AI providers：
+
+- V1 支持 OpenAI / ChatGPT 和千问 / Qwen 两种 provider。
+- 用户可在 AI Chat 输入区选择 `ChatGPT` 或 `千问`。
+- 工程 contract 使用稳定 provider id：`openai` 和 `qwen`。
+- OpenAI 和 Qwen API keys 只放在 Supabase Edge Function secrets 或等价服务端 secret 中。
+- Flutter App 不保存、展示或传输模型 key。
+- 文本、vision 和 structured output 的具体模型名通过服务端环境配置控制，不写死到 App。
+- 具体 API key 创建位置、模型名和服务端环境变量到 Phase 3 实现 AI Gateway 时再按当时官方后台核验并填写。
+- 如果后续更换或增加 provider，必须保持 AI Gateway request / response contract 不变。
+
+图片策略：
+
+- App 端先压缩图片，再上传到 Supabase Storage 私有临时 bucket。
+- AI Gateway 接收 attachment reference，而不是长期公开 URL。
+- 每次 AI 请求最多 2 张图片。
+- 压缩目标为单张不超过 1.5 MB；压缩后仍超过 5 MB 则拒绝并提示用户换图或裁剪。
+- 推荐最长边 1600 px，默认使用 JPEG，除非图片确实需要透明通道。
+- 原图默认不长期保存；临时图片默认 24 小时过期。
+- 用户丢弃 draft、删除会话或删除账号时，应删除可关联的临时图片。
+
+## 10.3 API key 策略
 
 V1 不做用户自带 API key。
 
 规则：
 
 - 模型 API key 由服务端统一管理。
-- App 不保存 OpenAI / Gemini / 其他模型 key。
+- App 不保存 OpenAI / Qwen / Gemini / 其他模型 key。
 - 用户通过账号和订阅获得 AI 使用权限。
 - 后端可根据成本、模型能力和安全策略切换模型。
 
-## 10.3 推荐接口
+## 10.4 推荐接口
 
 V1 可以保留专用 endpoint，避免一开始做自由 tool calling。
 
@@ -791,6 +851,8 @@ POST /ai/food-estimate
 POST /ai/meal-decision
 POST /ai/weekly-review
 POST /ai/app-docs-answer
+POST /ai/attachments
+DELETE /ai/attachments/{attachment_id}
 ```
 
 统一 Chat 是产品入口；专用 endpoint 是工程实现方式。Router 可以把用户请求分发到专用 endpoint。

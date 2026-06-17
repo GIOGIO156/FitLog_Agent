@@ -87,10 +87,20 @@ Required layout:
 - full-screen background animation
 - center status text, personalized with the user's display name
 - bottom composer
+- compact model selector for ChatGPT and Qwen near the composer
 - left collapsible chat history
 - top-right account/subscription icon
 - compact privacy/status hint
 - no quick chips
+
+Current Phase 1 implementation:
+
+- The AI tab exists as the center tab.
+- The page defaults to a signed-out disabled shell.
+- The composer accepts text, but the send button is disabled.
+- ChatGPT/Qwen selection is a local UI placeholder and does not call a provider.
+- The history entry and account/subscription entry are placeholders.
+- No AI Gateway, auth session, subscription check, Cloud Profile, cloud chat history, RAG, or LLM call is implemented yet.
 
 Availability:
 
@@ -214,6 +224,7 @@ Avoid large explanatory blocks in normal task flows.
 When writing UI copy or documentation, keep these states separate:
 
 - Implemented Local behavior: already present in the copied codebase.
+- Implemented Agent shell behavior: the centered AI tab, disabled AI page, editable composer, provider selector placeholder, and floating five-tab bottom navigation.
 - Planned Agent V1 behavior: documented target, not necessarily shipped yet.
 
 Do not describe AI Gateway, account login, subscriptions, Cloud Profile, chat history, or RAG as implemented until code exists.

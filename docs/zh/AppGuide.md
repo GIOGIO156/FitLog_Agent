@@ -87,10 +87,20 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 全屏背景动效
 - 中心状态文案，使用用户昵称
 - 底部输入框
+- 输入区附近的紧凑模型选择器，可选 ChatGPT 和千问
 - 左侧可折叠 chat history
 - 右上角账号/订阅图标
 - 小型隐私/状态提示
 - 没有 quick chips
+
+当前 Phase 1 实现：
+
+- AI tab 已经位于底部导航正中间。
+- 页面默认是未登录不可用 shell。
+- 输入框可以输入文字，但发送按钮禁用。
+- ChatGPT/千问选择只是本地 UI 占位，不会调用 provider。
+- 历史入口和账号/订阅入口是占位。
+- 尚未实现 AI Gateway、auth session、订阅校验、Cloud Profile、云端 chat history、RAG 或 LLM 调用。
 
 可用状态：
 
@@ -214,6 +224,7 @@ App 应保留隐私提示，但不应占据太多屏幕。
 UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
+- 已实现 Agent shell 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器占位，以及五 tab 浮动底部导航。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
 在代码实现前，不要把 AI Gateway、账号登录、订阅、Cloud Profile、chat history 或 RAG 写成已实现。
