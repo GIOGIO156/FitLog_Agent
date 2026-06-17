@@ -121,7 +121,19 @@ Animation states stay simple:
 
 When messages grow into a scrollable list, the animated background remains present but should be dimmed and desaturated behind the message layer for readability.
 
-The bottom navigation should be a floating white pill. The component itself may use a soft glass or near-opaque surface, but it should not paint a full-width green strip behind the pill. This applies globally so switching between AI and non-AI pages does not create a sharp background-band change.
+The bottom navigation should be a floating white pill. The navigation component itself must not paint a full-width background strip outside the pill; whatever appears outside the pill should come from the current page or root shell background. Phase 1 enables `extendBody` only for the AI tab so the AI animated background reaches behind the navigation bar and remains visible in the side gaps and bottom safe-area gap. Home, Food, Workout, and Profile do not enable `extendBody` for now because their existing scroll views were not designed to pass under the navigation bar; those pages may continue showing the existing pale page background around the pill.
+
+The AI page may keep a very light white gradient veil at the bottom. Its job is to soften the bottom light effect and system safe area, not to act as an opaque cover; future colorful animation should still remain visible beside the bottom navigation.
+
+When AI Chat gains a real scrollable message list, it must handle scroll obstruction before shipping:
+
+- The message list needs enough bottom padding for the composer, provider selector, bottom navigation, system safe area, and bottom veil.
+- At the end of the list, the last message should rest at a normal reading distance above the composer instead of being covered by the input or navigation bar.
+- The composer and message list must not calculate bottom spacing independently; they should share one bottom-obstruction value that includes the keyboard, composer, provider selector, bottom navigation, system safe area, and veil.
+- When the keyboard opens, the message list should update its bottom inset in sync with the composer so the current context and newest messages remain above the input.
+- The gap between the navigation bar and the physical screen bottom should reveal only the AI background and veil, not message text sliding underneath.
+
+The center status text and composer hint should not say the same thing. The empty state may keep a center status such as "I'm listening, RINKO"; the composer hint should give a lightweight input cue, such as "Ask away with FitLog." Keyboard focus by itself should not make the center status suddenly disappear or visibly jump; only a real conversation state should make the message list become the primary surface.
 
 ## Supported V1 Workflows
 

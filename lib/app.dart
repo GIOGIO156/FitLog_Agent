@@ -318,7 +318,6 @@ class _RootShellState extends State<_RootShell> {
     final extendBodyBehindNav = navController.index == RootTabIndex.ai;
 
     return Scaffold(
-      backgroundColor: Colors.white,
       extendBody: extendBodyBehindNav,
       resizeToAvoidBottomInset: !extendBodyBehindNav,
       body: DecoratedBox(

@@ -13,6 +13,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('ai_page')), findsOneWidget);
     expect(find.text('Sign in to use FitLog AI'), findsOneWidget);
     expect(find.text('Signed out'), findsOneWidget);
+    expect(find.text('Ask away with FitLog'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('ai_composer_field')),

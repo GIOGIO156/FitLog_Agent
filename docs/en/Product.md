@@ -52,7 +52,8 @@ Home | Food | AI | Workout | Profile
 Required UI:
 
 - AI tab centered in bottom navigation.
-- Floating white bottom-navigation pill with no full-width green strip behind it.
+- Floating white bottom-navigation pill; the navigation component itself does not paint a full-width strip outside the pill.
+- The AI page enables `extendBody` so the AI background shows beside the pill; normal pages do not enable it yet and may show their existing pale page background to avoid content being hidden behind the navigation bar.
 - Full-screen animated AI background.
 - Center status line using the user's display name.
 - Bottom composer.

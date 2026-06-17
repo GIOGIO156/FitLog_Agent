@@ -14,7 +14,7 @@ FitLog_Agent V1 保留现有 FitLog Local 的 App 区域，并新增一个主要
 Home | Food | AI | Workout | Profile
 ```
 
-AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是浮动白色 pill，不应在 pill 外绘制整行背景色。
+AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是浮动白色 pill，不应在 pill 外绘制整行背景色。当前只有 AI tab 启用 `extendBody` 来让 AI 背景透出；其它 tab 暂不启用，以保护现有页面的底部滚动内容。
 
 ## Home
 
@@ -96,6 +96,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 当前 Phase 1 实现：
 
 - AI tab 已经位于底部导航正中间。
+- AI 页的背景延伸到 bottom navigation 后方，底部保留轻微白色渐变 veil；其它页面不使用这种延伸布局。
 - 页面默认是未登录不可用 shell。
 - 输入框可以输入文字，但发送按钮禁用。
 - ChatGPT/千问选择只是本地 UI 占位，不会调用 provider。

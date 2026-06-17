@@ -14,7 +14,7 @@ Recommended bottom navigation:
 Home | Food | AI | Workout | Profile
 ```
 
-The AI tab sits in the center because it is the primary Agent entry. The bottom navigation component should be a floating white pill and should not paint a full-width background strip outside the pill.
+The AI tab sits in the center because it is the primary Agent entry. The bottom navigation component should be a floating white pill and should not paint a full-width background strip outside the pill. Currently only the AI tab uses `extendBody` so its background shows through; the other tabs do not, to protect existing bottom scroll content.
 
 ## Home
 
@@ -96,6 +96,7 @@ Required layout:
 Current Phase 1 implementation:
 
 - The AI tab exists as the center tab.
+- The AI page background extends behind bottom navigation and keeps a subtle white bottom veil; other pages do not use this extended layout.
 - The page defaults to a signed-out disabled shell.
 - The composer accepts text, but the send button is disabled.
 - ChatGPT/Qwen selection is a local UI placeholder and does not call a provider.

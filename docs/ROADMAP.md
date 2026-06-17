@@ -67,7 +67,7 @@ V1 完整落地是指：
 1. 用户可以安装 App，并保留现有 Local 饮食、训练、Profile、导出能力。
 2. 底部导航变成 `Home | Food | AI | Workout | Profile`。
 3. AI 页面位于底部导航正中间。
-4. 底部导航是浮动白色 pill，pill 外不再绘制整行绿色底色。
+4. 底部导航是浮动白色 pill，导航组件本身不在 pill 外绘制整行底色；pill 外显示当前页面或 root shell 背景。
 5. AI 页面是全屏 Chat，有彩色动效背景。
 6. 未登录、离线或未订阅时 AI 页面变灰，用户可编辑输入但不能发送。
 7. 用户登录后有 Cloud Profile。
@@ -396,7 +396,7 @@ Phase 1 已完成并进入 Phase 2 前待人工复查状态。
 - AI composer 在虚拟键盘弹起时贴近键盘上沿，不再重复叠加 `viewInsets` 间距。
 - AI 页面在键盘弹起时会按键盘高度上移中心状态文案，避免状态文案与模型选择、登录状态和输入框重叠。
 - `extendBody` 只在 AI tab 生效，普通页面内容不再滑到 bottom navigation 后方。
-- Root shell 底色为白色，普通页面 bottom navigation 插槽不再露出浅绿色底条；AI tab 因为启用 `extendBody`，pill 外区域仍露出 AI 页面背景。
+- 普通页面继续露出既有浅色页面背景，避免为了透明效果改坏 Home/Food/Workout/Profile 的滚动底部；AI tab 因为启用 `extendBody`，pill 外区域露出 AI 页面背景。
 - 未新增 Supabase、HTTP、LLM、图片上传、数据库迁移或客户端模型 API key。
 - README、CHANGELOG、双语 Product/AppGuide/AgentDesign 已同步 Phase 1 已实现范围。
 - 独立 Phase 1 工程计划书的长期信息已合并到本节，后续不再单独维护。

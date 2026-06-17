@@ -68,7 +68,7 @@ class AppStrings {
     'You can draft a prompt now. Sending will be available after account, subscription, and AI Gateway are connected.',
     '你可以先写下想问的内容。账号、订阅和 AI Gateway 接通后才能发送。',
   );
-  String get aiComposerHint => _t("Take your time. I'm listening.", '慢慢说，我听着');
+  String get aiComposerHint => _t('Ask away with FitLog', '快问问 FitLog');
   String get aiSendTooltip => _t('Send', '发送');
   String get aiAttachTooltip =>
       _t('Image attachment is not available in Phase 1', 'Phase 1 暂不支持图片附件');

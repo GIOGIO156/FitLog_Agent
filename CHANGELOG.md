@@ -8,12 +8,15 @@
 - Limited `extendBody` to the AI tab so normal Home/Food/Workout/Profile content no longer scrolls underneath the floating bottom navigation.
 - Disabled Scaffold keyboard resizing on the AI tab and positioned the composer from the keyboard inset directly for more reliable on-device behavior.
 - Moved the AI center status upward based on keyboard height so the provider/status pills and input composer no longer overlap the sign-in message.
-- Set the root shell background to neutral white so non-AI pages no longer expose a pale green bottom-navigation slot behind the floating pill.
+- Restored the normal root shell scaffold background for non-AI tabs so their bottom-navigation slot matches the existing pale page background instead of turning white.
+- Reworded the AI composer hint to the shorter branded prompt `Ask away with FitLog` / `快问问 FitLog`.
 
 ### Changed
 
 - Folded the durable Phase 1 plan details into `docs/ROADMAP.md` and removed the standalone `docs/PHASE_1_ENGINEERING_PLAN.md` file to avoid duplicate source-of-truth drift.
-- Bumped the debug build version to `1.0.2+3` so Android installs this visual cleanup as a clear app update.
+- Documented the AI-only `extendBody`, bottom veil, keyboard, and future scroll-padding rules in the durable design docs.
+- Clarified that future AI message lists must share bottom-obstruction geometry with the composer so keyboard focus does not leave chat content behind the input.
+- Bumped the debug build version to `1.0.5+6` so Android installs this visual cleanup as a clear app update.
 
 ### Validation
 
