@@ -16,7 +16,8 @@
 - Folded the durable Phase 1 plan details into `docs/ROADMAP.md` and removed the standalone `docs/PHASE_1_ENGINEERING_PLAN.md` file to avoid duplicate source-of-truth drift.
 - Documented the AI-only `extendBody`, bottom veil, keyboard, and future scroll-padding rules in the durable design docs.
 - Clarified that future AI message lists must share bottom-obstruction geometry with the composer so keyboard focus does not leave chat content behind the input.
-- Bumped the debug build version to `1.0.5+6` so Android installs this visual cleanup as a clear app update.
+- Replaced the default Android launcher icon with the FitLog Agent mark in all mipmap densities.
+- Bumped the debug build version to `1.0.6+7` so Android installs this visual cleanup as a clear app update.
 
 ### Validation
 
