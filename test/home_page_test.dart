@@ -144,6 +144,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'energy_ratio home fits compact first viewport without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _buildHomeTestApp(
+          profile: UserProfile.defaults.copyWith(
+            nickname: 'Chris',
+            dietCalculationMode: AppConstants.dietCalculationModeEnergyRatio,
+            dietPlanStrategy: AppConstants.dietPlanStrategyCarbCycling,
+          ),
+          foodRecords: <FoodRecord>[
+            const FoodRecord(
+              date: _referenceDay,
+              mealName: 'Dinner',
+              totalWeightG: 450,
+              caloriesKcal: 1975,
+              proteinG: 124,
+              carbsG: 136,
+              fatG: 102,
+              estimationNotes: '',
+              source: 'manual',
+            ),
+          ],
+          workoutSessions: <WorkoutSession>[
+            WorkoutSession(
+              date: _referenceDay,
+              bodyPart: 'Back',
+              exerciseName: 'Row',
+              exerciseType: 'strength',
+              durationMinutes: 35,
+              intensity: 'medium',
+              estimatedCalories: 0,
+              notes: '',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Calories'), findsOneWidget);
+      expect(find.text('Macros'), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(CircularProgressIndicator)),
+        const Size(170, 170),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('home keeps strategy below the first viewport on tall screens', (
     tester,
   ) async {
@@ -366,6 +419,7 @@ class _FakeProfileRepository extends ProfileRepository {
 
   @override
   Future<List<WeightLog>> getWeightLogsBetween({
+    String? accountId,
     required String startDate,
     required String endDate,
   }) async {

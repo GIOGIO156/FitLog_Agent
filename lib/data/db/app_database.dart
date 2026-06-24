@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 11;
+  static const int dbVersion = 12;
 
   Database? _database;
 
@@ -124,6 +124,10 @@ class AppDatabase {
           await _addWorkoutSnapshotColumns(db);
           await _addWorkoutSetInputColumns(db);
         }
+        if (oldVersion < 12) {
+          await _addBodyMetricProfileColumns(db);
+          await _migrateWeightLogsForBodyMetrics(db);
+        }
       },
     );
   }
@@ -136,6 +140,8 @@ class AppDatabase {
         age INTEGER NOT NULL,
         height_cm REAL NOT NULL,
         weight_kg REAL NOT NULL,
+        body_fat_percent REAL,
+        waist_cm REAL,
         sex_for_formula TEXT NOT NULL,
         activity_level TEXT NOT NULL,
         daily_energy_goal_type TEXT NOT NULL,
@@ -320,11 +326,15 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS user_weight_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL UNIQUE,
+        account_id TEXT,
+        date TEXT NOT NULL,
         weight_kg REAL NOT NULL,
+        body_fat_percent REAL,
+        waist_cm REAL,
         source TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        UNIQUE(account_id, date)
       )
     ''');
 
@@ -368,6 +378,58 @@ class AppDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> _addBodyMetricProfileColumns(Database db) async {
+    await db.execute(
+      'ALTER TABLE user_profile ADD COLUMN body_fat_percent REAL',
+    );
+    await db.execute('ALTER TABLE user_profile ADD COLUMN waist_cm REAL');
+  }
+
+  Future<void> _migrateWeightLogsForBodyMetrics(Database db) async {
+    await db.execute('''
+      CREATE TABLE user_weight_logs_body_metrics_migration (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id TEXT,
+        date TEXT NOT NULL,
+        weight_kg REAL NOT NULL,
+        body_fat_percent REAL,
+        waist_cm REAL,
+        source TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(account_id, date)
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO user_weight_logs_body_metrics_migration (
+        id,
+        account_id,
+        date,
+        weight_kg,
+        body_fat_percent,
+        waist_cm,
+        source,
+        created_at,
+        updated_at
+      )
+      SELECT
+        id,
+        NULL,
+        date,
+        weight_kg,
+        NULL,
+        NULL,
+        source,
+        created_at,
+        updated_at
+      FROM user_weight_logs
+    ''');
+    await db.execute('DROP TABLE user_weight_logs');
+    await db.execute(
+      'ALTER TABLE user_weight_logs_body_metrics_migration RENAME TO user_weight_logs',
+    );
   }
 
   Future<void> _createWorkoutDraftTable(Database db) async {

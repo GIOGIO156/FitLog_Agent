@@ -4,22 +4,22 @@
 
 This document defines FitLog_Agent V1 storage boundaries.
 
-The copied source currently uses the FitLog Local SQLite schema. Agent V1 may add cloud storage for account, subscription, Cloud Profile, AI sessions, AI messages, request metadata, and compact debug summaries. V1 does not default to full cloud sync for food, workout, or weight history.
+The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Later Agent V1 phases may add AI sessions, AI messages, request metadata, document chunks, and compact debug summaries. V1 does not default to full cloud sync for food, workout, or weight history. Before a future Phase 7 cloud-sync migration, those local histories remain a device dataset rather than account-owned cloud data.
 
 ## Storage Overview
 
 | Storage | Purpose | Current status |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local food, workout, weight, profile baseline, calibration, strategy review, custom exercises, workout drafts. | Implemented from Local baseline. |
-| SharedPreferences | UI language preference and lightweight app preferences. | Implemented from Local baseline. |
+| SQLite / `sqflite` | Local food, workout, body metric history, profile baseline/cache, calibration, strategy review, custom exercises, workout drafts. | Implemented from Local baseline. |
+| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account local context permission, Cloud Profile display cache, and Supabase registration-code PKCE verifier state. | Implemented from Local baseline and Phase 2 account work; auth verifier and theme key are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
-| Cloud database | Account, subscription, Cloud Profile, AI chats, AI request logs, AI final answers, compact debug summaries. | Planned for Agent V1. |
+| Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, and later AI chats/request logs/final answers/debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; later AI tables remain planned. |
 | AI document index | Searchable app documentation chunks for Document RAG. | Planned for Agent V1. |
 | In-memory providers | Selected date, refresh version, app services, language state, runtime summaries. | Implemented from Local baseline. |
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `11`.
+Current local SQLite schema version: `12`.
 
 Foreign keys are enabled with:
 
@@ -44,6 +44,7 @@ Local migrations must remain additive and compatible.
 | 9 | Added local-only `user_profile.nickname`. |
 | 10 | Added `workout_record_drafts`. |
 | 11 | Added `custom_exercises`, exercise snapshots, cardio-intensity metadata, and raw-vs-calculation workout-set fields. |
+| 12 | Added body fat and waist fields to `user_profile`, and account-scoped body metric fields to `user_weight_logs`. |
 
 Compatibility rules:
 
@@ -69,6 +70,8 @@ Important fields:
 | `age` | BMR and under-18 protection. |
 | `height_cm` | BMR input. |
 | `weight_kg` | BMR, g/kg macro, workout calorie, and weight-log source. |
+| `body_fat_percent` | Optional current body-fat percentage. Stored in Cloud Profile after login. |
+| `waist_cm` | Optional current waist circumference. Stored in Cloud Profile after login. |
 | `sex_for_formula` | `male`, `female`, or `prefer_not_to_say`. |
 | `activity_level` | Compatibility/export tier derived from `training_frequency_per_week`. |
 | `daily_energy_goal_type` | Compatibility field: `maintenance`, `deficit`, or `surplus`. |
@@ -235,13 +238,16 @@ Rules:
 
 ### `user_weight_logs`
 
-Purpose: daily bodyweight history.
+Purpose: local daily body metric history. Phase 2-6 keep this history on device; it is not fully cloud-synced. When signed in, new rows are scoped with `account_id` so a new account does not automatically claim legacy device rows.
 
 Fields:
 
 - `id`
+- `account_id`
 - `date`
 - `weight_kg`
+- `body_fat_percent`
+- `waist_cm`
 - `source`
 - `created_at`
 - `updated_at`
@@ -297,20 +303,22 @@ AI boundary: Weekly Review may explain these records, but it must not silently c
 
 Agent V1 should reuse runtime or service-built summaries for Structured RAG instead of uploading raw table rows by default.
 
-## Planned Cloud Tables
+## Cloud Tables And Planned Tables
 
-The following are planned service-side storage concepts for Agent V1. Names are design names and may be adapted to the chosen backend.
+The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Later AI tables remain design concepts until their phases land.
 
 ### `accounts`
 
 Purpose: authenticated user identity.
+
+Phase 2 uses Supabase Auth for this layer rather than a custom public `accounts` table. Email and password credentials, sessions, and email verification state belong to Supabase Auth. FitLog does not store passwords in `cloud_profiles`, and it does not require a username for registration.
 
 Fields:
 
 - `id`
 - auth provider id
 - email or phone when available
-- display name
+- display name if present in auth metadata; FitLog nickname/display name is authoritative in Cloud Profile
 - locale
 - created/updated timestamps
 - deletion status
@@ -318,6 +326,8 @@ Fields:
 ### `subscriptions`
 
 Purpose: user AI entitlement.
+
+Phase 2 implements this as a Supabase Postgres table keyed by `account_id = auth.uid()`. Clients may read their own row through RLS. Client inserts/updates are denied; development entitlements are seeded or maintained with service-role tooling.
 
 Fields:
 
@@ -331,9 +341,42 @@ Fields:
 
 User-visible V1 product rule: subscription gating only, no visible per-message quota UI.
 
+### `internal_subscription_codes`
+
+Purpose: development-only internal redeem codes that activate AI entitlement for the currently signed-in account.
+
+Phase 2 stores only hashed codes in Supabase. Clients cannot read or update this table. A signed-in client calls the `redeem_internal_subscription_code(input_code text)` RPC, which validates the hash, expiry and redemption count, records one redemption per account/code pair, and upserts the account's `subscriptions` row. This keeps entitlement writes server-side without placing Supabase service-role credentials in the app.
+
+Fields:
+
+- `id`
+- label
+- hashed code
+- status
+- plan id
+- duration days
+- max and used redemption counts
+- optional expiry
+- created/updated timestamps
+
+### `internal_subscription_redemptions`
+
+Purpose: audit which account redeemed which internal code.
+
+Fields:
+
+- `id`
+- `code_id`
+- `account_id`
+- redeemed timestamp
+
 ### `cloud_profiles`
 
 Purpose: authoritative account-bound profile.
+
+Phase 2 implements this as a Supabase Postgres table with own-row select/insert/update RLS and algorithm-preserving field checks.
+
+Projects that already created `cloud_profiles` from an earlier Phase 2 SQL file must also run `202606230002_cloud_profile_schema_compat.sql`; `create table if not exists` does not add columns to an existing table. Existing projects that only need the current body metric columns can run `202606230003_cloud_profile_body_metrics.sql` as a narrow patch.
 
 Recommended fields mirror current profile concepts:
 
@@ -341,7 +384,9 @@ Recommended fields mirror current profile concepts:
 - display name/nickname
 - age
 - height
-- weight
+- current weight
+- current body-fat percentage
+- current waist circumference
 - sex option for formulas
 - diet goal phase
 - diet calculation mode
@@ -361,8 +406,11 @@ Rules:
 - Exists only after login/onboarding.
 - Cloud Profile is authoritative.
 - Device cache is display/cache only.
+- Profile page edits are local drafts until Save Changes succeeds; cloud writes upsert one complete `cloud_profiles` snapshot and increment `profile_version`.
+- Current body metrics in Profile are saved in Cloud Profile. Historical body metric logs remain local and account-scoped in Phase 2-6.
 - Offline profile saves are disabled in V1.
 - Account deletion deletes Cloud Profile.
+- The mapper must preserve `diet_goal_phase`, `diet_calculation_mode`, and `diet_plan_strategy` as user-controlled algorithm fields; it must not convert between `energy_ratio` and `gram_per_kg`.
 
 ### `ai_chat_sessions`
 
@@ -493,6 +541,8 @@ Recommended context objects:
 | Document RAG index | Cloud or bundled service index |
 | Export files | Local user-controlled files |
 
+Full cloud sync for food/workout/weight can be a Phase 7 feature, not a hidden Phase 2-6 side effect. It requires a separate source-of-truth rule, migration confirmation, conflict policy, deletion policy, and export story.
+
 ## Offline Rules
 
 - AI page enters disabled gray state while offline.
@@ -521,14 +571,10 @@ Cloud AI chat history and AI request logs are not part of the current Local expo
 
 ## Not Implemented In Current Source
 
-- cloud database
-- account/session tables
-- subscription tables
-- Cloud Profile repository
 - AI chat tables
 - AI request log tables
 - Document RAG index
-- backend sync
+- AI Gateway / backend sync for chat workflows
 - user-data vector database
 
 ## Code References

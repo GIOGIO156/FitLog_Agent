@@ -14,7 +14,7 @@ FitLog_Agent V1 保留现有 FitLog Local 的 App 区域，并新增一个主要
 Home | Food | AI | Workout | Profile
 ```
 
-AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是浮动白色 pill，不应在 pill 外绘制整行背景色。当前只有 AI tab 启用 `extendBody` 来让 AI 背景透出；其它 tab 暂不启用，以保护现有页面的底部滚动内容。
+AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，避免滚动文字从导航下方透出；AI tab 使用更透明的玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
 
 ## Home
 
@@ -85,7 +85,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 必备布局：
 
 - 全屏背景动效
-- 中心状态文案，使用用户昵称
+- 中心状态文案，优先使用已保存的 Cloud Profile 昵称
 - 底部输入框
 - 输入区附近的紧凑模型选择器，可选 ChatGPT 和千问
 - 左侧可折叠 chat history
@@ -93,15 +93,18 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 小型隐私/状态提示
 - 没有 quick chips
 
-当前 Phase 1 实现：
+当前 Phase 2 实现：
 
 - AI tab 已经位于底部导航正中间。
-- AI 页的背景延伸到 bottom navigation 后方，底部保留轻微白色渐变 veil；其它页面不使用这种延伸布局。
+- AI 页的背景延伸到 bottom navigation 后方，底部保留轻微白色渐变 veil；可用状态使用更清晰的彩色慢流动，输入时键盘打开会暂停背景动画以降低输入卡顿，AI tab 使用玻璃态导航 pill；其它可滚动页面使用实体主题色导航 pill，并在自身内容底部预留阅读空间，不依赖 root 层整条导航底色。
 - 页面默认是未登录不可用 shell。
-- 输入框可以输入文字，但发送按钮禁用。
+- 输入框可以输入文字，但发送按钮在 Phase 3 AI Gateway 前禁用。
 - ChatGPT/千问选择只是本地 UI 占位，不会调用 provider。
-- 历史入口和账号/订阅入口是占位。
-- 尚未实现 AI Gateway、auth session、订阅校验、Cloud Profile、云端 chat history、RAG 或 LLM 调用。
+- 账号/订阅入口在账号服务可用时打开 Phase 2 账号 sheet。中心状态文案优先读取已保存的 Cloud Profile 昵称，再回退到 auth display name。
+- Sheet 展示账号/订阅状态、退出登录、后端配置提示和本机记录摘要授权开关。
+- 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
+- 历史入口仍是占位。
+- 尚未实现 AI Gateway、云端 chat history、RAG 或 LLM 调用。
 
 可用状态：
 
@@ -110,10 +113,13 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 离线：灰色不可用状态
 - 未订阅：不可用状态，并解释账号/订阅情况
 
+当前 Phase 2 说明：即使账号、订阅和 Cloud Profile gate 都已就绪，发送仍要等 Phase 3 Gateway 接入后才会开放。
+
 不可用状态规则：
 
 - 用户可以继续编辑未完成 prompt。
 - 只有登录、联网和订阅条件全部满足时，才允许发送。
+- 未发送的输入框内容应在当前运行期内的切换 tab 和不可用状态下保留。用户删除、发送成功、退出登录或账号变化时清空。
 
 支持 workflow：
 
@@ -167,7 +173,8 @@ Profile 包含账号绑定的用户信息和饮食设置。
 Local 基线：
 
 - 昵称
-- 身体资料
+- 身体资料：年龄、身高、体重、性别、体脂、腰围
+- 本地体重、体脂、腰围历史的身体趋势
 - 饮食阶段
 - 计算模式
 - 策略
@@ -179,11 +186,24 @@ Local 基线：
 Agent V1 profile 模型：
 
 - 未登录前没有正式 Profile。
+- 未登录前，Profile 页面应显示登录/onboarding 入口，而不是本地 Profile 编辑器。
+- 当前未登录页使用当前主题纯色背景、无星 FitLog logo base asset 与基于 SVG 曲线并贴近 logo 右上角的饱和固定圆润 AI 四角星群错峰呼吸闪烁动画，星群经过轻微左下位置微调且最小态保持更饱满，并统一使用 app 主题字体 `NotoSansSC` 与中等/半粗登录文字层级；需要提示后端配置时，提示位于页面顶部；无键盘静态入口不可上下滑动，输入框聚焦后切换为可避让键盘的紧凑可滚动布局，包含邮箱密码登录，以及注册邮箱验证码和密码确认表单。注册不要求 username；昵称稍后在 Cloud Profile 中编辑。
+- 登录和注册错误应保留当前表单，并通过底部 snackbar 显示可读提示，而不是展示后端原始异常。
+- 登录成功后 Supabase session 会保存在设备上；除非用户主动退出账号，重启 App 后仍保持登录。
 - 登录后 Cloud Profile 是权威版本。
-- 设备可以缓存 Profile 用于显示。
+- 新注册或新登录账号没有 Cloud Profile row 时，App 会自动创建默认 Cloud Profile，并进入正常 Profile 编辑页。
+- Cloud Profile 加载/保存失败时，应显示可读提示和诊断错误码，例如 schema 不匹配、RLS 拦截、session 过期、网络失败或表缺失。
+- 订阅状态加载失败不应阻塞 Cloud Profile 已成功加载的 Profile 编辑页；AI 发送仍要等订阅状态可用且生效后才开放。
+- Profile 标题区右侧提供紧凑“订阅”入口，并用明确的已开启/未开启/加载中/异常状态徽标表达订阅状态；点开小型模糊浮层后显示当前账号 entitlement，可刷新状态，也可输入开发期内部兑换码为当前账号开启 AI 订阅。这只是 Phase 2 内部测试路径，不是生产支付流程。
+- Profile 修改会先进入本地页面草稿。已改卡片显示醒目的已修改标记，底部条贴近 Profile body 底部并向上展开，显示未保存数量和简洁字段列表；“放弃”恢复到上次保存的 Cloud Profile，“保存更改”一次性写入完整 profile snapshot。
+- 身体趋势卡片放在身体资料正下方。它支持体重、体脂、腰围三种折线，支持 7/14/21/28 天窗口；真实记录点按当前窗口内的真实日期间隔从左向右延伸；当前周期记录不足等状态直接写在折线图区内；点按真实记录点会在图内显示该点数值。
+- 主题卡片放在 Profile 的低频设置区、语言设置前，使用 Green 和 Black/黑橙 两个独立点按选项。默认 Green；Black/黑橙只改变颜色 token 和强调色，不改变记录、算法或云端边界。
+- 设备可以缓存 Profile 用于显示，但本地缓存失败不应阻塞已成功加载的 Cloud Profile。云端刷新期间，只有账号绑定的缓存元数据匹配当前登录账号时，才可先显示缓存 Profile。
 - 离线时禁止保存 Profile。
 - AI 默认使用 Cloud Profile 作为上下文。
 - 删除账号时删除 Cloud Profile。
+- Profile 底部账号卡提供明确退出入口。退出账号会清除 auth session、运行期草稿、账号绑定 Cloud Profile 缓存元数据和本地 singleton Profile 缓存，但不会删除设备本地 food、workout 或 weight 历史。
+- V1 中本地 food/workout/weight 历史仍属于设备本地数据，不会自动归属到登录账号。
 
 Profile 仍是正式饮食设置变更的位置。AI 可以解释或建议，但设置变更应通过 Profile UI 完成。
 
@@ -225,7 +245,7 @@ App 应保留隐私提示，但不应占据太多屏幕。
 UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
-- 已实现 Agent shell 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器占位，以及五 tab 浮动底部导航。
+- 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、本机记录摘要授权开关，以及五 tab 浮动底部导航。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
-在代码实现前，不要把 AI Gateway、账号登录、订阅、Cloud Profile、chat history 或 RAG 写成已实现。
+在代码实现前，不要把 AI Gateway、云端 chat history、RAG 或 LLM 调用写成已实现。账号登录、订阅状态和 Cloud Profile 是 Phase 2 客户端/schema 能力，需要配置 Supabase 后才能连接真实后端测试。

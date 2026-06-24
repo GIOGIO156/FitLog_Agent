@@ -852,6 +852,7 @@ class _FakeProfileRepository extends ProfileRepository {
 
   @override
   Future<List<WeightLog>> getWeightLogsBetween({
+    String? accountId,
     required String startDate,
     required String endDate,
   }) async {

@@ -1,0 +1,65 @@
+-- Phase 2 development seed notes.
+-- Create auth users from the Supabase dashboard or CLI, then insert matching
+-- rows here with service-role privileges. Do not ship service-role keys in
+-- Flutter.
+--
+-- Required debug coverage:
+-- 1. subscribed account: subscriptions.status = 'active'
+-- 2. unsubscribed account: subscriptions.status = 'inactive'
+-- 3. account without cloud_profiles row to test Profile setup
+-- 4. internal redeem code to turn an inactive account active from Profile
+--
+-- Example after replacing UUIDs:
+--
+-- insert into public.subscriptions (account_id, status, plan_id, provider)
+-- values
+--   ('00000000-0000-0000-0000-000000000001', 'active', 'fitlog_ai_dev', 'internal_dev_entitlement'),
+--   ('00000000-0000-0000-0000-000000000002', 'inactive', 'fitlog_ai_dev', 'internal_dev_entitlement')
+-- on conflict (account_id) do update
+-- set status = excluded.status,
+--     plan_id = excluded.plan_id,
+--     provider = excluded.provider,
+--     updated_at = timezone('utc', now());
+--
+-- insert into public.cloud_profiles (
+--   account_id,
+--   display_name,
+--   diet_goal_phase,
+--   diet_calculation_mode,
+--   profile_version
+-- )
+-- values (
+--   '00000000-0000-0000-0000-000000000001',
+--   'RINKO',
+--   'cutting',
+--   'energy_ratio',
+--   1
+-- )
+-- on conflict (account_id) do nothing;
+--
+-- Internal redeem code example:
+--
+-- insert into public.internal_subscription_codes (
+--   label,
+--   code_hash,
+--   plan_id,
+--   duration_days,
+--   max_redemptions,
+--   expires_at
+-- )
+-- values (
+--   'dev-2026-01',
+--   crypt('FITLOG-DEV-2026', gen_salt('bf')),
+--   'fitlog_ai_dev',
+--   30,
+--   20,
+--   now() + interval '90 days'
+-- )
+-- on conflict (label) do update
+-- set code_hash = excluded.code_hash,
+--     plan_id = excluded.plan_id,
+--     duration_days = excluded.duration_days,
+--     max_redemptions = excluded.max_redemptions,
+--     expires_at = excluded.expires_at,
+--     status = 'active',
+--     updated_at = timezone('utc', now());

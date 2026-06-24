@@ -456,7 +456,7 @@ AIPage
 - 订阅状态；
 - AI 是否可用；
 - 登录 / 登出；
-- 订阅管理入口；
+- 订阅入口；Profile 页面提供“订阅”卡片，可刷新状态并输入开发期内部兑换码；
 - 隐私说明入口。
 
 V1 不显示“剩余额度”，因为 V1 采用订阅制而非按次额度 UI。
@@ -501,6 +501,13 @@ Chat history 采用左侧可折叠侧栏。
 - 发送；
 - 离线时继续编辑未发送 prompt；
 - 未登录、未订阅、离线时禁用发送。
+
+未发送 prompt 的保留规则：
+
+- 未发送文本是设备级本地草稿，不是云端 chat message；
+- 当前运行期内，切换页面、离线或订阅状态变化都不自动清空；
+- 只有用户主动删除或发送成功后才清空；
+- 退出登录或切换账号时清空，避免上一账号上下文残留。
 
 输入框视觉：
 
@@ -577,7 +584,7 @@ V1 不需要复杂情绪状态，只保留四种：
 - 没有正式 Profile。
 - AI 页面是灰色不可用状态。
 - Chat history 不显示历史。
-- Profile 页面显示登录入口或账号创建引导。
+- Profile 页面显示登录入口或账号创建引导；当前 Phase 2 UI 使用主题纯色背景、无星 FitLog logo base asset、AI 星光 overlay 动画、邮箱密码登录、注册验证码、密码确认和绿色主按钮。
 - 用户不能使用个性化 AI workflow。
 
 ## 8.2 登录后 Profile
@@ -710,9 +717,13 @@ V1 不默认全量云同步：
 - diet adjustment review history；
 - local export files。
 
-如果未来要做多设备同步，应单独设计：
+Phase 2-6 中，这些记录是本机设备数据集，不会静默归属到新登录账号。AI 需要使用时只能通过最小必要摘要，并在账号归属可能有歧义时提供用户可见的授权或设置。
+
+完整业务记录上云可以作为 Phase 7 单独设计。如果未来要做多设备同步，应单独设计：
 
 - 服务端 schema；
+- 账号归属与迁移确认；
+- 端云 source of truth；
 - 冲突策略；
 - 离线队列；
 - 数据删除；
@@ -772,11 +783,11 @@ Phase 0 锁定以下工程选型：
 | 事项 | V1 决策 |
 |---|---|
 | 后端方案 | Supabase |
-| Auth | Supabase Auth，首版只做 FitLog 自有邮箱验证码 / OTP 注册登录 |
+| Auth | Supabase Auth，首版只做 FitLog 自有邮箱密码登录 + 注册邮箱验证码 |
 | 云端数据库 | Supabase Postgres |
 | 临时图片对象 | Supabase Storage 私有临时 bucket |
 | AI Gateway | Supabase Edge Functions |
-| 订阅状态 | 开发期内部 entitlement 表，种子账号区分 subscribed / unsubscribed |
+| 订阅状态 | 开发期内部 entitlement 表，种子账号和内部兑换码区分 subscribed / unsubscribed |
 | AI providers | OpenAI / ChatGPT 与千问 / Qwen，用户在 AI Chat 输入区选择，服务端 adapter 调用 |
 
 选择 Supabase 的原因：
@@ -797,6 +808,7 @@ Phase 0 锁定以下工程选型：
 
 - 开发期先做服务端内部 entitlement，不接真实支付。
 - 至少准备两个调试账号：一个 subscribed，一个 unsubscribed。
+- Profile 页面可通过内部兑换码 RPC 为当前账号开启开发期 AI entitlement；兑换码只用于内部测试，不代表生产支付流程。
 - App 只显示 AI 是否可用，不显示剩余额度。
 - AI Gateway 每次请求仍必须服务端校验 entitlement，不能只相信客户端状态。
 - 生产支付 provider 以后再定，但必须写入同一套服务端 entitlement contract。
@@ -2094,7 +2106,7 @@ write_confirmed
 - 底部导航只显示浮动白色 pill，外层没有整行背景。
 - AI 页面彩色背景铺满全屏。
 - 未登录 / 离线 / 未订阅时背景变灰。
-- 输入框未发送内容在离线时不丢失。
+- 输入框未发送内容在当前运行期内切换页面、离线或订阅状态变化时不丢失；退出登录或切换账号时清空。
 - Chat history 侧栏可打开、关闭。
 - 消息列表变长时背景仍存在但不影响阅读。
 

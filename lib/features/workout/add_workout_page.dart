@@ -11,6 +11,7 @@ import '../../core/constants/exercise_definition.dart';
 import '../../core/constants/exercise_visuals.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/localization/localization_extensions.dart';
+import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/number_utils.dart';
 import '../../core/widgets/exercise_thumbnail.dart';
@@ -2426,13 +2427,14 @@ class _CustomExercisePageState extends State<_CustomExercisePage> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final fitTheme = context.fitLogTheme;
     final strengthBodyParts = AppConstants.bodyParts
         .where((part) => part != 'Cardio')
         .toList();
     final secondaryOptions = <String?>[null, ...strengthBodyParts];
     final pageTitleStyle = Theme.of(
       context,
-    ).appBarTheme.titleTextStyle?.copyWith(color: const Color(0xFF16301A));
+    ).appBarTheme.titleTextStyle?.copyWith(color: fitTheme.textPrimary);
     final contentBottomPadding = MediaQuery.paddingOf(context).bottom + 124;
 
     return Scaffold(
@@ -2449,7 +2451,7 @@ class _CustomExercisePageState extends State<_CustomExercisePage> {
                     IconButton(
                       onPressed: () => Navigator.of(context).maybePop(),
                       icon: const Icon(Icons.arrow_back_rounded),
-                      color: const Color(0xFF203125),
+                      color: fitTheme.textPrimary,
                       iconSize: 32,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints.tightFor(
@@ -2484,7 +2486,7 @@ class _CustomExercisePageState extends State<_CustomExercisePage> {
                   ),
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF152013),
+                    color: fitTheme.textPrimary,
                   ),
                   validator: (value) {
                     if ((value ?? '').trim().isEmpty) {
@@ -2757,14 +2759,14 @@ class _CustomExercisePageState extends State<_CustomExercisePage> {
           label: Text(strings.addExercise),
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(62),
-            backgroundColor: const Color(0xFF3E7A31),
-            foregroundColor: Colors.white,
+            backgroundColor: fitTheme.primary,
+            foregroundColor: fitTheme.onPrimary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(28),
             ),
             textStyle: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w800,
-              color: Colors.white,
+              color: fitTheme.onPrimary,
             ),
           ),
         ),
@@ -2788,6 +2790,7 @@ class _CustomExerciseModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
     Widget buildSegment({
       required bool value,
       required String label,
@@ -2807,9 +2810,7 @@ class _CustomExerciseModeToggle extends StatelessWidget {
                 children: <Widget>[
                   Icon(
                     icon,
-                    color: selected
-                        ? const Color(0xFF4E9E3B)
-                        : const Color(0xFF354336),
+                    color: selected ? fitTheme.primaryDeep : fitTheme.mutedText,
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -2817,8 +2818,8 @@ class _CustomExerciseModeToggle extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: selected
-                          ? const Color(0xFF34752A)
-                          : const Color(0xFF243226),
+                          ? fitTheme.primaryDeep
+                          : fitTheme.textPrimary,
                     ),
                   ),
                 ],
@@ -2837,12 +2838,12 @@ class _CustomExerciseModeToggle extends StatelessWidget {
           height: 72,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: fitTheme.surface,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE2ECDD)),
+            border: Border.all(color: fitTheme.outline),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: const Color(0xFF13200F).withValues(alpha: 0.04),
+                color: fitTheme.shadow.withValues(alpha: 0.06),
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -2863,9 +2864,9 @@ class _CustomExerciseModeToggle extends StatelessWidget {
                       width: thumbWidth,
                       height: 64,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE7F6D8),
+                        color: fitTheme.primarySoftSelected,
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: const Color(0xFFD1E8B6)),
+                        border: Border.all(color: fitTheme.primaryBright),
                       ),
                     ),
                   ),
@@ -2906,6 +2907,7 @@ class _CustomExerciseSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
     return GlassPanel(
       margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(18),
@@ -2919,12 +2921,12 @@ class _CustomExerciseSectionCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF6E3),
+                  color: fitTheme.primarySoft,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 alignment: Alignment.center,
                 child: IconTheme(
-                  data: const IconThemeData(color: Color(0xFF5D7E53), size: 24),
+                  data: IconThemeData(color: fitTheme.primaryDeep, size: 24),
                   child: icon,
                 ),
               ),
@@ -2935,7 +2937,7 @@ class _CustomExerciseSectionCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF152013),
+                    color: fitTheme.textPrimary,
                   ),
                 ),
               ),
@@ -2966,6 +2968,7 @@ class _CustomExerciseInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
     final tile = Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
@@ -2975,9 +2978,9 @@ class _CustomExerciseInfoTile extends StatelessWidget {
         compact ? 11 : 12,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FBF5),
+        color: fitTheme.surfaceVariant,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE1E9DD)),
+        border: Border.all(color: fitTheme.outline),
       ),
       child: Row(
         children: <Widget>[
@@ -2986,7 +2989,7 @@ class _CustomExerciseInfoTile extends StatelessWidget {
             height: compact ? 28 : 32,
             child: IconTheme(
               data: IconThemeData(
-                color: const Color(0xFF6A8760),
+                color: fitTheme.primaryDeep,
                 size: compact ? 22 : 24,
               ),
               child: Center(child: leading),
@@ -3004,7 +3007,7 @@ class _CustomExerciseInfoTile extends StatelessWidget {
                               ? Theme.of(context).textTheme.bodyMedium
                               : Theme.of(context).textTheme.bodySmall)
                           ?.copyWith(
-                            color: const Color(0xFF71806C),
+                            color: fitTheme.mutedText,
                             fontWeight: FontWeight.w700,
                           ),
                   maxLines: 1,
@@ -3017,7 +3020,7 @@ class _CustomExerciseInfoTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF172116),
+                    color: fitTheme.textPrimary,
                   ),
                 ),
               ],
@@ -3026,7 +3029,7 @@ class _CustomExerciseInfoTile extends StatelessWidget {
           if (onTap != null)
             Icon(
               Icons.chevron_right_rounded,
-              color: const Color(0xFF72806F),
+              color: fitTheme.mutedText,
               size: compact ? 20 : 24,
             ),
         ],
@@ -3052,18 +3055,19 @@ class _CustomExerciseTinyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FAF4),
+        color: fitTheme.surfaceVariant,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2ECDD)),
+        border: Border.all(color: fitTheme.outline),
       ),
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF55644F),
+          color: fitTheme.textSecondary,
         ),
       ),
     );

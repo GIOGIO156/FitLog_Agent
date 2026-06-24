@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/fitlog_theme.dart';
+
 class GlassPanel extends StatelessWidget {
   const GlassPanel({
     super.key,
@@ -16,13 +18,13 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.96);
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.12)
-        : const Color(0xFFE2ECDD);
+    final fitTheme = context.fitLogTheme;
+    final bgColor = fitTheme.isDark
+        ? fitTheme.surface.withValues(alpha: 0.88)
+        : fitTheme.surface.withValues(alpha: 0.96);
+    final borderColor = fitTheme.isDark
+        ? fitTheme.outline.withValues(alpha: 0.86)
+        : fitTheme.outline;
 
     return Container(
       margin: margin,
@@ -33,7 +35,9 @@ class GlassPanel extends StatelessWidget {
           border: Border.all(color: borderColor),
           boxShadow: <BoxShadow>[
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+              color: fitTheme.shadow.withValues(
+                alpha: fitTheme.isDark ? 0.28 : 0.05,
+              ),
               blurRadius: 26,
               offset: const Offset(0, 10),
             ),

@@ -8,8 +8,8 @@
 
 - Local food、workout、weight、Profile、SQLite、算法和导出行为继续作为业务基线。
 - 后端选型为 Supabase：Auth + Postgres + Storage + Edge Functions。
-- 首版登录方式为 FitLog 自有邮箱验证码/OTP 注册登录；任意可接收验证码的邮箱都可用于账号创建。
-- 订阅方案为开发期内部 entitlement：种子账号区分 subscribed / unsubscribed，不接真实支付 provider。
+- 首版登录方式为 FitLog 自有邮箱密码登录 + 注册邮箱验证码；任意可接收验证码的邮箱都可用于账号创建。
+- 订阅方案为开发期内部 entitlement：种子账号和内部兑换码区分 subscribed / unsubscribed，不接真实支付 provider。
 - AI providers 锁定为 OpenAI/ChatGPT 和千问/Qwen 两种，由服务端 AI Gateway 调用；用户可在 AI Chat 输入区选择使用哪一种。
 - 图片先上传到 Supabase Storage 私有临时 bucket，再把 attachment reference 传给 AI Gateway。
 - Agent V1 使用云端账号、订阅、Cloud Profile、AI Gateway、chat history、request metadata 和 compact debug summaries。
@@ -24,7 +24,7 @@
 
 Phase 0 选型说明：
 
-- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱 OTP、关系型 Cloud Profile / chat / log 表、临时图片对象和 Edge Function AI Gateway，避免 Phase 2-3 同时自建 auth、数据库、storage 和 API runtime。
+- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / chat / log 表、临时图片对象和 Edge Function AI Gateway，避免 Phase 2-3 同时自建 auth、数据库、storage 和 API runtime。
 - 相比 Firebase，Supabase 的 Postgres 表结构更贴合 Cloud Profile、chat messages、request logs、debug summaries 和 document chunks 这些关系型数据。
 - 相比自建后端，Supabase 能更快落地 Phase 2-3，同时保留以后迁移或自托管的可能。
 - 开发期订阅只用于验证 gating 和调试账号，不代表生产支付方案已经完成；生产支付/IAP provider 是发布前商业化决策。
@@ -180,7 +180,7 @@ Rules:
 - V1 does not show user-visible remaining quota.
 - Every AI Gateway request must be checked server-side.
 - Backend may log request counts, cost metadata, model, latency, image count and subscription tier for operations and billing audit.
-- Development uses at least two seeded accounts: one active subscription account and one inactive subscription account for gating regression tests.
+- Development uses at least two seeded accounts and at least one internal redeem code: one active subscription account, one inactive subscription account, and one inactive-to-active redeem path for gating regression tests.
 - Production payment integration is deferred until a later release-hardening or commercialization decision; it must still write the same server-side entitlement contract.
 
 ## Cloud Profile Contract
@@ -535,8 +535,8 @@ Rules:
 | Requirement | Status |
 | --- | --- |
 | Backend scheme | Locked: Supabase Auth, Postgres, Storage, Edge Functions |
-| Login method | Locked: FitLog email OTP account flow |
-| Subscription scheme | Locked for development: internal entitlement table and seeded subscribed/unsubscribed accounts |
+| Login method | Locked: FitLog email-password sign-in and registration email-code flow |
+| Subscription scheme | Locked for development: internal entitlement table, seeded subscribed/unsubscribed accounts, and internal redeem codes |
 | AI provider/model calling | Locked: user-selectable OpenAI/ChatGPT and Qwen through server-side AI Gateway adapters |
 | Server-managed model API keys | Locked |
 | AI Gateway endpoint shape | Drafted |

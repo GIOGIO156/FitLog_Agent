@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 now adds the centered AI tab and disabled AI shell, while the cloud-assisted AI layer remains planned for later phases. Agent V1 does not turn the app into an autonomous coach or a full cloud-sync platform.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation, while AI Gateway, remote model calls, cloud chat history, and RAG remain planned for later phases. Agent V1 does not turn the app into an autonomous coach or a full cloud-sync platform.
 
 The durable rule is:
 
@@ -15,13 +15,10 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no app-internal LLM execution. Phase 1 implements only the AI navigation entry and disabled chat shell.
+The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and local-record context permission.
 
 Not implemented in the current code:
 
-- account login
-- cloud profile
-- subscription enforcement
 - AI Gateway
 - server-managed model API keys
 - remote LLM or multimodal model calls
@@ -32,6 +29,8 @@ Not implemented in the current code:
 - Agent loop
 - AI conversation memory
 - Agent action/debug logs
+- cloud chat history persistence
+- production payment provider or subscription management
 
 Existing AI-adjacent features are user-mediated, not app-internal AI:
 
@@ -41,7 +40,9 @@ Existing AI-adjacent features are user-mediated, not app-internal AI:
 | External AI JSON paste | The user manually pastes JSON produced outside the app. FitLog parses it locally. | No | `PasteAiResultPage`, `NutritionCalculator.parseAiFoodJson` |
 | `source = ai_paste` | Saved food records can mark that the source was an AI paste workflow. | No | `AppConstants.sourceAiPaste`, `FoodRecord.source` |
 | Photo AI Analysis | Visible placeholder entry point in Add Food. | No | `AddFoodPage` |
-| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector placeholder, history placeholder, and account/subscription placeholder. It cannot send. | No | `AiPage`, `FitLogBottomNavBar` |
+| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector, history placeholder, and account/subscription status entry. It cannot send until Phase 3. | No | `AiPage`, `FitLogBottomNavBar` |
+| Account/Profile foundation | Supabase-configured email-password sign-in, persisted auth-session recovery, registration email-code flow with local PKCE verifier storage, subscription status lookup, Cloud Profile load/save path, Profile sign-in gate, and cache display fallback. | No | `AccountController`, `AuthRepository`, `SubscriptionRepository`, `CloudProfileRepository`, `ProfilePage` |
+| Local context permission | Per-account local setting that controls whether future AI answers may use device food/workout/weight summaries. It does not upload full history in Phase 2. | No | `AiLocalContextPermissionRepository`, `AiPage` |
 
 ## V1 Agent Positioning
 
@@ -102,7 +103,7 @@ The AI page uses a full-screen animated background and a minimal chat layout.
 Required elements:
 
 - full-screen animated background
-- center status copy using the user's display name, such as "I'm listening, RINKO"
+- center status copy using the saved Cloud Profile nickname when available, such as "I'm listening, RINKO"
 - bottom composer
 - compact model selector for ChatGPT and Qwen near the composer
 - right-top account/subscription status icon
@@ -114,14 +115,16 @@ Animation states stay simple:
 
 | State | Visual behavior | Product meaning |
 | --- | --- | --- |
-| Ready | Soft colorful slow flow. | AI is available and waiting. |
+| Ready | Clear colorful slow flow. | AI is available and waiting. |
 | Processing | Slightly faster or more layered flow. | The request is routing, retrieving context, or generating. |
 | Needs clarification | Slower flow with input or draft card emphasis. | AI needs user-supplied missing information. |
 | Disabled | Gray, low-motion background. | User is offline, logged out, or not subscribed. Composer remains editable, but send is disabled. |
 
 When messages grow into a scrollable list, the animated background remains present but should be dimmed and desaturated behind the message layer for readability.
 
-The bottom navigation should be a floating white pill. The navigation component itself must not paint a full-width background strip outside the pill; whatever appears outside the pill should come from the current page or root shell background. Phase 1 enables `extendBody` only for the AI tab so the AI animated background reaches behind the navigation bar and remains visible in the side gaps and bottom safe-area gap. Home, Food, Workout, and Profile do not enable `extendBody` for now because their existing scroll views were not designed to pass under the navigation bar; those pages may continue showing the existing pale page background around the pill.
+When the keyboard is open, the background animation may pause so typing stays smooth; the visible background should remain in place rather than flashing or changing layout.
+
+The bottom navigation should be a theme-aware floating pill. The navigation component itself must not paint a full-width background strip outside the pill; whatever appears outside the pill should come from the current page or root shell background. Non-AI tabs use an opaque theme-surface pill so page text does not show through the navigation, while the AI tab uses a glass pill so the animated background remains visible. The root shell must not shrink page bodies to create navigation space. Scrollable pages own their bottom reading padding so the final content can scroll above the floating navigation, fixed bottom CTAs use navigation clearance, and Home first-viewport layout keeps only a small nav-adjacent gap so dashboard content keeps its intended size.
 
 The AI page may keep a very light white gradient veil at the bottom. Its job is to soften the bottom light effect and system safe area, not to act as an opaque cover; future colorful animation should still remain visible beside the bottom navigation.
 
@@ -133,7 +136,9 @@ When AI Chat gains a real scrollable message list, it must handle scroll obstruc
 - When the keyboard opens, the message list should update its bottom inset in sync with the composer so the current context and newest messages remain above the input.
 - The gap between the navigation bar and the physical screen bottom should reveal only the AI background and veil, not message text sliding underneath.
 
-The center status text and composer hint should not say the same thing. The empty state may keep a center status such as "I'm listening, RINKO"; the composer hint should give a lightweight input cue, such as "Ask away with FitLog." Keyboard focus by itself should not make the center status suddenly disappear or visibly jump; only a real conversation state should make the message list become the primary surface.
+The center status text and composer hint should not say the same thing. The empty state may keep a center status such as "I'm listening, RINKO", using the saved Cloud Profile nickname before auth display name. The composer hint should give a lightweight input cue, such as "Ask away with FitLog." Keyboard focus by itself should not make the center status suddenly disappear or visibly jump; only a real conversation state should make the message list become the primary surface.
+
+Unsent composer text is a current-runtime device-local draft. It should survive tab switches and disabled availability states until the user deletes it or a send succeeds. Logout or account switching should clear the draft so previous account context does not linger; drafts must not be promoted into cloud chat history until a successful send.
 
 ## Supported V1 Workflows
 
@@ -285,27 +290,40 @@ Not cloud-synced by default in V1:
 - local export archives
 - local workout drafts
 
-Local records may be summarized and temporarily sent to the AI Gateway when needed for a user request.
+Local records may be summarized and temporarily sent to the AI Gateway when needed for a user request. Before an explicit Phase 7 cloud-sync migration, local food/workout/weight/body-metric records are a device dataset rather than account-owned cloud data. They must not be silently attached to a newly signed-in account; AI context builders should use compact summaries and a user-visible permission or setting when account ownership could be ambiguous.
 
 ## Cloud Profile
 
-Profile belongs to the account. Before login, the user has no formal profile.
+Profile belongs to the account. Before login, the user has no formal profile, and the Profile page should show a login/onboarding entry instead of the local profile editor. The current Phase 2 auth entry uses a solid theme background, the no-star FitLog logo base asset with a saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right, a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, a top backend-configuration notice when needed, a static non-scrolling landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, and a registration form with email code plus password confirmation. Registration does not collect a username; nickname/display name remains a Cloud Profile field filled through Profile onboarding.
 
 Rules:
 
 - Cloud Profile is the authoritative profile after login.
-- The device may cache the profile for display.
+- Supabase auth sessions persist on the device and are recovered on app startup. The session is cleared only on explicit sign-out, account change, or unrecoverable auth recovery failure.
+- Accounts without an existing `cloud_profiles` row are initialized with a default Cloud Profile automatically, matching the Local first-run default profile experience.
+- Sign-in and registration errors keep the active auth form mounted and show readable snackbar feedback. Raw Supabase exception text should stay inside repository diagnostics.
+- Cloud Profile load/save failures should map to stable diagnostic codes for missing table, incomplete schema, field type mismatch, RLS denial, expired auth, constraint failure, network failure, and generic fetch/save failure.
+- Subscription-status loading is separate from Cloud Profile loading. If subscription lookup fails but Cloud Profile loads, Profile remains usable while AI sending stays unavailable.
+- The device may cache the profile for display, but a local cache write failure must not block the already loaded authoritative Cloud Profile. Cached Profile values may be shown during cloud refresh only when account-bound cache metadata matches the current signed-in account.
+- Profile UI edits are staged as a page-local draft. Taps and inputs update the Profile preview immediately, changed sections show visible modified markers, and the bottom Save Changes bar stays anchored near the bottom of the Profile body, expands upward for compact change details, and upserts one complete Cloud Profile snapshot.
+- Current body metrics on the Profile page, including weight, body-fat percentage, and waist circumference, are part of the Cloud Profile snapshot after login. Their historical trend rows remain local and account-scoped in Phase 2-6.
+- Until Save Changes succeeds, other app areas and AI context should continue using the last saved authoritative Cloud Profile rather than the unsaved draft.
 - Offline profile editing is disabled.
 - If the user is offline, the Profile page may show cached values but cannot save changes.
 - AI uses Cloud Profile as the default authoritative context.
 - Requests may include `profile_version` to detect stale context.
 - Account deletion deletes Cloud Profile.
+- The Profile page exposes explicit sign-out in a bottom Account card. Signing out or switching accounts clears the auth session, runtime Profile draft state, account-bound Cloud Profile cache metadata, and the local singleton Profile cache; it must not delete device-local food, workout, or weight history.
+
+Cloud Profile mapping must preserve algorithm semantics. It may validate enum values, fill versioned defaults for missing fields, and convert storage types, but it must not infer a new `diet_goal_phase`, convert `gram_per_kg` into `energy_ratio`, treat auxiliary kcal values as primary in `gram_per_kg` mode, or overwrite the user's phase/mode/strategy from derived fields.
 
 Because offline profile saving is disabled, V1 avoids pending-profile merge conflicts. If a future version allows offline edits, it must define a field-level merge policy before implementation.
 
 ## Subscription And Availability
 
 V1 uses subscription gating rather than user-visible per-message credits.
+
+In Phase 2, the Profile header exposes a compact `Subscription` entry button with an explicit active/inactive/loading/error status badge, not a standalone notification-like dot. The entry opens a small blurred overlay. The overlay shows the current account entitlement, refreshes subscription status, and can redeem a development internal code through the Supabase RPC `redeem_internal_subscription_code`. Redeem codes are stored server-side as hashes and update the account's `subscriptions` row only through the RPC; clients never receive a service-role key and cannot directly insert or update entitlement rows. This is an internal testing path, not a production payment or app-store subscription implementation.
 
 AI send is disabled when:
 
@@ -363,7 +381,7 @@ AI can propose writes only through typed draft objects.
 
 ## Code References
 
-Current Local baseline:
+Current Local and Phase 2 baseline:
 
 - App shell: `lib/main.dart`, `lib/app.dart`
 - AI shell: `lib/features/ai/ai_page.dart`
@@ -377,11 +395,12 @@ Current Local baseline:
 - Workout calories: `lib/domain/services/workout_calorie_calculator.dart`
 - Database: `lib/data/db/app_database.dart`
 - Repositories: `lib/data/repositories/*`
+- Account/Profile state: `lib/features/account/account_controller.dart`
+- Cloud Profile mapping: `lib/domain/services/cloud_profile_mapper.dart`
+- Supabase schema: `supabase/migrations/202606190001_phase2_account_profile.sql`
 
-Planned Agent V1 surfaces:
+Planned later Agent V1 surfaces:
 
-- cloud auth/session layer
-- Cloud Profile repository
 - AI Gateway client
 - context-builder services
 - chat-history repository

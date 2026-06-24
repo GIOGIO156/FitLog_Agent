@@ -9,6 +9,8 @@ void main() {
       'age': 28,
       'height_cm': 178,
       'weight_kg': 72,
+      'body_fat_percent': 18.5,
+      'waist_cm': 76.2,
       'sex_for_formula': 'male',
       'activity_level': 'moderately_active',
       'daily_energy_goal_type': 'deficit',
@@ -28,6 +30,10 @@ void main() {
 
     expect(profile.nickname, 'Mark');
     expect(profile.toMap()['nickname'], 'Mark');
+    expect(profile.bodyFatPercent, 18.5);
+    expect(profile.waistCm, 76.2);
+    expect(profile.toMap()['body_fat_percent'], 18.5);
+    expect(profile.toMap()['waist_cm'], 76.2);
   });
 
   test('copyWith preserves empty nickname for local fallback handling', () {

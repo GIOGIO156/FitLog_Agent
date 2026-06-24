@@ -46,6 +46,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI page keeps an unfinished prompt when switching tabs', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildAiTestApp(const _AiIndexedStackHarness()));
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      'Please help me plan dinner after training.',
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('open_fake_tab')));
+    await tester.pump();
+
+    expect(find.text('Fake content'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('open_ai_tab')));
+    await tester.pump();
+
+    expect(
+      find.text('Please help me plan dinner after training.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('AI page fits a small phone viewport', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
@@ -87,6 +112,48 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+class _AiIndexedStackHarness extends StatefulWidget {
+  const _AiIndexedStackHarness();
+
+  @override
+  State<_AiIndexedStackHarness> createState() => _AiIndexedStackHarnessState();
+}
+
+class _AiIndexedStackHarnessState extends State<_AiIndexedStackHarness> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            TextButton(
+              key: const ValueKey<String>('open_ai_tab'),
+              onPressed: () => setState(() => _index = 0),
+              child: const Text('AI tab'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('open_fake_tab'),
+              onPressed: () => setState(() => _index = 1),
+              child: const Text('Fake tab'),
+            ),
+          ],
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _index,
+            children: const <Widget>[
+              AiPage(),
+              Center(child: Text('Fake content')),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 Widget _buildAiTestApp(Widget child, {bool resizeToAvoidBottomInset = true}) {

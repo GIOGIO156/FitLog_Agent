@@ -79,14 +79,196 @@ class AppStrings {
     '云端账号和会话存储实现后，这里会显示历史会话。',
   );
   String get aiAccountTooltip => _t('Account and subscription', '账号与订阅');
-  String get aiAccountComingSoon => _t(
-    'Account and subscription controls arrive in Phase 2.',
-    '账号与订阅入口将在 Phase 2 接入。',
-  );
+  String get aiAccountComingSoon =>
+      _t('Open account, subscription, and privacy settings.', '打开账号、订阅和隐私设置。');
   String get aiProviderChatGpt => _t('ChatGPT', 'ChatGPT');
   String get aiProviderQwen => _t('Qwen', '千问');
   String get aiSignedOutStatus => _t('Signed out', '未登录');
   String get aiAvailableStatus => _t('Available', '可用');
+  String get aiOfflineStatus => _t('Offline', '离线');
+  String get phase2BackendNotConfigured => _t(
+    'Supabase is not configured for this build. Start the app with SUPABASE_URL and SUPABASE_ANON_KEY to test login.',
+    '当前构建未配置 Supabase。请使用 SUPABASE_URL 和 SUPABASE_ANON_KEY 启动后测试登录。',
+  );
+  String get profileSignInTitle =>
+      _t('Sign in to manage your Profile', '登录后管理 Profile');
+  String get profileSignInBody => _t(
+    'Agent V1 keeps the formal Profile in the cloud. Local food and workout records stay on this device.',
+    'Agent V1 的正式 Profile 保存在云端。本机饮食和训练记录仍保留在这台设备上。',
+  );
+  String get emailLabel => _t('Email', '邮箱');
+  String get otpCodeLabel => _t('OTP code', '验证码');
+  String get passwordLabel => _t('Password', '密码');
+  String get confirmPasswordLabel => _t('Confirm password', '确认密码');
+  String get sendOtp => _t('Send code', '发送验证码');
+  String get signInToFitLog => _t('Sign in to FitLog', '登录 FitLog');
+  String get signInAccount => _t('Sign in', '登录账号');
+  String get createAccount => _t('Create account', '创建账号');
+  String get imNewToFitLog => _t("I'm new to FitLog", '注册账号');
+  String get alreadyHaveAccountSignIn =>
+      _t('Already have an account? Sign in', '已有账号？登录');
+  String get registrationCodeSent =>
+      _t('Registration code sent. Check your email.', '注册验证码已发送，请检查邮箱。');
+  String get passwordMismatch => _t('Passwords do not match.', '两次输入的密码不一致。');
+  String get passwordTooShort =>
+      _t('Use at least 8 characters for the password.', '密码至少需要 8 个字符。');
+  String get emailRequired => _t('Please enter your email.', '请先填写邮箱。');
+  String get passwordRequired => _t('Please enter your password.', '请填写密码。');
+  String get otpRequired => _t('Please enter the code.', '请填写验证码。');
+  String get signOut => _t('Sign out', '退出登录');
+  String get phase2ErrorCodeLabel => _t('Error code', '错误码');
+  String phase2ErrorMessage(String code) {
+    switch (code) {
+      case 'backend_not_configured':
+        return phase2BackendNotConfigured;
+      case 'invalid_credentials':
+        return _t('Email or password is incorrect.', '邮箱或密码不正确。');
+      case 'email_not_confirmed':
+        return _t(
+          'Please verify this email before signing in.',
+          '请先完成邮箱验证后再登录。',
+        );
+      case 'email_already_registered':
+        return _t(
+          'This email is already registered. Sign in instead.',
+          '该邮箱已注册，请直接登录。',
+        );
+      case 'otp_invalid_or_expired':
+        return _t(
+          'The code is incorrect or expired. Send a new code and try again.',
+          '验证码不正确或已过期，请重新发送后再试。',
+        );
+      case 'auth_rate_limited':
+        return _t(
+          'Too many attempts. Please wait a moment and try again.',
+          '尝试次数过多，请稍后再试。',
+        );
+      case 'auth_network_error':
+        return _t(
+          'Network connection failed. Check your connection and try again.',
+          '网络连接失败，请检查网络后重试。',
+        );
+      case 'auth_required':
+        return authRequired;
+      case 'subscription_load_failed':
+        return _t(
+          'Subscription status could not be loaded. Retry after checking Supabase.',
+          '订阅状态加载失败，请检查 Supabase 后重试。',
+        );
+      case 'invalid_or_expired_code':
+        return _t('Invalid or expired code.', '兑换码无效或已过期。');
+      case 'code_already_redeemed':
+        return _t('Code already redeemed.', '该兑换码已使用。');
+      case 'redeem_failed':
+        return _t('Redeem failed. Please try again.', '兑换失败，请重试。');
+      case 'local_context_save_failed':
+        return _t(
+          'Local context permission could not be updated. Please try again.',
+          '本机记录授权更新失败，请重试。',
+        );
+      case 'profile_load_failed':
+        return _t(
+          'Cloud Profile could not be loaded. Retry after checking Supabase.',
+          '云端 Profile 加载失败，请检查 Supabase 后重试。',
+        );
+      case 'profile_fetch_failed':
+        return _t(
+          'Cloud Profile fetch failed. Check the Supabase project and policies.',
+          '云端 Profile 读取失败，请检查 Supabase 项目和访问策略。',
+        );
+      case 'profile_table_missing':
+        return _t(
+          'Cloud Profile table is missing. Run the Phase 2 profile SQL.',
+          '云端 Profile 表不存在，请运行 Phase 2 Profile SQL。',
+        );
+      case 'profile_schema_mismatch':
+        return _t(
+          'Cloud Profile fields are incomplete. Run the schema compatibility SQL.',
+          '云端 Profile 字段不完整，请运行 schema 兼容 SQL。',
+        );
+      case 'profile_schema_type_mismatch':
+        return _t(
+          'Cloud Profile field types do not match. Install the latest APK and check the schema.',
+          '云端 Profile 字段类型不匹配，请安装最新版 APK 并检查 schema。',
+        );
+      case 'profile_rls_denied':
+        return _t(
+          'Cloud Profile access was blocked by Supabase RLS. Check the login session and own-row policies.',
+          '云端 Profile 被 Supabase RLS 拦截，请检查登录状态和 own-row policy。',
+        );
+      case 'profile_auth_expired':
+        return _t(
+          'Your sign-in session expired. Sign out and sign in again.',
+          '登录会话已过期，请退出后重新登录。',
+        );
+      case 'profile_constraint_failed':
+        return _t(
+          'Cloud Profile data failed a database constraint. Check the saved values and schema.',
+          '云端 Profile 数据未通过数据库约束，请检查保存值和 schema。',
+        );
+      case 'profile_save_no_row':
+        return _t(
+          'Cloud Profile saved without returning a row. Check Supabase RLS select policy.',
+          '云端 Profile 保存后未返回数据行，请检查 Supabase RLS select policy。',
+        );
+      case 'profile_network_error':
+        return _t(
+          'Network connection failed while loading Cloud Profile.',
+          '加载云端 Profile 时网络连接失败。',
+        );
+      case 'profile_save_failed':
+        return _t(
+          'Cloud Profile could not be saved. Please try again.',
+          '云端 Profile 保存失败，请重试。',
+        );
+      case 'auth_failed':
+        return _t('Sign-in failed. Please try again.', '登录失败，请重试。');
+      default:
+        return _t('Something went wrong. Please try again.', '操作失败，请重试。');
+    }
+  }
+
+  String get completeCloudProfile =>
+      _t('Complete Cloud Profile', '完善云端 Profile');
+  String get createDefaultCloudProfile =>
+      _t('Create default Cloud Profile', '创建默认云端 Profile');
+  String get cloudProfileMissingBody => _t(
+    'This account does not have a Cloud Profile yet. Create one before using Profile settings or AI personalization.',
+    '这个账号还没有云端 Profile。请先创建后再使用资料设置或 AI 个性化。',
+  );
+  String get cloudProfileLoading =>
+      _t('Loading Cloud Profile...', '正在加载云端 Profile...');
+  String get cloudProfileOfflineReadonly => _t(
+    'Offline: cached Profile can be viewed, but saving is disabled.',
+    '离线状态：可以查看缓存 Profile，但不能保存修改。',
+  );
+  String get aiLocalContextPermissionTitle =>
+      _t('Use device records for AI answers', '允许 AI 使用本机记录摘要');
+  String get aiLocalContextPermissionBody => _t(
+    'When enabled, future AI answers may use necessary summaries from food, workout, and weight records on this device. Full history is not uploaded in Phase 2.',
+    '开启后，后续 AI 回答可以使用这台设备上的饮食、训练和体重记录必要摘要。Phase 2 不上传完整历史。',
+  );
+  String get subscriptionActive => _t('Subscription active', '订阅已生效');
+  String get subscriptionInactive => _t('Subscription inactive', '订阅未生效');
+  String get subscriptionUnavailable =>
+      _t('Subscription unavailable', '订阅状态不可用');
+  String get subscriptionTitle => _t('Subscription', '订阅');
+  String get subscriptionStatusLabel => _t('Status', '状态');
+  String get subscriptionPlanLabel => _t('Plan', '计划');
+  String get subscriptionEndLabel => _t('End', '到期');
+  String get subscriptionActiveShort => _t('Active', '已开启');
+  String get subscriptionInactiveShort => _t('Inactive', '未开启');
+  String get subscriptionUnavailableShort => _t('Unavailable', '不可用');
+  String get refreshSubscription => _t('Refresh', '刷新');
+  String get redeemCodeTitle => _t('Redeem code', '输入兑换码');
+  String get redeemCodeLabel => _t('Code', '兑换码');
+  String get redeemCodeAction => _t('Redeem', '兑换');
+  String get redeemCodeRequired => _t('Enter a code.', '请输入兑换码。');
+  String get redeemCodeSuccess => _t('Redeemed.', '兑换成功。');
+  String get profileRequired => _t('Profile required', '需要先完善 Profile');
+  String get phase3Required =>
+      _t('Message sending starts in Phase 3.', '消息发送将在 Phase 3 接入。');
+  String get authRequired => _t('Please sign in first.', '请先登录。');
 
   String get quickActions => _t('Quick Actions', '快捷操作');
   String get addFood => _t('Add Food', '添加食物');
@@ -117,6 +299,7 @@ class AppStrings {
   String get copy => _t('Copy', '复制');
   String get cancel => _t('Cancel', '取消');
   String get close => _t('Close', '关闭');
+  String get retry => _t('Retry', '重试');
   String get date => _t('Date', '日期');
   String get change => _t('Change', '修改');
 
@@ -215,7 +398,22 @@ class AppStrings {
   String get ageLabel => _t('Age', '年龄');
   String get heightCmLabel => _t('Height (cm)', '身高 (cm)');
   String get weightKgLabel => _t('Weight (kg)', '体重 (kg)');
+  String get bodyFatPercentLabel => _t('Body Fat (%)', '体脂 (%)');
+  String get waistCmLabel => _t('Waist (cm)', '腰围 (cm)');
   String get sexForFormulaLabel => _t('Sex', '性别');
+  String get bodyTrendsTitle => _t('Body Trends', '身体趋势');
+  String get bodyTrendWeightLabel => _t('Weight', '体重');
+  String get bodyTrendFatLabel => _t('Fat %', '体脂');
+  String get bodyTrendWaistLabel => _t('Waist', '腰围');
+  String bodyTrendRangeLabel(int days) => _t('${days}D', '$days天');
+  String bodyTrendChangeLabel(int days) => _t('${days}D change', '$days天变化');
+  String bodyTrendLogCount(int count, int days) =>
+      _t('Logs $count/$days', '记录 $count/$days');
+  String get bodyTrendNoRecords => _t('No records yet', '暂无记录');
+  String get bodyTrendNeedTwoRecords =>
+      _t('Add 2 records to show a trend', '记录满 2 次后显示趋势');
+  String get bodyTrendNotEnoughRecords =>
+      _t('Not enough records in this range', '当前周期记录不足');
   String get activityLevelLabel => _t('Activity Level', '活动水平');
   String get goalPhaseLabel => _t('Goal phase', '目标阶段');
   String get cuttingLabel => _t('Cutting', '减脂期');
@@ -484,10 +682,21 @@ class AppStrings {
   String get exportXlsx => _t('Export XLSX', '导出 XLSX');
   String get exportCsv => _t('Export CSV', '导出 CSV');
   String get clearAllData => _t('Clear All Local Data', '清空本地数据');
+  String get accountActionsTitle => _t('Account', '账号');
+  String get signOutAccount => _t('Sign out', '退出账号');
+  String get signOutAccountTitle => _t('Sign out of this account?', '退出当前账号？');
+  String get signOutAccountBody => _t(
+    'Food, workout, and weight records on this device will stay here. Cloud Profile cache for this account will be cleared.',
+    '这台设备上的饮食、训练和体重记录会保留；当前账号的云端 Profile 缓存会清除。',
+  );
+  String get signedOut => _t('Signed out.', '已退出账号。');
 
   String get languageSettings => _t('Language', '语言设置');
   String get english => 'English';
   String get chinese => '中文';
+  String get themeSettings => _t('Theme', '主题');
+  String get greenTheme => _t('Green', '绿色');
+  String get blackTheme => _t('Black', '黑橙');
 
   String get clearAllDataTitle => _t('Clear All Local Data', '清空本地数据');
   String get clearAllDataBody => _t(
@@ -522,6 +731,11 @@ class AppStrings {
   String get saveProfile => _t('Save Profile', '保存资料');
   String get saveChanges => _t('Save Changes', '保存修改');
   String get save => _t('Save', '保存');
+  String get done => _t('Done', '完成');
+  String get modified => _t('Modified', '已修改');
+  String get discardChanges => _t('Discard', '放弃');
+  String get saveProfileChanges => _t('Save Changes', '保存更改');
+  String profileUnsavedCount(int count) => _t('$count unsaved', '$count 项未保存');
   String get maintenance => _t('Maintenance', '维持');
   String get deficit => _t('Deficit', '赤字');
   String get surplus => _t('Surplus', '盈余');
@@ -535,6 +749,8 @@ class AppStrings {
   String get enterValidAge => _t('Enter valid age', '请输入有效年龄');
   String get enterValidHeight => _t('Enter valid height', '请输入有效身高');
   String get enterValidWeight => _t('Enter valid weight', '请输入有效体重');
+  String get enterValidBodyFat => _t('Enter valid body fat', '请输入有效体脂');
+  String get enterValidWaist => _t('Enter valid waist', '请输入有效腰围');
 
   String get noWorkoutRecords => _t(
     'No workout sessions yet. Tap Add Workout to begin.',

@@ -1,7 +1,7 @@
 ﻿name: fitlog_local
 description: "FitLog Local - offline personal fitness tracker"
 publish_to: 'none'
-version: 1.0.6+7
+version: 1.0.35+36
 
 environment:
   sdk: ^3.11.4
@@ -20,6 +20,7 @@ dependencies:
   archive: ^3.6.1
   shared_preferences: ^2.5.3
   flutter_svg: ^2.2.1
+  supabase: ^2.0.0
 
 dev_dependencies:
   flutter_test:
@@ -34,6 +35,7 @@ flutter:
     - assets/icons/exercises/
     - assets/icons/macros/
     - assets/icons/workouts/
+    - assets/branding/
   fonts:
     - family: NotoSansSC
       fonts:

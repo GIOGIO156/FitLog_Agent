@@ -10,6 +10,8 @@ class UserProfile {
     required this.age,
     required this.heightCm,
     required this.weightKg,
+    this.bodyFatPercent,
+    this.waistCm,
     required this.sexForFormula,
     required this.activityLevel,
     required this.dailyEnergyGoalType,
@@ -42,6 +44,8 @@ class UserProfile {
   final int age;
   final double heightCm;
   final double weightKg;
+  final double? bodyFatPercent;
+  final double? waistCm;
   final String sexForFormula;
   final String activityLevel;
   final String dailyEnergyGoalType;
@@ -130,6 +134,8 @@ class UserProfile {
     int? age,
     double? heightCm,
     double? weightKg,
+    double? bodyFatPercent,
+    double? waistCm,
     String? sexForFormula,
     String? activityLevel,
     String? dailyEnergyGoalType,
@@ -174,6 +180,8 @@ class UserProfile {
       age: age ?? this.age,
       heightCm: heightCm ?? this.heightCm,
       weightKg: weightKg ?? this.weightKg,
+      bodyFatPercent: bodyFatPercent ?? this.bodyFatPercent,
+      waistCm: waistCm ?? this.waistCm,
       sexForFormula: sexForFormula ?? this.sexForFormula,
       activityLevel: AppConstants.resolveActivityLevel(
         activityLevel ?? this.activityLevel,
@@ -234,6 +242,8 @@ class UserProfile {
       'age': age,
       'height_cm': heightCm,
       'weight_kg': weightKg,
+      'body_fat_percent': bodyFatPercent,
+      'waist_cm': waistCm,
       'sex_for_formula': sexForFormula,
       'activity_level': activityLevel,
       'daily_energy_goal_type': dailyEnergyGoalType,
@@ -269,6 +279,12 @@ class UserProfile {
       age: NumberUtils.toInt(map['age'], fallback: 25),
       heightCm: NumberUtils.toDouble(map['height_cm'], fallback: 170),
       weightKg: NumberUtils.toDouble(map['weight_kg'], fallback: 65),
+      bodyFatPercent: map['body_fat_percent'] == null
+          ? null
+          : NumberUtils.toDouble(map['body_fat_percent']),
+      waistCm: map['waist_cm'] == null
+          ? null
+          : NumberUtils.toDouble(map['waist_cm']),
       sexForFormula: (map['sex_for_formula'] ?? 'prefer_not_to_say').toString(),
       activityLevel: AppConstants.resolveActivityLevel(
         (map['activity_level'] ??

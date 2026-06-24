@@ -78,6 +78,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - In energy_ratio mode, kcal target/intake/remaining is primary.
 - AI must not silently modify diet goals, apply carb tapering, delete user records, or write official food/workout/profile data without user confirmation.
 - AppGuide should treat the new AI navigation tab as the primary Agent entry. Apart from the Add Food photo-recognition path, other Agent workflows should be launched from the AI page unless a task explicitly changes that UX.
+- New UI text must use the app-level typography: `NotoSansSC` from `pubspec.yaml` via `buildFitLogTheme` / `Theme.of(context).textTheme`. When adding local `TextStyle`, `ButtonStyle`, or `InputDecoration` overrides, derive them from the theme text styles or preserve `fitLogFontFamily` and its fallbacks; do not let new screens silently fall back to platform/system/default fonts.
 - After code changes, run:
   - flutter analyze
   - flutter test

@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../app.dart';
 import '../../core/localization/localization_extensions.dart';
+import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/food_item.dart';
@@ -179,8 +181,10 @@ class _FoodLogPageState extends State<FoodLogPage> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final fitTheme = context.fitLogTheme;
 
     return SafeArea(
+      bottom: false,
       child: Consumer2<RefreshNotifier, SelectedDateNotifier>(
         builder: (context, refresh, selectedDateNotifier, _) {
           refresh.version;
@@ -202,175 +206,218 @@ class _FoodLogPageState extends State<FoodLogPage> {
                 ),
               ),
               Expanded(
-                child: FutureBuilder<List<FoodRecord>>(
-                  future: _loadRecords(context, selectedDate),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+                child: Stack(
+                  children: <Widget>[
+                    Positioned.fill(
+                      child: FutureBuilder<List<FoodRecord>>(
+                        future: _loadRecords(context, selectedDate),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState !=
+                              ConnectionState.done) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            strings.failedToLoadFood(snapshot.error!),
-                          ),
-                        ),
-                      );
-                    }
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  strings.failedToLoadFood(snapshot.error!),
+                                ),
+                              ),
+                            );
+                          }
 
-                    final records = snapshot.data ?? <FoodRecord>[];
-                    if (records.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            strings.noFoodRecords,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      );
-                    }
+                          final records = snapshot.data ?? <FoodRecord>[];
+                          if (records.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  strings.noFoodRecords,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            );
+                          }
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 96),
-                      itemCount: records.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == records.length) {
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                            child: Text(
-                              strings.estimateNotice,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: const Color(0xFF61715D),
-                                    height: 1.4,
+                          return ListView.builder(
+                            padding: EdgeInsets.only(
+                              bottom:
+                                  FitLogBottomNavBar.floatingControlScreenScrollBottomPaddingFor(
+                                    context,
+                                    contentGap: 16,
                                   ),
                             ),
-                          );
-                        }
+                            itemCount: records.length + 1,
+                            itemBuilder: (context, index) {
+                              if (index == records.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    20,
+                                    8,
+                                    20,
+                                    20,
+                                  ),
+                                  child: Text(
+                                    strings.estimateNotice,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: fitTheme.mutedText,
+                                          height: 1.4,
+                                        ),
+                                  ),
+                                );
+                              }
 
-                        final record = records[index];
-                        return GlassPanel(
-                          margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                          padding: const EdgeInsets.all(16),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(24),
-                            onTap: () => _openFoodDetail(context, record.id!),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Row(
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Text(
-                                        record.mealName,
+                              final record = records[index];
+                              return GlassPanel(
+                                margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                                padding: const EdgeInsets.all(16),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(24),
+                                  onTap: () =>
+                                      _openFoodDetail(context, record.id!),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Row(
+                                        children: <Widget>[
+                                          Expanded(
+                                            child: Text(
+                                              record.mealName,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleLarge
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: fitTheme.primarySoft,
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              strings.sourceLabel(
+                                                record.source,
+                                              ),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: fitTheme.primaryDeep,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _buildSubtitle(record),
                                         style: Theme.of(context)
                                             .textTheme
-                                            .titleLarge
+                                            .bodyMedium
                                             ?.copyWith(
-                                              fontWeight: FontWeight.w800,
+                                              color: fitTheme.textSecondary,
                                             ),
                                       ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEAF6E3),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        strings.sourceLabel(record.source),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF4E9E3B),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _buildSubtitle(record),
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: const Color(0xFF74836E),
-                                      ),
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: <Widget>[
-                                    _FoodMetaChip(
-                                      label:
-                                          '${record.caloriesKcal.toStringAsFixed(0)} kcal',
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _FoodMetaChip(
-                                      label:
-                                          'P ${record.proteinG.toStringAsFixed(0)} · C ${record.carbsG.toStringAsFixed(0)} · F ${record.fatG.toStringAsFixed(0)}',
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  children: <Widget>[
-                                    Text(
-                                      DateUtilsX.formatReadable(record.date),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: const Color(0xFF7A8973),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: <Widget>[
+                                          _FoodMetaChip(
+                                            label:
+                                                '${record.caloriesKcal.toStringAsFixed(0)} kcal',
                                           ),
-                                    ),
-                                    const Spacer(),
-                                    FitLogActionIconButton(
-                                      icon: Icons.copy_all_outlined,
-                                      tooltip: strings.copy,
-                                      onPressed: () => _copyRecord(
-                                        context,
-                                        record,
-                                        selectedDate,
+                                          const SizedBox(width: 8),
+                                          _FoodMetaChip(
+                                            label:
+                                                'P ${record.proteinG.toStringAsFixed(0)} · C ${record.carbsG.toStringAsFixed(0)} · F ${record.fatG.toStringAsFixed(0)}',
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    FitLogActionIconButton(
-                                      icon: Icons.delete_outline_rounded,
-                                      tooltip: strings.delete,
-                                      onPressed: () =>
-                                          _deleteRecord(context, record),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 14),
+                                      Row(
+                                        children: <Widget>[
+                                          Text(
+                                            DateUtilsX.formatReadable(
+                                              record.date,
+                                            ),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: fitTheme.mutedText,
+                                                ),
+                                          ),
+                                          const Spacer(),
+                                          FitLogActionIconButton(
+                                            icon: Icons.copy_all_outlined,
+                                            tooltip: strings.copy,
+                                            onPressed: () => _copyRecord(
+                                              context,
+                                              record,
+                                              selectedDate,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          FitLogActionIconButton(
+                                            icon: Icons.delete_outline_rounded,
+                                            tooltip: strings.delete,
+                                            onPressed: () =>
+                                                _deleteRecord(context, record),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          0,
+                          16,
+                          FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(
+                            context,
+                          ),
+                        ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: FitLogBottomNavBar.floatingControlHeight,
+                          child: FilledButton.icon(
+                            onPressed: () =>
+                                _openAddFood(context, selectedDate),
+                            icon: const Icon(Icons.add_rounded),
+                            label: Text(strings.addFood),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: fitTheme.primary,
+                              foregroundColor: fitTheme.onPrimary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(22),
+                              ),
                             ),
                           ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: FilledButton.icon(
-                  onPressed: () => _openAddFood(context, selectedDate),
-                  icon: const Icon(Icons.add_rounded),
-                  label: Text(strings.addFood),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56),
-                    backgroundColor: const Color(0xFF74BF56),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -395,18 +442,19 @@ class _FoodMetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FAF4),
+        color: fitTheme.surfaceVariant,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE5EDE0)),
+        border: Border.all(color: fitTheme.outline),
       ),
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF4B5A47),
+          color: fitTheme.textSecondary,
         ),
       ),
     );

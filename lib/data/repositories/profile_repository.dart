@@ -11,6 +11,13 @@ class ProfileRepository {
   ProfileRepository(this._database);
 
   final AppDatabase _database;
+  String? _activeAccountId;
+
+  void setActiveAccountId(String? accountId) {
+    _activeAccountId = accountId == null || accountId.isEmpty
+        ? null
+        : accountId;
+  }
 
   Future<UserProfile?> getProfile() async {
     final db = await _database.database;
@@ -27,7 +34,7 @@ class ProfileRepository {
     return UserProfile.fromMap(rows.first);
   }
 
-  Future<void> saveProfile(UserProfile profile) async {
+  Future<void> saveProfile(UserProfile profile, {String? accountId}) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
 
@@ -45,8 +52,11 @@ class ProfileRepository {
 
     final today = DateUtilsX.todayKey();
     await upsertWeightLog(
+      accountId: accountId ?? _activeAccountId,
       date: today,
       weightKg: payload.weightKg,
+      bodyFatPercent: payload.bodyFatPercent,
+      waistCm: payload.waistCm,
       source: 'profile_save',
     );
   }
@@ -161,25 +171,38 @@ class ProfileRepository {
   }
 
   Future<void> upsertWeightLog({
+    String? accountId,
     required String date,
     required double weightKg,
+    double? bodyFatPercent,
+    double? waistCm,
     String source = 'manual',
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
+    final effectiveAccountId = accountId ?? _activeAccountId;
+    final where = effectiveAccountId == null
+        ? 'date = ? AND account_id IS NULL'
+        : 'date = ? AND account_id = ?';
+    final whereArgs = effectiveAccountId == null
+        ? <Object?>[date]
+        : <Object?>[date, effectiveAccountId];
 
     final rows = await db.query(
       'user_weight_logs',
       columns: <String>['id', 'created_at'],
-      where: 'date = ?',
-      whereArgs: <Object?>[date],
+      where: where,
+      whereArgs: whereArgs,
       limit: 1,
     );
 
     if (rows.isEmpty) {
       await db.insert('user_weight_logs', <String, dynamic>{
+        'account_id': effectiveAccountId,
         'date': date,
         'weight_kg': weightKg,
+        'body_fat_percent': bodyFatPercent,
+        'waist_cm': waistCm,
         'source': source,
         'created_at': now,
         'updated_at': now,
@@ -193,7 +216,10 @@ class ProfileRepository {
       'user_weight_logs',
       <String, dynamic>{
         'date': date,
+        'account_id': effectiveAccountId,
         'weight_kg': weightKg,
+        'body_fat_percent': bodyFatPercent,
+        'waist_cm': waistCm,
         'source': source,
         'created_at': existingCreatedAt,
         'updated_at': now,
@@ -206,12 +232,20 @@ class ProfileRepository {
   Future<List<WeightLog>> getWeightLogsBetween({
     required String startDate,
     required String endDate,
+    String? accountId,
   }) async {
     final db = await _database.database;
+    final effectiveAccountId = accountId ?? _activeAccountId;
+    final where = effectiveAccountId == null
+        ? 'date >= ? AND date <= ? AND account_id IS NULL'
+        : 'date >= ? AND date <= ? AND account_id = ?';
+    final whereArgs = effectiveAccountId == null
+        ? <Object?>[startDate, endDate]
+        : <Object?>[startDate, endDate, effectiveAccountId];
     final rows = await db.query(
       'user_weight_logs',
-      where: 'date >= ? AND date <= ?',
-      whereArgs: <Object?>[startDate, endDate],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'date ASC',
     );
     return rows.map(WeightLog.fromMap).toList();

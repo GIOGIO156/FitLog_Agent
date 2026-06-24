@@ -427,7 +427,7 @@ Algorithmic flow:
 - Macro targets: `lib/domain/services/macro_target_calculator.dart`
 - Daily summary: `lib/domain/services/daily_summary_service.dart`
 - Workout calories: `lib/domain/services/workout_calorie_calculator.dart`
-- Dynamic calibration: `lib/domain/services/calorie_calibration_service.dart`
+- Dynamic calibration: `lib/domain/services/daily_summary_service.dart`
 - Training self-check: `lib/domain/services/training_frequency_self_check_service.dart`
 - Diet strategy: `lib/domain/services/diet_plan_strategy_service.dart`
 - Carb cycling: `lib/domain/services/carb_cycling_calculator.dart`

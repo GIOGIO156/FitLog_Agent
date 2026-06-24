@@ -1,17 +1,22 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/localization/localization_extensions.dart';
+import '../../core/widgets/fitlog_bottom_nav_bar.dart';
+import '../../domain/models/ai_availability.dart';
+import '../../domain/models/subscription_status.dart';
+import '../account/account_controller.dart';
 
 enum AiShellMode { disabled, ready, processing, needsClarification }
 
 enum _AiProvider { chatGpt, qwen }
 
 class AiPage extends StatefulWidget {
-  const AiPage({super.key, this.mode = AiShellMode.disabled, this.displayName});
+  const AiPage({super.key, this.mode, this.displayName});
 
-  final AiShellMode mode;
+  final AiShellMode? mode;
   final String? displayName;
 
   @override
@@ -22,6 +27,7 @@ class _AiPageState extends State<AiPage> {
   final TextEditingController _controller = TextEditingController();
   _AiProvider _provider = _AiProvider.chatGpt;
   bool _historyOpen = false;
+  String? _accountBoundaryKey;
 
   @override
   void dispose() {
@@ -29,22 +35,37 @@ class _AiPageState extends State<AiPage> {
     super.dispose();
   }
 
-  bool get _canSend => widget.mode != AiShellMode.disabled;
-
   @override
   Widget build(BuildContext context) {
+    final accountController = _maybeAccountController(listen: true);
+    _syncAccountDraftBoundary(accountController);
+    final effectiveMode = _effectiveMode(accountController);
+    final cloudNickname =
+        accountController?.cloudProfileState.cloudProfile?.profile.nickname;
+    final canSend = widget.mode == null
+        ? accountController?.aiAvailability.canSend ?? false
+        : effectiveMode != AiShellMode.disabled;
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
     final keyboardVisible = bottomInset > 0;
     final centerBottomPadding = keyboardVisible
         ? math.min(bottomInset + 190.0, mediaQuery.size.height * 0.64)
         : 148.0;
-    final composerBottomPadding = keyboardVisible ? bottomInset + 12.0 : 94.0;
+    final composerBottomPadding = keyboardVisible
+        ? bottomInset + 12.0
+        : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
 
     return Stack(
       key: const ValueKey<String>('ai_page'),
       children: <Widget>[
-        Positioned.fill(child: _AiAnimatedBackground(mode: widget.mode)),
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: _AiAnimatedBackground(
+              mode: effectiveMode,
+              pausedForKeyboard: keyboardVisible,
+            ),
+          ),
+        ),
         SafeArea(
           bottom: false,
           child: Stack(
@@ -54,13 +75,17 @@ class _AiPageState extends State<AiPage> {
                   padding: EdgeInsets.fromLTRB(20, 18, 20, centerBottomPadding),
                   child: Center(
                     child: _AiCenterStatus(
-                      mode: widget.mode,
-                      displayName: widget.displayName,
+                      mode: effectiveMode,
+                      displayName:
+                          widget.displayName ??
+                          cloudNickname ??
+                          accountController?.authSession.displayName,
                     ),
                   ),
                 ),
               ),
               _AiTopBar(
+                accountController: accountController,
                 onOpenHistory: () => setState(() => _historyOpen = true),
               ),
               Align(
@@ -77,8 +102,9 @@ class _AiPageState extends State<AiPage> {
                     child: _AiComposer(
                       controller: _controller,
                       provider: _provider,
-                      canSend: _canSend,
-                      mode: widget.mode,
+                      canSend: canSend,
+                      mode: effectiveMode,
+                      statusLabel: _statusLabel(context, accountController),
                       onProviderChanged: (provider) {
                         setState(() => _provider = provider);
                       },
@@ -114,12 +140,71 @@ class _AiPageState extends State<AiPage> {
       ],
     );
   }
+
+  AccountController? _maybeAccountController({required bool listen}) {
+    try {
+      return Provider.of<AccountController>(context, listen: listen);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  AiShellMode _effectiveMode(AccountController? accountController) {
+    final explicitMode = widget.mode;
+    if (explicitMode != null) {
+      return explicitMode;
+    }
+    return accountController?.aiAvailability.isReadyVisual == true
+        ? AiShellMode.ready
+        : AiShellMode.disabled;
+  }
+
+  String _statusLabel(
+    BuildContext context,
+    AccountController? accountController,
+  ) {
+    final strings = context.strings;
+    final availability = accountController?.aiAvailability;
+    if (availability == null) {
+      return strings.aiSignedOutStatus;
+    }
+    switch (availability.status) {
+      case AiAvailabilityStatus.signedOut:
+        return strings.aiSignedOutStatus;
+      case AiAvailabilityStatus.offline:
+        return strings.aiOfflineStatus;
+      case AiAvailabilityStatus.subscriptionInactive:
+        if (accountController?.subscriptionStatus.state ==
+            SubscriptionState.error) {
+          return strings.subscriptionUnavailable;
+        }
+        return strings.subscriptionInactive;
+      case AiAvailabilityStatus.profileMissing:
+        return strings.profileRequired;
+      case AiAvailabilityStatus.readyForPhase3:
+        return strings.aiAvailableStatus;
+    }
+  }
+
+  void _syncAccountDraftBoundary(AccountController? accountController) {
+    final nextKey =
+        '${accountController?.authSession.accountId ?? 'signed_out'}:${accountController?.accountChangeEpoch ?? 0}';
+    final previousKey = _accountBoundaryKey;
+    _accountBoundaryKey = nextKey;
+    if (previousKey != null && previousKey != nextKey) {
+      _controller.clear();
+    }
+  }
 }
 
 class _AiAnimatedBackground extends StatefulWidget {
-  const _AiAnimatedBackground({required this.mode});
+  const _AiAnimatedBackground({
+    required this.mode,
+    required this.pausedForKeyboard,
+  });
 
   final AiShellMode mode;
+  final bool pausedForKeyboard;
 
   @override
   State<_AiAnimatedBackground> createState() => _AiAnimatedBackgroundState();
@@ -157,19 +242,19 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
   Duration get _duration {
     switch (widget.mode) {
       case AiShellMode.processing:
-        return const Duration(seconds: 12);
+        return const Duration(seconds: 10);
       case AiShellMode.ready:
       case AiShellMode.needsClarification:
-        return const Duration(seconds: 24);
+        return const Duration(seconds: 16);
       case AiShellMode.disabled:
-        return const Duration(seconds: 60);
+        return const Duration(seconds: 36);
     }
   }
 
   void _syncAnimation() {
     final reduceMotion =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final shouldAnimate = widget.mode != AiShellMode.disabled && !reduceMotion;
+    final shouldAnimate = !widget.pausedForKeyboard && !reduceMotion;
     if (shouldAnimate && !_controller.isAnimating) {
       _controller.repeat();
     } else if (!shouldAnimate && _controller.isAnimating) {
@@ -203,45 +288,50 @@ class _AiFlowBackgroundPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final disabled = mode == AiShellMode.disabled;
-    final emphasis = mode == AiShellMode.processing ? 1.0 : 0.0;
+    final emphasis = switch (mode) {
+      AiShellMode.processing => 1.0,
+      AiShellMode.ready => 0.42,
+      AiShellMode.needsClarification => 0.24,
+      AiShellMode.disabled => 0.0,
+    };
     final shift = math.sin(progress * math.pi * 2);
 
     final baseColors = disabled
-        ? const <Color>[Color(0xFFF4F5F3), Color(0xFFE9ECE8), Color(0xFFF2F3F1)]
+        ? const <Color>[Color(0xFFF5F4F1), Color(0xFFE7ECE6), Color(0xFFF0F3EE)]
         : const <Color>[
-            Color(0xFFF8DDE7),
-            Color(0xFFE8F5EC),
-            Color(0xFFC7E9F8),
+            Color(0xFFF5CDD9),
+            Color(0xFFD8F2E4),
+            Color(0xFFA8DDF6),
           ];
 
     final basePaint = Paint()
       ..shader = LinearGradient(
-        begin: Alignment(-0.6 + shift * 0.08, -1),
-        end: Alignment(0.7 - shift * 0.08, 1),
+        begin: Alignment(-0.64 + shift * 0.14, -1),
+        end: Alignment(0.76 - shift * 0.14, 1),
         colors: baseColors,
       ).createShader(rect);
     canvas.drawRect(rect, basePaint);
 
     final washPaint = Paint()
       ..shader = LinearGradient(
-        begin: Alignment(-1 + shift * 0.12, -0.4),
+        begin: Alignment(-1 + shift * 0.20, -0.4),
         end: Alignment(1, 0.8),
         colors: disabled
             ? <Color>[
-                Colors.white.withValues(alpha: 0.18),
-                const Color(0xFFDDE2DE).withValues(alpha: 0.22),
-                Colors.white.withValues(alpha: 0.18),
+                Colors.white.withValues(alpha: 0.16),
+                const Color(0xFFDDE8DD).withValues(alpha: 0.18),
+                Colors.white.withValues(alpha: 0.16),
               ]
             : <Color>[
                 const Color(
                   0xFFFFF5DF,
-                ).withValues(alpha: 0.24 + emphasis * 0.08),
+                ).withValues(alpha: 0.30 + emphasis * 0.10),
                 const Color(
-                  0xFFBEEAD9,
-                ).withValues(alpha: 0.26 + emphasis * 0.08),
+                  0xFFA9E7D3,
+                ).withValues(alpha: 0.34 + emphasis * 0.12),
                 const Color(
-                  0xFFD7E6FF,
-                ).withValues(alpha: 0.24 + emphasis * 0.08),
+                  0xFFC3E5FF,
+                ).withValues(alpha: 0.30 + emphasis * 0.10),
               ],
       ).createShader(rect);
 
@@ -273,8 +363,8 @@ class _AiFlowBackgroundPainter extends CustomPainter {
         end: Alignment.bottomCenter,
         colors: <Color>[
           Colors.white.withValues(alpha: disabled ? 0.18 : 0.12),
-          Colors.white.withValues(alpha: disabled ? 0.26 : 0.18),
-          Colors.white.withValues(alpha: disabled ? 0.06 : 0.02),
+          Colors.white.withValues(alpha: disabled ? 0.24 : 0.10),
+          Colors.white.withValues(alpha: disabled ? 0.05 : 0.00),
         ],
       ).createShader(rect);
     canvas.drawRect(rect, veilPaint);
@@ -287,9 +377,13 @@ class _AiFlowBackgroundPainter extends CustomPainter {
 }
 
 class _AiTopBar extends StatelessWidget {
-  const _AiTopBar({required this.onOpenHistory});
+  const _AiTopBar({
+    required this.onOpenHistory,
+    required this.accountController,
+  });
 
   final VoidCallback onOpenHistory;
+  final AccountController? accountController;
 
   @override
   Widget build(BuildContext context) {
@@ -309,8 +403,27 @@ class _AiTopBar extends StatelessWidget {
             tooltip: strings.aiAccountTooltip,
             icon: Icons.manage_accounts_outlined,
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(strings.aiAccountComingSoon)),
+              if (accountController == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(strings.aiAccountComingSoon)),
+                );
+                return;
+              }
+              showModalBottomSheet<void>(
+                context: context,
+                showDragHandle: true,
+                isScrollControlled: true,
+                useSafeArea: true,
+                builder: (_) {
+                  return AnimatedBuilder(
+                    animation: accountController!,
+                    builder: (context, _) {
+                      return _AiAccountStatusSheet(
+                        accountController: accountController!,
+                      );
+                    },
+                  );
+                },
               );
             },
           ),
@@ -421,6 +534,7 @@ class _AiComposer extends StatelessWidget {
     required this.provider,
     required this.canSend,
     required this.mode,
+    required this.statusLabel,
     required this.onProviderChanged,
   });
 
@@ -428,6 +542,7 @@ class _AiComposer extends StatelessWidget {
   final _AiProvider provider;
   final bool canSend;
   final AiShellMode mode;
+  final String statusLabel;
   final ValueChanged<_AiProvider> onProviderChanged;
 
   @override
@@ -447,11 +562,7 @@ class _AiComposer extends StatelessWidget {
               provider: provider,
               onChanged: onProviderChanged,
             ),
-            _AiStatusPill(
-              label: mode == AiShellMode.disabled
-                  ? strings.aiSignedOutStatus
-                  : strings.aiAvailableStatus,
-            ),
+            _AiStatusPill(label: statusLabel),
           ],
         ),
         const SizedBox(height: 10),
@@ -521,6 +632,136 @@ class _AiComposer extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AiAccountStatusSheet extends StatelessWidget {
+  const _AiAccountStatusSheet({required this.accountController});
+
+  final AccountController accountController;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final auth = accountController.authSession;
+    final subscription = accountController.subscriptionStatus;
+    final isSignedIn = auth.isSignedIn;
+    final localContextAllowed =
+        accountController.localContextPermission?.allowed ?? false;
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              strings.aiAccountTooltip,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            _AiAccountLine(
+              icon: Icons.person_outline_rounded,
+              label: isSignedIn
+                  ? auth.email ?? auth.accountId ?? strings.aiAvailableStatus
+                  : strings.aiSignedOutStatus,
+            ),
+            const SizedBox(height: 8),
+            _AiAccountLine(
+              icon: Icons.verified_user_outlined,
+              label: subscription.isActive
+                  ? strings.subscriptionActive
+                  : subscription.state == SubscriptionState.error
+                  ? strings.subscriptionUnavailable
+                  : strings.subscriptionInactive,
+            ),
+            const SizedBox(height: 14),
+            SwitchListTile.adaptive(
+              key: const ValueKey<String>('ai_local_context_permission_switch'),
+              contentPadding: EdgeInsets.zero,
+              title: Text(strings.aiLocalContextPermissionTitle),
+              subtitle: Text(strings.aiLocalContextPermissionBody),
+              value: localContextAllowed,
+              onChanged: isSignedIn
+                  ? (allowed) async {
+                      try {
+                        await accountController.setLocalContextAllowed(allowed);
+                      } catch (_) {
+                        if (!context.mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              strings.phase2ErrorMessage(
+                                'local_context_save_failed',
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            if (!accountController.backendConfigured)
+              Text(
+                strings.phase2BackendNotConfigured,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF8A6A20),
+                  height: 1.35,
+                ),
+              ),
+            if (isSignedIn) ...<Widget>[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  accountController.signOut();
+                },
+                icon: const Icon(Icons.logout_rounded),
+                label: Text(strings.signOut),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              strings.phase3Required,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF687568)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiAccountLine extends StatelessWidget {
+  const _AiAccountLine({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 18, color: const Color(0xFF4F6250)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
       ],

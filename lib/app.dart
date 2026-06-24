@@ -1,14 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase/supabase.dart' as supabase;
 
+import 'core/config/app_config.dart';
+import 'core/config/supabase_pkce_storage.dart';
 import 'core/localization/language_controller.dart';
 import 'core/localization/localization_extensions.dart';
+import 'core/theme/fitlog_theme.dart';
 import 'core/utils/date_utils.dart';
 import 'core/widgets/fitlog_bottom_nav_bar.dart';
 import 'data/db/app_database.dart';
+import 'data/repositories/ai_local_context_permission_repository.dart';
+import 'data/repositories/auth_repository.dart';
+import 'data/repositories/cloud_profile_repository.dart';
 import 'data/repositories/custom_exercise_repository.dart';
 import 'data/repositories/food_repository.dart';
 import 'data/repositories/profile_repository.dart';
+import 'data/repositories/subscription_repository.dart';
 import 'data/repositories/workout_draft_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'domain/services/daily_summary_service.dart';
@@ -17,14 +27,15 @@ import 'domain/services/carb_taper_review_service.dart';
 import 'domain/services/training_frequency_self_check_service.dart';
 import 'export/csv_export_service.dart';
 import 'export/xlsx_export_service.dart';
+import 'features/account/account_controller.dart';
 import 'features/ai/ai_page.dart';
 import 'features/food/food_log_page.dart';
 import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/workout/workout_log_page.dart';
 
-const String _fitlogFontFamily = 'NotoSansSC';
-const List<String> _fitlogChineseSansFallback = <String>[
+const String fitLogFontFamily = 'NotoSansSC';
+const List<String> fitLogChineseSansFallback = <String>[
   'Noto Sans CJK SC',
   'Noto Sans SC',
   'Source Han Sans SC',
@@ -35,7 +46,12 @@ const List<String> _fitlogChineseSansFallback = <String>[
 ];
 
 class FitLogApp extends StatefulWidget {
-  const FitLogApp({super.key});
+  const FitLogApp({
+    super.key,
+    this.config = const AppConfig(supabaseUrl: '', supabaseAnonKey: ''),
+  });
+
+  final AppConfig config;
 
   @override
   State<FitLogApp> createState() => _FitLogAppState();
@@ -44,6 +60,9 @@ class FitLogApp extends StatefulWidget {
 class _FitLogAppState extends State<FitLogApp> {
   late final AppServices _services;
   late final LanguageController _languageController;
+  late final FitLogThemeController _themeController;
+  late final AccountController _accountController;
+  StreamSubscription<supabase.AuthState>? _supabaseAuthSubscription;
 
   @override
   void initState() {
@@ -55,6 +74,31 @@ class _FitLogAppState extends State<FitLogApp> {
     final workoutRepository = WorkoutRepository(database);
     final workoutDraftRepository = WorkoutDraftRepository(database);
     final profileRepository = ProfileRepository(database);
+    final authSessionStorage = widget.config.hasSupabase
+        ? const SharedPreferencesSupabaseAuthSessionStorage()
+        : null;
+    final supabaseClient = widget.config.hasSupabase
+        ? supabase.SupabaseClient(
+            widget.config.supabaseUrl,
+            widget.config.supabaseAnonKey,
+            authOptions: const supabase.AuthClientOptions(
+              pkceAsyncStorage: SharedPreferencesGotrueAsyncStorage(),
+            ),
+          )
+        : null;
+    if (supabaseClient != null && authSessionStorage != null) {
+      _supabaseAuthSubscription = supabaseClient.auth.onAuthStateChange.listen((
+        state,
+      ) async {
+        final session = state.session;
+        if (state.event == supabase.AuthChangeEvent.signedOut ||
+            session == null) {
+          await authSessionStorage.clear();
+        } else {
+          await authSessionStorage.writeSession(session);
+        }
+      });
+    }
     final trainingFrequencySelfCheckService = TrainingFrequencySelfCheckService(
       workoutRepository: workoutRepository,
     );
@@ -102,7 +146,34 @@ class _FitLogAppState extends State<FitLogApp> {
       database: database,
     );
 
+    _accountController = AccountController(
+      authRepository: supabaseClient == null
+          ? const UnconfiguredAuthRepository()
+          : SupabaseAuthRepository(
+              supabaseClient,
+              sessionStorage: authSessionStorage!,
+            ),
+      subscriptionRepository: supabaseClient == null
+          ? const UnconfiguredSubscriptionRepository()
+          : SupabaseSubscriptionRepository(supabaseClient),
+      cloudProfileRepository: supabaseClient == null
+          ? const UnconfiguredCloudProfileRepository()
+          : SupabaseCloudProfileRepository(client: supabaseClient),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: widget.config.hasSupabase,
+    )..initialize();
+
     _languageController = LanguageController()..load();
+    _themeController = FitLogThemeController()..load();
+  }
+
+  @override
+  void dispose() {
+    _supabaseAuthSubscription?.cancel();
+    _accountController.dispose();
+    _themeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -110,6 +181,9 @@ class _FitLogAppState extends State<FitLogApp> {
     return MultiProvider(
       providers: [
         Provider<AppServices>.value(value: _services),
+        ChangeNotifierProvider<AccountController>.value(
+          value: _accountController,
+        ),
         ChangeNotifierProvider<RefreshNotifier>(
           create: (_) => RefreshNotifier(),
         ),
@@ -122,12 +196,16 @@ class _FitLogAppState extends State<FitLogApp> {
         ChangeNotifierProvider<LanguageController>.value(
           value: _languageController,
         ),
+        ChangeNotifierProvider<FitLogThemeController>.value(
+          value: _themeController,
+        ),
       ],
-      child: Consumer<LanguageController>(
-        builder: (context, languageController, _) {
-          if (!languageController.initialized) {
+      child: Consumer2<LanguageController, FitLogThemeController>(
+        builder: (context, languageController, themeController, _) {
+          if (!languageController.initialized || !themeController.initialized) {
             return MaterialApp(
               debugShowCheckedModeBanner: false,
+              theme: buildFitLogTheme(Brightness.light),
               home: Scaffold(
                 body: Center(child: Text(context.strings.loading)),
               ),
@@ -138,133 +216,200 @@ class _FitLogAppState extends State<FitLogApp> {
             title: context.strings.appName,
             debugShowCheckedModeBanner: false,
             themeMode: ThemeMode.light,
-            theme: _buildTheme(Brightness.light),
-            darkTheme: _buildTheme(Brightness.dark),
+            theme: buildFitLogTheme(
+              Brightness.light,
+              themeKey: themeController.theme,
+            ),
+            darkTheme: buildFitLogTheme(
+              Brightness.dark,
+              themeKey: themeController.theme,
+            ),
             home: const _RootShell(),
           );
         },
       ),
     );
   }
+}
 
-  ThemeData _buildTheme(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
-    final base = ThemeData(
-      useMaterial3: true,
-      brightness: brightness,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF78BE5B),
-        brightness: brightness,
-      ),
-    );
-    final textTheme = base.textTheme
-        .apply(
-          fontFamily: _fitlogFontFamily,
-          fontFamilyFallback: _fitlogChineseSansFallback,
-        )
-        .copyWith(
-          headlineSmall: _withFontFallback(
-            base.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF152013),
-            ),
+ThemeData buildFitLogTheme(
+  Brightness brightness, {
+  FitLogThemeKey themeKey = FitLogThemeKey.green,
+}) {
+  final fitLogTheme = FitLogThemeData.forKey(themeKey);
+  final effectiveBrightness = fitLogTheme.isDark ? Brightness.dark : brightness;
+  final isDark = effectiveBrightness == Brightness.dark;
+  final base = ThemeData(
+    useMaterial3: true,
+    brightness: effectiveBrightness,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: fitLogTheme.primaryBright,
+      brightness: effectiveBrightness,
+    ),
+  );
+  final textTheme = base.textTheme
+      .apply(
+        fontFamily: fitLogFontFamily,
+        fontFamilyFallback: fitLogChineseSansFallback,
+      )
+      .copyWith(
+        headlineSmall: _withFontFallback(
+          base.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: fitLogTheme.textPrimary,
           ),
-          titleLarge: _withFontFallback(
-            base.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF152013),
-            ),
+        ),
+        titleLarge: _withFontFallback(
+          base.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: fitLogTheme.textPrimary,
           ),
-          titleMedium: _withFontFallback(
-            base.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF22311F),
-            ),
-          ),
-          bodyMedium: _withFontFallback(
-            base.textTheme.bodyMedium?.copyWith(color: const Color(0xFF51614E)),
-          ),
-        );
-
-    return base.copyWith(
-      splashFactory: isDark ? NoSplash.splashFactory : InkRipple.splashFactory,
-      splashColor: isDark ? Colors.transparent : base.splashColor,
-      highlightColor: isDark ? Colors.transparent : base.highlightColor,
-      hoverColor: isDark ? Colors.transparent : base.hoverColor,
-      scaffoldBackgroundColor: isDark
-          ? const Color(0xFF0E1117)
-          : const Color(0xFFF5F8F1),
-      appBarTheme: AppBarTheme(
-        centerTitle: false,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: Colors.transparent,
-        titleTextStyle: _withFontFallback(
-          TextStyle(
-            fontSize: 20,
+        ),
+        titleMedium: _withFontFallback(
+          base.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
-            color: isDark ? Colors.white : const Color(0xFF111827),
+            color: fitLogTheme.textPrimary,
           ),
         ),
+        bodyMedium: _withFontFallback(
+          base.textTheme.bodyMedium?.copyWith(color: fitLogTheme.textSecondary),
+        ),
+      );
+
+  return base.copyWith(
+    splashFactory: isDark ? NoSplash.splashFactory : InkRipple.splashFactory,
+    splashColor: isDark ? Colors.transparent : base.splashColor,
+    highlightColor: isDark ? Colors.transparent : base.highlightColor,
+    hoverColor: isDark ? Colors.transparent : base.hoverColor,
+    scaffoldBackgroundColor: fitLogTheme.pageBackground,
+    appBarTheme: AppBarTheme(
+      centerTitle: false,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: Colors.transparent,
+      titleTextStyle: _withFontFallback(
+        TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: fitLogTheme.textPrimary,
+        ),
       ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        color: isDark
-            ? const Color(0xFF171B22).withValues(alpha: 0.88)
-            : const Color(0xFFFFFFFF),
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      color: fitLogTheme.surface,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      labelStyle: _withFontFallback(TextStyle(color: fitLogTheme.mutedText)),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: fitLogTheme.outline),
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        labelStyle: _withFontFallback(
-          const TextStyle(color: Color(0xFF61715D)),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFDCE6D7)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFDCE6D7)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFF78BE5B), width: 1.4),
-        ),
-        filled: true,
-        fillColor: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white,
-        isDense: true,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: fitLogTheme.outline),
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        type: BottomNavigationBarType.fixed,
-        elevation: 0,
-        selectedItemColor: const Color(0xFF4E9E3B),
-        selectedLabelStyle: _withFontFallback(
-          const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-        ),
-        unselectedItemColor: isDark
-            ? Colors.white.withValues(alpha: 0.58)
-            : const Color(0xFF7A8973),
-        unselectedLabelStyle: _withFontFallback(
-          const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-        ),
-        backgroundColor: isDark
-            ? const Color(0xFF11161F).withValues(alpha: 0.9)
-            : Colors.white,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: fitLogTheme.primaryBright, width: 1.4),
       ),
-      textTheme: textTheme,
-    );
-  }
+      filled: true,
+      fillColor: fitLogTheme.surfaceVariant,
+      isDense: true,
+    ),
+    bottomNavigationBarTheme: BottomNavigationBarThemeData(
+      type: BottomNavigationBarType.fixed,
+      elevation: 0,
+      selectedItemColor: fitLogTheme.primary,
+      selectedLabelStyle: _withFontFallback(
+        const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+      unselectedItemColor: fitLogTheme.navUnselectedText,
+      unselectedLabelStyle: _withFontFallback(
+        const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+      ),
+      backgroundColor: fitLogTheme.navBackground,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: fitLogTheme.primary,
+        foregroundColor: fitLogTheme.onPrimary,
+        disabledBackgroundColor: fitLogTheme.primarySoftPressed,
+        disabledForegroundColor: fitLogTheme.disabledText,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: fitLogTheme.primaryDeep,
+        side: BorderSide(color: fitLogTheme.outline),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: fitLogTheme.primaryDeep),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return fitLogTheme.primaryDeep;
+          }
+          return fitLogTheme.textPrimary;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return fitLogTheme.primarySoftSelected;
+          }
+          return fitLogTheme.surface;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return BorderSide(color: fitLogTheme.primaryBright);
+          }
+          return BorderSide(color: fitLogTheme.outline);
+        }),
+      ),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: fitLogTheme.surfaceVariant,
+      selectedColor: fitLogTheme.primarySoftSelected,
+      disabledColor: fitLogTheme.primarySoftPressed,
+      labelStyle: _withFontFallback(
+        TextStyle(color: fitLogTheme.textPrimary, fontWeight: FontWeight.w700),
+      ),
+      secondaryLabelStyle: _withFontFallback(
+        TextStyle(color: fitLogTheme.primaryDeep, fontWeight: FontWeight.w800),
+      ),
+      side: BorderSide(color: fitLogTheme.outline),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: fitLogTheme.surfaceElevated,
+      contentTextStyle: _withFontFallback(
+        TextStyle(color: fitLogTheme.textPrimary),
+      ),
+      actionTextColor: fitLogTheme.primaryBright,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: fitLogTheme.surfaceElevated,
+      titleTextStyle: textTheme.titleLarge,
+      contentTextStyle: textTheme.bodyMedium,
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: fitLogTheme.surfaceElevated,
+      surfaceTintColor: Colors.transparent,
+    ),
+    extensions: <ThemeExtension<dynamic>>[fitLogTheme],
+    textTheme: textTheme,
+  );
 }
 
 TextStyle? _withFontFallback(TextStyle? style) {
   return style?.copyWith(
-    fontFamily: _fitlogFontFamily,
-    fontFamilyFallback: _fitlogChineseSansFallback,
+    fontFamily: fitLogFontFamily,
+    fontFamilyFallback: fitLogChineseSansFallback,
   );
 }
 
@@ -315,29 +460,35 @@ class _RootShellState extends State<_RootShell> {
         activeIcon: Icons.person_rounded,
       ),
     ];
-    final extendBodyBehindNav = navController.index == RootTabIndex.ai;
-
+    final resizeForKeyboard =
+        navController.index != RootTabIndex.ai &&
+        navController.index != RootTabIndex.profile;
+    final fitLogTheme = context.fitLogTheme;
     return Scaffold(
-      extendBody: extendBodyBehindNav,
-      resizeToAvoidBottomInset: !extendBodyBehindNav,
+      extendBody: true,
+      resizeToAvoidBottomInset: resizeForKeyboard,
       body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: <Color>[
-              Color(0xFFFAFCF7),
-              Color(0xFFF3F7EE),
-              Color(0xFFF7FAF3),
-            ],
-          ),
+        decoration: BoxDecoration(gradient: fitLogTheme.pageGradient),
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: IndexedStack(index: navController.index, children: _pages),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: FitLogBottomNavBar(
+                items: items,
+                currentIndex: navController.index,
+                onTap: navController.setIndex,
+                surface: navController.index == RootTabIndex.ai
+                    ? FitLogBottomNavSurface.glass
+                    : FitLogBottomNavSurface.solid,
+              ),
+            ),
+          ],
         ),
-        child: IndexedStack(index: navController.index, children: _pages),
-      ),
-      bottomNavigationBar: FitLogBottomNavBar(
-        items: items,
-        currentIndex: navController.index,
-        onTap: navController.setIndex,
       ),
     );
   }
