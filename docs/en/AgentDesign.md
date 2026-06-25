@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation, while AI Gateway, remote model calls, cloud chat history, and RAG remain planned for later phases. Agent V1 does not turn the app into an autonomous coach or a full cloud-sync platform.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 should land Cloud Records Foundation first, moving body/food/workout official records and daily summaries to the cloud source of truth before AI Gateway, remote model calls, cloud chat history, and RAG. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -15,7 +15,7 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and local-record context permission.
+The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission; Cloud Records, AI Gateway, and wrappers are not implemented yet.
 
 Not implemented in the current code:
 
@@ -40,9 +40,9 @@ Existing AI-adjacent features are user-mediated, not app-internal AI:
 | External AI JSON paste | The user manually pastes JSON produced outside the app. FitLog parses it locally. | No | `PasteAiResultPage`, `NutritionCalculator.parseAiFoodJson` |
 | `source = ai_paste` | Saved food records can mark that the source was an AI paste workflow. | No | `AppConstants.sourceAiPaste`, `FoodRecord.source` |
 | Photo AI Analysis | Visible placeholder entry point in Add Food. | No | `AddFoodPage` |
-| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector, history placeholder, and account/subscription status entry. It cannot send until Phase 3. | No | `AiPage`, `FitLogBottomNavBar` |
+| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector, history placeholder, and account/subscription status entry. It cannot send until Phase 4. | No | `AiPage`, `FitLogBottomNavBar` |
 | Account/Profile foundation | Supabase-configured email-password sign-in, persisted auth-session recovery, registration email-code flow with local PKCE verifier storage, subscription status lookup, Cloud Profile load/save path, Profile sign-in gate, and cache display fallback. | No | `AccountController`, `AuthRepository`, `SubscriptionRepository`, `CloudProfileRepository`, `ProfilePage` |
-| Local context permission | Per-account local setting that controls whether future AI answers may use device food/workout/weight summaries. It does not upload full history in Phase 2. | No | `AiLocalContextPermissionRepository`, `AiPage` |
+| User record summary permission | Per-account local setting that controls whether future AI answers may use user record summaries. It does not upload history in Phase 2; after Phase 3, summary sources should be cloud summary/context builders. | No | `AiLocalContextPermissionRepository`, `AiPage` |
 
 ## V1 Agent Positioning
 
@@ -52,6 +52,7 @@ V1 adds:
 
 - cloud account and subscription status
 - Cloud Profile attached to the logged-in account
+- Cloud Records and daily summaries as the official record source
 - server-managed model API keys
 - AI Gateway
 - remote LLM and multimodal model calls
@@ -72,7 +73,8 @@ V1 does not add:
 - silent meal-plan execution
 - silent goal updates
 - silent `carb_cycling` or `carb_tapering` changes
-- default full cloud sync for food/workout/weight history
+- one-shot full-history download into local SQLite
+- treating local cache as the authoritative AI or product source
 - user-data vector databases
 - long-term semantic memory over business records
 - GraphRAG
@@ -151,7 +153,7 @@ Inputs:
 - optional user corrections
 - cloud profile
 - selected date if relevant
-- minimal local day summary if relevant
+- minimal cloud day summary if relevant
 
 Behavior:
 
@@ -186,7 +188,7 @@ Behavior:
 Inputs:
 
 - cloud profile
-- 7/14-day local summaries
+- 7/14-day cloud summaries
 - food-log coverage
 - workout consistency
 - weight trend when available
@@ -221,13 +223,14 @@ V1 uses scoped retrieval because many useful answers require context. For exampl
 
 ### Structured RAG
 
-Structured RAG means the app or backend calls known context-builder functions and sends compact structured summaries to the AI Gateway.
+Structured RAG means the backend or app calls known context-builder functions and sends compact structured summaries to the AI Gateway. After Phase 3, user-record context should come from cloud records, daily summaries, or summary builders rather than local SQLite cache.
 
 Examples:
 
 - `daily_summary`
 - `recent_food_summary`
 - `recent_workout_summary`
+- `body_metric_summary`
 - `weight_trend_summary`
 - `profile_context`
 - `strategy_context`
@@ -237,8 +240,9 @@ Rules:
 
 - Upload the minimum necessary context for the current request.
 - Prefer summaries over raw records.
-- Preserve deterministic local calculations as the source for targets and summaries.
-- Do not upload full food/workout/weight history by default in V1.
+- Preserve deterministic calculations as the source for targets and summaries.
+- Do not upload full raw food/workout/body history.
+- Do not give the model a free-form database query tool.
 
 ### Document RAG
 
@@ -269,28 +273,32 @@ Document indexing scope:
 
 ## Cloud Data Boundary
 
-V1 cloud storage is used for account-bound AI experience, not for complete business-data migration.
+V1 cloud storage is used for account-bound official records and AI experience; local SQLite is partial cache, draft storage, and runtime acceleration.
 
 Cloud-stored in V1:
 
 - account identity
 - subscription status
 - Cloud Profile
+- body metric logs
+- food/workout records
+- daily summaries
 - AI chat sessions
 - AI chat messages
 - final AI answers
 - AI request/response metadata
 - compact debug/action summaries for operations and troubleshooting
 
-Not cloud-synced by default in V1:
+Not provided to the model or client by default in V1:
 
-- full food history
-- full workout history
-- full weight history
+- full raw food-history context
+- full raw workout-history context
+- full raw body-metric-history context
+- one-shot full-history local download
 - local export archives
 - local workout drafts
 
-Local records may be summarized and temporarily sent to the AI Gateway when needed for a user request. Before an explicit Phase 7 cloud-sync migration, local food/workout/weight/body-metric records are a device dataset rather than account-owned cloud data. They must not be silently attached to a newly signed-in account; AI context builders should use compact summaries and a user-visible permission or setting when account ownership could be ambiguous.
+When the user request needs record context, cloud records may be summarized by a summary/context builder and temporarily sent to the AI Gateway. AI context builders should use compact summaries with user-visible permission or settings; they must not treat local SQLite cache as authoritative context.
 
 ## Cloud Profile
 
@@ -306,14 +314,14 @@ Rules:
 - Subscription-status loading is separate from Cloud Profile loading. If subscription lookup fails but Cloud Profile loads, Profile remains usable while AI sending stays unavailable.
 - The device may cache the profile for display, but a local cache write failure must not block the already loaded authoritative Cloud Profile. Cached Profile values may be shown during cloud refresh only when account-bound cache metadata matches the current signed-in account.
 - Profile UI edits are staged as a page-local draft. Taps and inputs update the Profile preview immediately, changed sections show visible modified markers, and the bottom Save Changes bar stays anchored near the bottom of the Profile body, expands upward for compact change details, and upserts one complete Cloud Profile snapshot.
-- Current body metrics on the Profile page, including weight, body-fat percentage, and waist circumference, are part of the Cloud Profile snapshot after login. Their historical trend rows remain local and account-scoped in Phase 2-6.
+- Current body metrics on the Profile page, including weight, body-fat percentage, and waist circumference, are part of the Cloud Profile snapshot after login. Historical weight, body-fat, and waist records belong to cloud `body_metric_logs` after Phase 3. The Body Profile card provides the calendar/add record entry, and Body Trends remains read-only.
 - Until Save Changes succeeds, other app areas and AI context should continue using the last saved authoritative Cloud Profile rather than the unsaved draft.
 - Offline profile editing is disabled.
 - If the user is offline, the Profile page may show cached values but cannot save changes.
 - AI uses Cloud Profile as the default authoritative context.
 - Requests may include `profile_version` to detect stale context.
 - Account deletion deletes Cloud Profile.
-- The Profile page exposes explicit sign-out in a bottom Account card. Signing out or switching accounts clears the auth session, runtime Profile draft state, account-bound Cloud Profile cache metadata, and the local singleton Profile cache; it must not delete device-local food, workout, or weight history.
+- The Profile page exposes explicit sign-out in a bottom Account card. Signing out or switching accounts clears the auth session, runtime Profile draft state, account-bound Cloud Profile cache metadata, and local caches; it must not delete cloud official records.
 
 Cloud Profile mapping must preserve algorithm semantics. It may validate enum values, fill versioned defaults for missing fields, and convert storage types, but it must not infer a new `diet_goal_phase`, convert `gram_per_kg` into `energy_ratio`, treat auxiliary kcal values as primary in `gram_per_kg` mode, or overwrite the user's phase/mode/strategy from derived fields.
 

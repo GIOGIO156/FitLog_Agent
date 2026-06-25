@@ -71,7 +71,8 @@ FitLog-specific AI decisions that are product boundaries:
 - AI Gateway is server-managed.
 - Users do not provide model API keys in V1.
 - Cloud Profile is authoritative after login.
-- Food/workout/weight history is not fully cloud-synced by default in V1.
+- After Phase 3, signed-in body/food/workout official records use the cloud as the source of truth.
+- Local SQLite is partial cache, draft storage, and runtime acceleration, not a complete history mirror.
 - User-data vector databases and long-term semantic memory are out of scope for V1.
 - AI creates drafts and explanations; user confirmation gates official writes.
 

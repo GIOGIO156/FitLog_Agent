@@ -109,6 +109,11 @@ class FitLogBottomNavBar extends StatelessWidget {
     final shadowAlpha = isGlass
         ? (fitTheme.isDark ? 0.24 : 0.06)
         : (fitTheme.isDark ? 0.32 : 0.08);
+    final bottomPadding = math.max(
+      MediaQuery.viewPaddingOf(context).bottom,
+      bottomInset,
+    );
+    final shieldHeight = barHeight / 2 + bottomPadding + 1;
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(
@@ -125,7 +130,7 @@ class FitLogBottomNavBar extends StatelessWidget {
           const indicatorVerticalMargin = 7.0;
           final indicatorWidth = segmentWidth - indicatorInset * 2;
 
-          return Container(
+          final navPill = Container(
             key: const ValueKey<String>('fitlog_bottom_nav_bar'),
             height: barHeight,
             decoration: BoxDecoration(
@@ -212,6 +217,29 @@ class FitLogBottomNavBar extends StatelessWidget {
                     );
                   }),
                 ),
+              ],
+            ),
+          );
+
+          return SizedBox(
+            height: barHeight,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                if (!isGlass)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: barHeight / 2,
+                    height: shieldHeight,
+                    child: DecoratedBox(
+                      key: const ValueKey<String>(
+                        'fitlog_bottom_nav_bottom_shield',
+                      ),
+                      decoration: BoxDecoration(color: fitTheme.pageBackground),
+                    ),
+                  ),
+                navPill,
               ],
             ),
           );

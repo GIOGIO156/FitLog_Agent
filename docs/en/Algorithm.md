@@ -20,12 +20,12 @@ The copied Local implementation already contains deterministic Dart algorithms f
 | `daily_energy_goal_kcal` | Deficit or surplus amount depending on phase. | `energy_ratio` |
 | `protein_ratio_percent`, `carbs_ratio_percent`, `fat_ratio_percent` | Macro energy percentages. | `energy_ratio` |
 | `diet_plan_strategy` | `none`, `carb_cycling`, or `carb_tapering`. | Strategy layer |
-| Food records | Daily intake. | Daily summary, AI context summaries |
-| Workout sessions/sets | Saved exercise calories and volume inputs. | Workout calories, daily summary, AI context summaries |
-| Weight logs | Bodyweight history. | Calibration, taper review, weekly review context |
+| Food records | Daily intake; after Phase 3, the official source is cloud records. | Daily summary, AI context summaries |
+| Workout sessions/sets | Saved exercise calories and volume inputs; after Phase 3, the official source is cloud records. | Workout calories, daily summary, AI context summaries |
+| Body metric logs | Historical weight, body-fat, and waist records; after Phase 3, the official source is cloud `body_metric_logs`. | Calibration, taper review, weekly review context |
 | Cloud Profile | Account-bound profile in Agent V1. | AI personalization and context |
 
-Agent V1 rule: AI should receive compact summaries built from these inputs. It should not directly invent official targets or override deterministic calculations.
+Agent V1 rule: AI should receive compact summaries built from Cloud Profile, Cloud Records, daily summaries, or controlled summary builders. It should not directly invent official targets or override deterministic calculations; local SQLite cache must not become the authoritative AI or product source.
 
 ## Diet Architecture
 
@@ -361,7 +361,7 @@ Rules:
 
 ## Agent Context Builders
 
-Agent V1 uses context builders to feed compact summaries to the AI Gateway.
+Agent V1 uses context builders to feed compact summaries to the AI Gateway. After Phase 3, user-record context should come from cloud official records, `daily_summaries`, or controlled summary builders rather than local SQLite cache completeness.
 
 Recommended builder outputs:
 
@@ -371,6 +371,7 @@ Recommended builder outputs:
 | `selected_day_summary` | Intake, workout burn, target context, remaining values or macro gaps. |
 | `recent_food_summary` | Windowed averages, coverage, macro consistency, missing days. |
 | `recent_workout_summary` | Frequency, estimated calories, body-part pattern, consistency. |
+| `body_metric_summary` | Weight, body-fat, and waist coverage and missing-data status. |
 | `weight_trend_summary` | Enough-data trend, missing-data status, simple rate calculations. |
 | `strategy_context` | Carb cycling day type or taper review state when relevant. |
 | `document_context` | Retrieved app-doc snippets in the user's language. |
@@ -418,7 +419,7 @@ Algorithmic flow:
 - AI can consume calculation outputs.
 - AI cannot silently modify official profile, target, strategy, food, workout, or weight records.
 - AI food estimation is a draft workflow until user confirmation.
-- User-data RAG should use structured summaries, not open-ended raw database access.
+- User-data RAG should use cloud structured summaries, not open-ended raw database access or complete raw history as default context.
 - Document RAG can use keyword, full-text, vector, or hybrid retrieval over app documents.
 - User business-data vector databases are out of scope for V1.
 

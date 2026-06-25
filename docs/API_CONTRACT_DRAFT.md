@@ -12,10 +12,10 @@
 - 订阅方案为开发期内部 entitlement：种子账号和内部兑换码区分 subscribed / unsubscribed，不接真实支付 provider。
 - AI providers 锁定为 OpenAI/ChatGPT 和千问/Qwen 两种，由服务端 AI Gateway 调用；用户可在 AI Chat 输入区选择使用哪一种。
 - 图片先上传到 Supabase Storage 私有临时 bucket，再把 attachment reference 传给 AI Gateway。
-- Agent V1 使用云端账号、订阅、Cloud Profile、AI Gateway、chat history、request metadata 和 compact debug summaries。
+- Agent V1 使用云端账号、订阅、Cloud Profile、Cloud Records、daily summaries、AI Gateway、chat history、request metadata 和 compact debug summaries。
 - 模型 API key 只能由服务端管理，App 内不提供用户自填 key。
-- V1 不默认完整云同步 food、workout 或 weight 历史。
-- AI 请求只上传当前 workflow 所需的最小必要摘要。
+- Phase 3 Cloud Records Foundation 后，body/food/workout 正式记录以云端为 source of truth，本地 SQLite 只做 partial cache。
+- AI 请求只读取当前 workflow 所需的最小必要云端摘要。
 - Cloud Profile 是登录后的权威 Profile，本地 profile cache 只用于展示/缓存。
 - 离线时 Profile 可展示缓存，但不能保存。
 - AI 不能静默写正式记录、修改目标、修改策略、应用 carb taper 或删除数据。
@@ -24,8 +24,8 @@
 
 Phase 0 选型说明：
 
-- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / chat / log 表、临时图片对象和 Edge Function AI Gateway，避免 Phase 2-3 同时自建 auth、数据库、storage 和 API runtime。
-- 相比 Firebase，Supabase 的 Postgres 表结构更贴合 Cloud Profile、chat messages、request logs、debug summaries 和 document chunks 这些关系型数据。
+- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / records / summary / chat / log 表、临时图片对象和 Edge Function AI Gateway，避免 Phase 2-4 同时自建 auth、数据库、storage 和 API runtime。
+- 相比 Firebase，Supabase 的 Postgres 表结构更贴合 Cloud Profile、records、daily summaries、chat messages、request logs、debug summaries 和 document chunks 这些关系型数据。
 - 相比自建后端，Supabase 能更快落地 Phase 2-3，同时保留以后迁移或自托管的可能。
 - 开发期订阅只用于验证 gating 和调试账号，不代表生产支付方案已经完成；生产支付/IAP provider 是发布前商业化决策。
 - OpenAI 和 Qwen 的 API keys 只进入服务端 secrets；App 不保存模型 key，也不直接调用模型 provider。
@@ -39,6 +39,8 @@ Phase 0 选型说明：
 - Auth/session
 - subscription entitlement
 - Cloud Profile
+- Cloud Records
+- daily summaries
 - AI Gateway routing
 - model API key management
 - prompt/schema/model versioning
@@ -49,11 +51,11 @@ Phase 0 选型说明：
 - request metadata
 - compact debug summaries
 
-服务端在 V1 不负责默认完整接管：
+服务端在 V1 不提供默认无限原始历史读取：
 
-- full food history
-- full workout history
-- full weight history
+- full raw food history in AI context
+- full raw workout history in AI context
+- full raw body metric history in AI context
 - local export archives
 - local SQLite migrations
 
@@ -66,6 +68,8 @@ Locked backend mapping:
 | Auth/session | Supabase Auth, email OTP only for V1 start |
 | Cloud database | Supabase Postgres |
 | Cloud Profile | `cloud_profiles` table in Supabase Postgres |
+| Cloud Records | `body_metric_logs`, `food_records`, `food_items`, `workout_records`, `workout_sessions`, `workout_sets` |
+| Daily summaries | `daily_summaries` table or equivalent service-maintained summary view |
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
 | Model secrets | Supabase Edge Function secrets for OpenAI and Qwen |
@@ -229,6 +233,77 @@ Rules:
 - Offline saves are disabled. No pending profile merge is introduced in V1.
 - Account deletion deletes Cloud Profile and account-bound identifiable AI conversation data.
 
+## Cloud Records Contract
+
+Cloud Records are introduced before AI Gateway workflows depend on user history. They are the official source of truth for signed-in body metrics, food records, workout records, and daily summaries. Local SQLite may cache subsets for performance, but cache completeness must not be required for AI context or export correctness.
+
+Core tables:
+
+```text
+body_metric_logs
+food_records
+food_items
+workout_records
+workout_sessions
+workout_sets
+daily_summaries
+```
+
+Common record fields:
+
+```json
+{
+  "id": "rec_...",
+  "account_id": "acct_...",
+  "date": "2026-06-17",
+  "source": "manual",
+  "record_version": 3,
+  "created_at": "2026-06-17T00:00:00Z",
+  "updated_at": "2026-06-17T00:00:00Z",
+  "deleted_at": null
+}
+```
+
+Rules:
+
+- All record reads and writes are scoped to the authenticated account.
+- `body_metric_logs` stores historical measurements only: weight, body-fat percentage, and waist circumference.
+- The current Profile body fields remain in Cloud Profile; historical body logs do not include age, height, or sex.
+- `body_metric_logs` should be unique per `account_id + date`.
+- Food and workout writes are immediate record-level writes, not page-wide Profile-style drafts.
+- Deletes are soft deletes by default and must update summaries.
+- Date-range reads are required; full-history reads are not a UI or AI default.
+- Export may page through cloud records, but ordinary UI and AI context must use summaries/ranges.
+
+Recommended endpoints:
+
+```text
+GET    /records/body-metrics?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+PUT    /records/body-metrics/{date}
+DELETE /records/body-metrics/{date}
+
+GET    /records/food?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+POST   /records/food
+PUT    /records/food/{id}
+DELETE /records/food/{id}
+
+GET    /records/workouts?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+POST   /records/workouts
+PUT    /records/workouts/{id}
+DELETE /records/workouts/{id}
+
+GET    /summaries/daily?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+```
+
+Local cache contract:
+
+- The app may prefetch and pin the most recent 30 days.
+- The app may cache older dates or months after the user opens them.
+- Cache entries should track `last_accessed_at`, pinned state, pending state, and source record version.
+- Cache eviction may remove old, unpinned, cloud-confirmed entries when size limits are reached.
+- Cache eviction must not remove pending writes, pending deletes, or the currently viewed date/month.
+- Eviction deletes local cache only; cloud records remain authoritative and can be fetched again.
+
 ## AI Gateway Request
 
 `POST /ai/chat/route` request:
@@ -357,7 +432,7 @@ Validation rules:
 - Saving a draft requires explicit user confirmation.
 - Discarding a draft writes nothing.
 
-Allowed confirmed source markers for future local records:
+Allowed confirmed source markers for future official records:
 
 ```text
 ai_photo
@@ -374,13 +449,14 @@ Allowed Structured RAG context objects:
 | Object | Source | Notes |
 | --- | --- | --- |
 | `profile_context` | Cloud Profile | Authoritative after login. |
-| `selected_day_summary` | `DailySummaryService` | Targets, intake, exercise and mode-specific remaining values. |
-| `recent_food_summary` | Food repository aggregation | Windowed totals and coverage, not full rows by default. |
-| `recent_workout_summary` | Workout repository aggregation | Frequency, duration, estimated kcal and major body-part pattern. |
-| `weight_trend_summary` | Weight log aggregation | Only when enough data exists. |
+| `selected_day_summary` | Cloud `daily_summaries` / summary builder | Targets, intake, exercise and mode-specific remaining values. |
+| `recent_food_summary` | Cloud records summary builder | Windowed totals and coverage, not full rows by default. |
+| `recent_workout_summary` | Cloud records summary builder | Frequency, duration, estimated kcal and major body-part pattern. |
+| `body_metric_summary` | Cloud `body_metric_logs` summary builder | Weight, body-fat and waist availability by range. |
+| `weight_trend_summary` | Cloud `body_metric_logs` summary builder | Only when enough data exists. |
 | `strategy_context` | Profile strategy settings and deterministic calculators | Includes carb cycling/tapering state when relevant. |
 
-Context builders must preserve Local deterministic calculations. LLM output cannot replace target or summary calculations.
+Context builders must preserve deterministic calculations. LLM output cannot replace target or summary calculations. The model must not receive a generic SQL tool or direct database access; it only receives typed context objects generated by known builders. Local SQLite cache can accelerate UI but must not be treated as authoritative context.
 
 ## Chat History Models
 
@@ -544,6 +620,10 @@ Rules:
 | AI request log / debug summary model | Drafted |
 | Cloud Profile fields | Drafted |
 | Cloud Profile and local cache relationship | Locked |
+| Cloud Records source of truth | Drafted: cloud records authoritative, local SQLite partial cache |
+| Records API shape | Drafted |
+| Daily summary API shape | Drafted |
+| Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
 | Offline Profile behavior | Locked |
 | Image upload/compression/temporary retention | Locked: Supabase Storage temp bucket, 2 images/request, target <= 1.5 MB, hard reject > 5 MB, 24h TTL |
 | Document RAG strategy | Locked |

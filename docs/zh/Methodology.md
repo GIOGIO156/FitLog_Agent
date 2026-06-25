@@ -66,7 +66,7 @@ AI 不替代：
 
 FitLog_Agent 使用两种受控检索：
 
-- Structured RAG：已知 function 从用户数据构建紧凑摘要。
+- Structured RAG：已知 function 从云端正式记录、daily summaries 或受控 summary builder 构建紧凑摘要。
 - Document RAG：检索相关 FitLog 文档片段。
 
 Document RAG 可以使用关键词、全文、向量、语义或混合检索。但对 App 文档做向量检索，不代表把用户 food/workout/weight 记录做成用户数据向量库。基于业务记录的长期 semantic memory 不在 V1 范围内。
@@ -244,7 +244,7 @@ Agent V1 需要账号绑定的 AI 个性化：
 
 因此，登录后 Cloud Profile 是权威版本。设备可以缓存用于展示。V1 禁止离线保存 Profile，所以不会产生 profile merge conflict。
 
-Food、workout、weight 历史 V1 默认仍在本地。当 AI 需要近期上下文时，App 应发送紧凑摘要，而不是上传全部数据。
+Phase 3 后，登录用户的 body、food 和 workout 正式记录也以云端为权威来源。本地 SQLite 只做 partial cache、草稿和运行期加速，不做完整历史镜像。当 AI 需要近期上下文时，App 应发送云端 summary/context builder 生成的紧凑摘要，而不是上传完整原始历史。
 
 ## 为什么需要用户确认
 

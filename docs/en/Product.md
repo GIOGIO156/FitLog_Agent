@@ -9,7 +9,7 @@ Its value is not "AI replaces logging." Its value is that deterministic food, wo
 The product promise:
 
 ```text
-Record locally with deterministic rules.
+Record after sign-in with cloud official records and deterministic rules.
 Use cloud AI when the user asks for help.
 Write official data only after the user confirms.
 ```
@@ -17,9 +17,10 @@ Write official data only after the user confirms.
 ## Product Principles
 
 - Preserve Local behavior unless an Agent V1 requirement explicitly changes it.
-- Keep food/workout/weight records local by default in V1.
-- Treat local food/workout/weight history as a device dataset before any explicit Phase 7 cloud-sync migration.
-- Use cloud services for account, subscription, Cloud Profile, AI Gateway, chat history, and AI audit needs.
+- Require sign-in before official record features in the Agent version.
+- After Phase 3 Cloud Records Foundation, body/food/workout official records use the cloud as the source of truth.
+- Local SQLite is partial cache, draft storage, and runtime acceleration; it is not a full-history mirror.
+- Use cloud services for account, subscription, Cloud Profile, Cloud Records, daily summaries, AI Gateway, chat history, and AI audit needs.
 - Treat the Cloud Profile as account-bound user information after login.
 - Do not require users to bring their own model API key.
 - Keep `energy_ratio` and `gram_per_kg` separate.
@@ -32,11 +33,11 @@ Write official data only after the user confirms.
 
 | Module | V1 role | Implemented baseline | V1 planned additions |
 | --- | --- | --- | --- |
-| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | May surface non-intrusive AI entry hints only if routed to AI page. |
-| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | Receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
+| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | After Phase 3, reads cloud-backed daily summaries; may surface non-intrusive AI entry hints only if routed to AI page. |
+| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | After Phase 3, official records write to cloud; receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
 | Add Food | Food creation workflow. | Manual entry, prompt copy, JSON paste, Photo AI placeholder. | Photo recognition shortcut may call AI Gateway and create Food Draft. |
-| AI | Primary Agent entry. | Phase 2 implements the centered tab, disabled AI shell, editable composer, provider selector, account/subscription status sheet, subscription/Profile availability gating, and local-record context permission. Sending is disabled until AI Gateway is added. | AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
-| Workout | Official workout-record management. | Local workout records, custom exercises, draft editor, calorie heuristics. | V1 AI may explain or review workout context but should not silently modify records. |
+| AI | Primary Agent entry. | Phase 2 implements the centered tab, disabled AI shell, editable composer, provider selector, account/subscription status sheet, subscription/Profile availability gating, and user-record summary permission. Sending is disabled until AI Gateway is added. | AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
+| Workout | Official workout-record management. | Local workout records, custom exercises, draft editor, calorie heuristics. | After Phase 3, official records write to cloud; V1 AI may explain or review workout context but should not silently modify records. |
 | Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; Phase 2 shows sign-in before login and saves formal profile changes through Cloud Profile when signed in. | Account deletion, production subscription management, and later AI personalization flows. |
 | Export | User-controlled data export. | XLSX and CSV ZIP export. | No default cloud backup/export replacement in V1. |
 
@@ -54,7 +55,7 @@ Required UI:
 
 - AI tab centered in bottom navigation.
 - Theme-aware floating bottom-navigation pill; the navigation component itself does not paint a full-width strip outside the pill.
-- Non-AI pages use an opaque theme-surface nav pill to cover scrolling content. The AI page uses a glass nav pill so the animated background remains visible.
+- Non-AI pages use an opaque theme-surface nav pill with a same-width page-background lower shield from the pill midline to the screen bottom, so scrolling content is covered without adding a full-width strip. The AI page uses a glass nav pill without that shield so the animated background remains visible.
 - The root shell does not shrink page bodies or paint a navigation-height strip. Floating-navigation geometry separates two coordinate systems: the screen-space footprint is the pill height plus `max(device bottom safe area, 12)`, while the SafeArea content-space clearance subtracts the bottom safe area already consumed by SafeArea. Home's first-viewport box uses SafeArea content height minus the nav clearance; the g/kg macro strip and energy-ratio cards stay inside that box instead of using nav reserve as internal spacing. In energy-ratio mode, the calorie card keeps its natural ring, typography, padding, and top placement; the macro card keeps its natural internal height at the bottom, and the middle space flexes. Scrollable bottom reading padding and fixed bottom controls use separate helpers. Food and Workout add CTAs are transparent overlays with their own scroll clearance; like the AI composer, they are anchored in screen coordinates to the nav pill top with the same fixed visual gap, and the AI page background extends behind navigation.
 - Full-screen animated AI background; available states use a clearer colorful slow flow, and keyboard-open input pauses background animation to reduce typing jank.
 - Center status line using the saved Cloud Profile nickname when available.
@@ -69,15 +70,15 @@ Current Phase 2 behavior:
 
 - The root navigation is `Home | Food | AI | Workout | Profile`.
 - The AI shell defaults to signed-out disabled state.
-- The composer is editable, but send is disabled until Phase 3 AI Gateway.
+- The composer is editable, but send is disabled until Phase 4 AI Gateway.
 - The model selector displays `ChatGPT` and `Qwen` as UI only.
-- The account/subscription entry opens a Phase 2 status sheet with sign-out and local-record context permission. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
+- The account/subscription entry opens a Phase 2 status sheet with sign-out and user-record summary permission. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
 - Supabase Auth, subscription status, and Cloud Profile access are wired when the build is configured with Supabase URL and anon key.
 - The history entry remains a placeholder.
 - No AI Gateway, LLM, RAG, chat-history persistence, or official data write occurs from the AI page.
 - Unsent composer text is a current-runtime device-local draft. Page switches and disabled states should not clear it automatically; user deletion, successful send, logout, or account switch clears it.
 
-Phase 2 may show a visually ready account/subscription/Profile state, but message sending remains locked until the Phase 3 Gateway and chat-history contract exist.
+Phase 2 may show a visually ready account/subscription/Profile state, but message sending remains locked until the Phase 4 Gateway and chat-history contract exist; Phase 3 first unifies the cloud official-record source.
 
 Availability states:
 
@@ -123,8 +124,8 @@ The user can ask what to eat next, whether an order fits today, or why the day f
 The answer should use:
 
 - Cloud Profile
-- selected-day food summary
-- selected-day workout summary
+- selected-day cloud food summary
+- selected-day cloud workout summary
 - current diet phase
 - current calculation mode
 - current strategy
@@ -136,7 +137,7 @@ The AI should explain the reasoning in practical terms. It must not recalculate 
 
 The user can ask for a weekly or recent review.
 
-The review should use recent summaries rather than uploading full raw history by default. It should cover:
+The review should use recent cloud summaries rather than uploading full raw history by default. It should cover:
 
 - food-log coverage
 - average intake pattern
@@ -175,7 +176,7 @@ V1 profile rules:
 - Auth failures keep the active sign-in or registration form visible and show readable snackbar feedback.
 - Subscription-status loading failures do not replace a successfully loaded Cloud Profile editor with a Profile error screen; AI sending remains gated by subscription availability.
 - The Profile header uses a compact Subscription entry with an explicit active/inactive/loading/error status badge. It opens a small blurred overlay, keeping the current plan as the first main card.
-- The Profile page provides a bottom Account card for explicit sign-out. Signing out clears the auth session and local singleton Profile cache without deleting local food/workout/weight records.
+- The Profile page provides a bottom Account card for explicit sign-out. Signing out clears the auth session, runtime drafts, and local caches without deleting cloud official records.
 - Offline profile saving is disabled.
 - AI uses Cloud Profile by default.
 - Requests can include `profile_version`.
@@ -201,9 +202,9 @@ Profile should include the existing profile information needed by FitLog's diet 
 - carb-tapering settings
 - language preference when account-bound
 
-Workout, food, and weight records remain local by default in V1. They may be summarized for AI only when needed. They are not silently attached to a newly signed-in account before a future explicit cloud-sync phase.
+After Phase 3, workout, food, and body metric records use the cloud as the official source. Local SQLite is only partial cache; it prefetches the recent 30-day window and necessary summaries by default, then loads older history by date or month when the user opens it. AI reads cloud summary/context builders for record context instead of treating local cache as authoritative.
 
-The Profile body section shows six fields: age, height, weight, sex, body-fat percentage, and waist circumference. The Body Trends card below it plots local account-scoped weight, body-fat, or waist records over 7/14/21/28-day windows. Trend controls stay at the bottom of the card, summary text stays above the chart, real record points extend from left to right by their real day spacing within the current window, insufficient-record messages appear inside the chart area, and tapping a real record dot shows that point's value inline.
+The Profile body section shows the current Profile's six fields: age, height, weight, sex, body-fat percentage, and waist circumference. The Body Profile card provides the calendar/add body-record entry. Selecting a date opens a body-record sheet whose top shows only the exact date; the sheet edits only weight, body-fat percentage, and waist circumference. Backfilling a past date does not silently modify the current Cloud Profile; setting a historical record as current body data requires explicit confirmation. The Body Trends card below is read-only and plots weight, body-fat, or waist records over 7/14/21/28-day windows. Trend controls stay at the bottom of the card, summary text stays above the chart, real record points extend from left to right by their real day spacing within the current window, insufficient-record messages appear inside the chart area, and tapping a real record dot shows that point's value inline.
 
 The Profile theme card is a low-frequency setting placed before language settings. Current options are Green and Black, shown as independent tappable options rather than a two-part segmented control so future themes can be added without changing the interaction pattern. Green remains the default. Black uses the Black Orange palette with a dark page background, dark cards, and orange accent color. Orange is reserved for buttons, selected states, icon emphasis, and progress emphasis, not large card fills. The theme preference is stored only in local `SharedPreferences`, not SQLite or Cloud Profile.
 
@@ -214,23 +215,27 @@ V1 cloud data:
 - account
 - subscription
 - Cloud Profile
+- body metric logs
+- food records / food items
+- workout records / workout sessions / workout sets
+- daily summaries
 - AI request metadata
 - AI sessions
 - AI chat messages
 - final AI answers
 - compact debug/action summaries
 
-V1 local default data:
+V1 local data:
 
-- food records
-- food items
-- workout sessions
-- workout sets
-- weight and body metric logs
+- recent-window records cache
+- visited historical date/month cache
+- daily summary cache
+- cache metadata
 - local workout drafts
+- pending drafts
 - exports
 
-AI requests should upload the minimum necessary context. For user-data context, prefer summaries over raw rows.
+AI requests should upload the minimum necessary context. For user-data context, prefer cloud summaries over raw rows. Cache eviction removes only rebuildable local cache, not cloud official data.
 
 ## User Confirmation Model
 
@@ -281,14 +286,15 @@ The current Agent source now implements:
 - ChatGPT/Qwen provider selector placeholder.
 - History placeholder entry.
 - Supabase configuration via `SUPABASE_URL` and `SUPABASE_ANON_KEY`, with local SharedPreferences-backed PKCE verifier storage for registration email codes.
-- Phase 2 account controller and repository layer for Auth, subscription status, Cloud Profile, and local-record context permission.
+- Phase 2 account controller and repository layer for Auth, subscription status, Cloud Profile, and user-record summary permission.
 - Profile auth screen with a solid theme background, no-star FitLog logo base asset, saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right with a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, top backend-configuration notice, a non-scrolling static landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, registration email code, password confirmation, no username requirement, automatic default Cloud Profile creation for accounts without a cloud row, cloud save path, and cached display fallback.
-- Persisted Supabase auth-session recovery, AI account/subscription status sheet, Profile header Subscription entry with compact blurred status refresh and internal redeem-code entitlement, local-record context permission toggle, explicit Profile sign-out account card, and logout/account-switch composer clearing.
+- Persisted Supabase auth-session recovery, AI account/subscription status sheet, Profile header Subscription entry with compact blurred status refresh and internal redeem-code entitlement, user-record summary permission toggle, explicit Profile sign-out account card, and logout/account-switch composer clearing.
 - AI shell, root navigation, mapper, and account-controller tests.
 
 ## V1 Non-goals
 
-- full cloud sync of food/workout/weight history by default
+- full-history one-shot download into local SQLite
+- treating local cache as the authoritative AI or product source
 - user-data vector database
 - long-term semantic memory
 - autonomous multi-step AI coach

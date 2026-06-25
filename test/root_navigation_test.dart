@@ -1,7 +1,36 @@
 import 'package:fitlog_local/app.dart';
+import 'package:fitlog_local/core/theme/fitlog_theme.dart';
 import 'package:fitlog_local/core/widgets/fitlog_bottom_nav_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+const _testNavItems = <FitLogNavItem>[
+  FitLogNavItem(
+    label: 'Home',
+    icon: Icons.home_outlined,
+    activeIcon: Icons.home_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Food',
+    icon: Icons.restaurant_menu_outlined,
+    activeIcon: Icons.restaurant_menu_rounded,
+  ),
+  FitLogNavItem(
+    label: 'AI',
+    icon: Icons.auto_awesome_outlined,
+    activeIcon: Icons.auto_awesome_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Workout',
+    icon: Icons.fitness_center_outlined,
+    activeIcon: Icons.fitness_center_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Profile',
+    icon: Icons.person_outline_rounded,
+    activeIcon: Icons.person_rounded,
+  ),
+];
 
 void main() {
   test('RootTabIndex keeps AI centered between Food and Workout', () {
@@ -23,33 +52,7 @@ void main() {
           bottomNavigationBar: FitLogBottomNavBar(
             currentIndex: RootTabIndex.ai,
             onTap: (index) => tappedIndex = index,
-            items: const <FitLogNavItem>[
-              FitLogNavItem(
-                label: 'Home',
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home_rounded,
-              ),
-              FitLogNavItem(
-                label: 'Food',
-                icon: Icons.restaurant_menu_outlined,
-                activeIcon: Icons.restaurant_menu_rounded,
-              ),
-              FitLogNavItem(
-                label: 'AI',
-                icon: Icons.auto_awesome_outlined,
-                activeIcon: Icons.auto_awesome_rounded,
-              ),
-              FitLogNavItem(
-                label: 'Workout',
-                icon: Icons.fitness_center_outlined,
-                activeIcon: Icons.fitness_center_rounded,
-              ),
-              FitLogNavItem(
-                label: 'Profile',
-                icon: Icons.person_outline_rounded,
-                activeIcon: Icons.person_rounded,
-              ),
-            ],
+            items: _testNavItems,
           ),
         ),
       ),
@@ -65,6 +68,49 @@ void main() {
     await tester.pump();
 
     expect(tappedIndex, RootTabIndex.workout);
+  });
+
+  testWidgets('FitLogBottomNavBar adds bottom shield only for solid surface', (
+    tester,
+  ) async {
+    const shieldKey = ValueKey<String>('fitlog_bottom_nav_bottom_shield');
+    const navKey = ValueKey<String>('fitlog_bottom_nav_bar');
+
+    Future<void> pumpNav(FitLogBottomNavSurface surface) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(390, 844),
+              viewPadding: EdgeInsets.only(bottom: 24),
+            ),
+            child: Scaffold(
+              bottomNavigationBar: FitLogBottomNavBar(
+                currentIndex: RootTabIndex.home,
+                onTap: (_) {},
+                surface: surface,
+                items: _testNavItems,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpNav(FitLogBottomNavSurface.solid);
+
+    expect(find.byKey(shieldKey), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(shieldKey)).width,
+      tester.getSize(find.byKey(navKey)).width,
+    );
+    final shield = tester.widget<DecoratedBox>(find.byKey(shieldKey));
+    final shieldDecoration = shield.decoration as BoxDecoration;
+    expect(shieldDecoration.color, FitLogThemeData.green.pageBackground);
+
+    await pumpNav(FitLogBottomNavSurface.glass);
+
+    expect(find.byKey(shieldKey), findsNothing);
   });
 
   testWidgets('FitLogBottomNavBar layout helpers separate screen and SafeArea', (

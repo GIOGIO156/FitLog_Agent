@@ -4,14 +4,15 @@
 
 This document defines FitLog_Agent V1 storage boundaries.
 
-The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Later Agent V1 phases may add AI sessions, AI messages, request metadata, document chunks, and compact debug summaries. V1 does not default to full cloud sync for food, workout, or weight history. Before a future Phase 7 cloud-sync migration, those local histories remain a device dataset rather than account-owned cloud data.
+The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation should move body/food/workout official records and daily summaries to the cloud, while local SQLite becomes partial cache, draft storage, and runtime acceleration. Later AI Gateway, RAG, and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
 
 ## Storage Overview
 
 | Storage | Purpose | Current status |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local food, workout, body metric history, profile baseline/cache, calibration, strategy review, custom exercises, workout drafts. | Implemented from Local baseline. |
-| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account local context permission, Cloud Profile display cache, and Supabase registration-code PKCE verifier state. | Implemented from Local baseline and Phase 2 account work; auth verifier and theme key are local runtime/display state, not business record sync. |
+| SQLite / `sqflite` | Current implementation's local food, workout, body metric history, profile baseline/cache, calibration, strategy review, custom exercises, workout drafts; after Phase 3 it is partial cache and draft storage. | Implemented from Local baseline; Phase 3 changes the role. |
+| Supabase Cloud Records | `body_metric_logs`, food/workout records, `daily_summaries`. | Phase 3 target. |
+| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, and Supabase registration-code PKCE verifier state. | Implemented from Local baseline and Phase 2 account work; auth verifier and theme key are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
 | Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, and later AI chats/request logs/final answers/debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; later AI tables remain planned. |
 | AI document index | Searchable app documentation chunks for Document RAG. | Planned for Agent V1. |
@@ -238,7 +239,7 @@ Rules:
 
 ### `user_weight_logs`
 
-Purpose: local daily body metric history. Phase 2-6 keep this history on device; it is not fully cloud-synced. When signed in, new rows are scoped with `account_id` so a new account does not automatically claim legacy device rows.
+Purpose: current local daily body metric history. After Phase 3, cloud `body_metric_logs` is the official source and local `user_weight_logs` should be compatibility/cache only; new official signed-in records belong to the cloud account.
 
 Fields:
 
@@ -301,11 +302,11 @@ AI boundary: Weekly Review may explain these records, but it must not silently c
 - training-frequency self-check
 - strategy calculations
 
-Agent V1 should reuse runtime or service-built summaries for Structured RAG instead of uploading raw table rows by default.
+Agent V1 should reuse cloud daily summaries or service-built summaries for Structured RAG instead of uploading raw table rows by default, and it should not treat local SQLite cache as authoritative context.
 
 ## Cloud Tables And Planned Tables
 
-The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Later AI tables remain design concepts until their phases land.
+The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Cloud Records tables are Phase 3 targets, and AI tables remain design concepts until their phases land.
 
 ### `accounts`
 
@@ -407,10 +408,76 @@ Rules:
 - Cloud Profile is authoritative.
 - Device cache is display/cache only.
 - Profile page edits are local drafts until Save Changes succeeds; cloud writes upsert one complete `cloud_profiles` snapshot and increment `profile_version`.
-- Current body metrics in Profile are saved in Cloud Profile. Historical body metric logs remain local and account-scoped in Phase 2-6.
+- Current body metrics in Profile are saved in Cloud Profile. Historical weight, body-fat, and waist records move to cloud `body_metric_logs` after Phase 3; the local history table is cache/compatibility only.
 - Offline profile saves are disabled in V1.
 - Account deletion deletes Cloud Profile.
 - The mapper must preserve `diet_goal_phase`, `diet_calculation_mode`, and `diet_plan_strategy` as user-controlled algorithm fields; it must not convert between `energy_ratio` and `gram_per_kg`.
+
+### `body_metric_logs`
+
+Purpose: account-level historical body metric records and the official source after Phase 3.
+
+Fields:
+
+- `id`
+- `account_id`
+- `date`
+- `weight_kg`
+- `body_fat_percent`
+- `waist_cm`
+- `source`
+- `record_version`
+- `created_at`
+- `updated_at`
+- `deleted_at`
+
+Rules:
+
+- Each account should have at most one row per day, preferably `UNIQUE(account_id, date)`.
+- Records include only weight, body-fat percentage, and waist circumference; they do not include age, height, or sex.
+- Backfilling a past date must not silently update the current Cloud Profile.
+- The Body Profile card provides the record entry; Body Trends is read-only.
+
+### `food_records` / `food_items`
+
+Purpose: account-level official food records.
+
+Rules:
+
+- Create, edit, and delete are immediate record-level actions, not Profile-style page drafts.
+- Deletes set `deleted_at` by default, and summary builders exclude soft-deleted rows.
+- `food_items` belong to `food_records`.
+
+### `workout_records` / `workout_sessions` / `workout_sets`
+
+Purpose: account-level official workout records.
+
+Rules:
+
+- `workout_records` represents one workout record container.
+- `workout_sessions` and `workout_sets` belong to the parent record.
+- Saved rows preserve exercise metadata, input modes, and calculation snapshots.
+- Deletes are soft deletes by default and update summaries.
+
+### `daily_summaries`
+
+Purpose: lightweight summary entry for Home, AI context, review, export, and history views.
+
+Fields should cover:
+
+- `account_id`
+- `date`
+- kcal/protein/carbs/fat totals
+- workout estimated kcal
+- body metric availability
+- mode-primary target/remaining snapshot
+- coverage flags
+- `updated_at`
+
+Rules:
+
+- Summaries may be maintained incrementally by the service or generated on demand; Phase 3 implementation must choose one strategy before coding.
+- AI wrappers should prefer summaries or summary builders over scanning full raw records.
 
 ### `ai_chat_sessions`
 
@@ -519,11 +586,12 @@ Recommended context objects:
 
 | Object | Source | Notes |
 | --- | --- | --- |
-| `profile_context` | Cloud Profile plus relevant local compatibility fields if needed. | Authoritative profile comes from cloud after login. |
-| `selected_day_summary` | `DailySummaryService`. | Food totals, workout totals, target context. |
-| `recent_food_summary` | Food repository aggregation. | Windowed totals and coverage, not full rows by default. |
-| `recent_workout_summary` | Workout repository aggregation. | Frequency, duration, estimated kcal, major body-part pattern. |
-| `weight_trend_summary` | Weight logs aggregation. | Trend only when enough data exists. |
+| `profile_context` | Cloud Profile. | Authoritative profile comes from cloud after login. |
+| `selected_day_summary` | Cloud `daily_summaries` or summary builder. | Food totals, workout totals, target context. |
+| `recent_food_summary` | Cloud records summary builder. | Windowed totals and coverage, not full rows by default. |
+| `recent_workout_summary` | Cloud records summary builder. | Frequency, duration, estimated kcal, major body-part pattern. |
+| `body_metric_summary` | Cloud `body_metric_logs` summary builder. | Weight, body-fat, and waist availability. |
+| `weight_trend_summary` | Cloud `body_metric_logs` summary builder. | Trend only when enough data exists. |
 | `strategy_context` | Profile strategy settings and deterministic calculator output. | Includes `carb_cycling` or `carb_tapering` state when relevant. |
 
 ## Source Of Truth Rules
@@ -533,15 +601,16 @@ Recommended context objects:
 | Account identity | Cloud |
 | Subscription | Cloud |
 | Cloud Profile | Cloud |
-| Food records | Local SQLite by default |
-| Workout records | Local SQLite by default |
-| Weight logs | Local SQLite by default |
+| Body metric logs | Cloud after Phase 3; local SQLite cache only |
+| Food records | Cloud after Phase 3; local SQLite cache only |
+| Workout records | Cloud after Phase 3; local SQLite cache only |
+| Daily summaries | Cloud summary table/service after Phase 3 |
 | AI chat history | Cloud after login |
 | AI request logs | Cloud/service logs |
 | Document RAG index | Cloud or bundled service index |
 | Export files | Local user-controlled files |
 
-Full cloud sync for food/workout/weight can be a Phase 7 feature, not a hidden Phase 2-6 side effect. It requires a separate source-of-truth rule, migration confirmation, conflict policy, deletion policy, and export story.
+Local cache prefetches the recent 30-day window and necessary summaries by default; older history loads by date or month when opened. Cache eviction removes only rebuildable local cache, not cloud official data.
 
 ## Offline Rules
 
@@ -549,11 +618,11 @@ Full cloud sync for food/workout/weight can be a Phase 7 feature, not a hidden P
 - User may edit unfinished prompt text but cannot send.
 - Profile page may display cached profile but cannot save.
 - V1 does not allow pending offline profile edits.
-- Local food/workout flows can continue where they do not require cloud AI.
+- After Phase 3, official food/workout/body writes require cloud access; offline official-write queues are a Post-V1 enhancement, not the default Cloud Records Foundation scope.
 
 ## Export Coverage
 
-Local export should continue to cover:
+Export should continue to cover:
 
 - food records
 - food items
@@ -567,7 +636,7 @@ Local export should continue to cover:
 - self-check fields
 - diet adjustment review history
 
-Cloud AI chat history and AI request logs are not part of the current Local export unless a future privacy/export feature explicitly adds account-data export.
+After Phase 3, export should read official records through cloud-backed repositories or cloud pagination rather than relying on complete local history. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
 
 ## Not Implemented In Current Source
 

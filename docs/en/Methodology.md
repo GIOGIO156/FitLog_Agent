@@ -66,7 +66,7 @@ For these questions, the model needs context:
 
 FitLog_Agent uses two scoped retrieval patterns:
 
-- Structured RAG: known functions build compact summaries from user data.
+- Structured RAG: known functions build compact summaries from cloud official records, daily summaries, or controlled summary builders.
 - Document RAG: the app retrieves relevant FitLog documentation snippets.
 
 Document RAG may use keyword, full-text, vector, semantic, or hybrid retrieval. However, vector search over app documents does not mean user food/workout/weight records become a user-data vector database. Long-term semantic memory over business records is out of scope for V1.
@@ -244,7 +244,7 @@ Agent V1 needs account-bound AI personalization:
 
 Therefore, after login, Cloud Profile is the authoritative profile. The device may cache it for display. Offline profile saving is disabled in V1 so there is no profile merge conflict.
 
-Food, workout, and weight history remain local by default in V1. When AI needs recent context, the app should send compact summaries instead of uploading everything.
+After Phase 3, signed-in body, food, and workout official records also use the cloud as the authoritative source. Local SQLite is only partial cache, draft storage, and runtime acceleration; it is not a complete history mirror. When AI needs recent context, the app should send compact summaries from cloud summary/context builders instead of uploading complete raw history.
 
 ## Why User Confirmation Is Required
 

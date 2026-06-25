@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-06-25 Cloud Records Foundation Planning
+
+### Changed
+
+- Moved Cloud Records Foundation ahead of AI Gateway work in the roadmap so signed-in body, food, workout, and daily summary records have one cloud source of truth before AI workflows depend on history.
+- Documented the Phase 3 cloud records tables, record API boundaries, soft delete/version/source fields, partial-cache rules, and wrapper context contracts.
+- Clarified that Body Profile owns the calendar/add body-record entry, Body Trends is read-only, record actions save immediately, and Profile edits remain one multi-field draft save.
+- Updated bilingual stable docs to use cloud summaries/context builders for AI record context instead of treating local SQLite cache as authoritative.
+
+### Validation
+
+- Documentation-only change; Flutter analysis/tests were not run.
+- Confirmed required design documentation tree and searched docs for superseded phase, cloud-record, cache-authority, and replacement-character markers.
+
+## 2026-06-25 Floating Navigation Bottom Shield
+
+### Changed
+
+- Changed solid bottom navigation to keep a same-width page-background lower shield from the pill midline to the screen bottom, covering scroll-through content without restoring a full-width footer strip.
+- Kept the AI tab's glass navigation unchanged so the animated AI background remains visible around and below the pill.
+- Documented the solid-only navigation shield behavior in the stable bilingual design docs and README.
+
+### Validation
+
+- Ran `dart format lib\core\widgets\fitlog_bottom_nav_bar.dart test\root_navigation_test.dart`.
+- Ran `flutter test test\root_navigation_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Confirmed the required documentation tree exists and searched stable docs for replacement characters and date-appended headings.
+- Ran `flutter clean`.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-24 Black Theme And Floating Navigation
 
 ### Added

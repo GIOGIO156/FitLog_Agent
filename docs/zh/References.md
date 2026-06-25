@@ -71,7 +71,8 @@ FitLog-specific AI 产品边界：
 - AI Gateway 由服务端管理。
 - V1 不让用户填写模型 API key。
 - 登录后 Cloud Profile 是权威版本。
-- V1 默认不完整云同步 food/workout/weight 历史。
+- Phase 3 后，登录用户的 body/food/workout 正式记录以云端为 source of truth。
+- 本地 SQLite 是 partial cache、草稿和运行期加速层，不是完整历史镜像。
 - V1 不做用户数据向量库和长期 semantic memory。
 - AI 生成草稿和解释；正式写入由用户确认 gating。
 

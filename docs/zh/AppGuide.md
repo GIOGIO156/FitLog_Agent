@@ -14,7 +14,7 @@ FitLog_Agent V1 保留现有 FitLog Local 的 App 区域，并新增一个主要
 Home | Food | AI | Workout | Profile
 ```
 
-AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，避免滚动文字从导航下方透出；AI tab 使用更透明的玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
+AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，并从 pill 中线到底部屏幕保留与导航等宽、页面背景色的底部遮挡层，避免滚动文字从导航和底部安全区透出；该遮挡层不能延伸到 pill 与屏幕两侧之间的空隙。AI tab 使用没有这层遮挡的更透明玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
 
 ## Home
 
@@ -98,10 +98,10 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - AI tab 已经位于底部导航正中间。
 - AI 页的背景延伸到 bottom navigation 后方，底部保留轻微白色渐变 veil；可用状态使用更清晰的彩色慢流动，输入时键盘打开会暂停背景动画以降低输入卡顿，AI tab 使用玻璃态导航 pill；其它可滚动页面使用实体主题色导航 pill，并在自身内容底部预留阅读空间，不依赖 root 层整条导航底色。
 - 页面默认是未登录不可用 shell。
-- 输入框可以输入文字，但发送按钮在 Phase 3 AI Gateway 前禁用。
+- 输入框可以输入文字，但发送按钮在 Phase 4 AI Gateway 前禁用。
 - ChatGPT/千问选择只是本地 UI 占位，不会调用 provider。
 - 账号/订阅入口在账号服务可用时打开 Phase 2 账号 sheet。中心状态文案优先读取已保存的 Cloud Profile 昵称，再回退到 auth display name。
-- Sheet 展示账号/订阅状态、退出登录、后端配置提示和本机记录摘要授权开关。
+- Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；Phase 2 不上传历史，Phase 3 后摘要来源应改为云端 summary/context builder。
 - 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
 - 历史入口仍是占位。
 - 尚未实现 AI Gateway、云端 chat history、RAG 或 LLM 调用。
@@ -113,7 +113,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 离线：灰色不可用状态
 - 未订阅：不可用状态，并解释账号/订阅情况
 
-当前 Phase 2 说明：即使账号、订阅和 Cloud Profile gate 都已就绪，发送仍要等 Phase 3 Gateway 接入后才会开放。
+当前 Phase 2 说明：即使账号、订阅和 Cloud Profile gate 都已就绪，发送仍要等 Phase 4 Gateway 接入后才会开放；Phase 3 先完成 Cloud Records Foundation。
 
 不可用状态规则：
 
@@ -174,7 +174,7 @@ Local 基线：
 
 - 昵称
 - 身体资料：年龄、身高、体重、性别、体脂、腰围
-- 本地体重、体脂、腰围历史的身体趋势
+- 身体趋势卡片：Local 基线读本机历史；Phase 3 后读云端 `body_metric_logs` 的本地 partial cache
 - 饮食阶段
 - 计算模式
 - 策略
@@ -196,14 +196,16 @@ Agent V1 profile 模型：
 - 订阅状态加载失败不应阻塞 Cloud Profile 已成功加载的 Profile 编辑页；AI 发送仍要等订阅状态可用且生效后才开放。
 - Profile 标题区右侧提供紧凑“订阅”入口，并用明确的已开启/未开启/加载中/异常状态徽标表达订阅状态；点开小型模糊浮层后显示当前账号 entitlement，可刷新状态，也可输入开发期内部兑换码为当前账号开启 AI 订阅。这只是 Phase 2 内部测试路径，不是生产支付流程。
 - Profile 修改会先进入本地页面草稿。已改卡片显示醒目的已修改标记，底部条贴近 Profile body 底部并向上展开，显示未保存数量和简洁字段列表；“放弃”恢复到上次保存的 Cloud Profile，“保存更改”一次性写入完整 profile snapshot。
-- 身体趋势卡片放在身体资料正下方。它支持体重、体脂、腰围三种折线，支持 7/14/21/28 天窗口；真实记录点按当前窗口内的真实日期间隔从左向右延伸；当前周期记录不足等状态直接写在折线图区内；点按真实记录点会在图内显示该点数值。
+- 身体资料卡提供日历/新增身体记录入口；用户选择日期后，身体记录 sheet 顶部只显示具体日期，sheet 只编辑体重、体脂和腰围三项。过去日期补记不会静默修改当前 Cloud Profile；如需把某条历史记录设为当前身体资料，必须显式确认。
+- 身体趋势卡片放在身体资料正下方，只读展示趋势，不承担记录入口。它支持体重、体脂、腰围三种折线，支持 7/14/21/28 天窗口；真实记录点按当前窗口内的真实日期间隔从左向右延伸；当前周期记录不足等状态直接写在折线图区内；点按真实记录点会在图内显示该点数值。
 - 主题卡片放在 Profile 的低频设置区、语言设置前，使用 Green 和 Black/黑橙 两个独立点按选项。默认 Green；Black/黑橙只改变颜色 token 和强调色，不改变记录、算法或云端边界。
 - 设备可以缓存 Profile 用于显示，但本地缓存失败不应阻塞已成功加载的 Cloud Profile。云端刷新期间，只有账号绑定的缓存元数据匹配当前登录账号时，才可先显示缓存 Profile。
 - 离线时禁止保存 Profile。
 - AI 默认使用 Cloud Profile 作为上下文。
 - 删除账号时删除 Cloud Profile。
-- Profile 底部账号卡提供明确退出入口。退出账号会清除 auth session、运行期草稿、账号绑定 Cloud Profile 缓存元数据和本地 singleton Profile 缓存，但不会删除设备本地 food、workout 或 weight 历史。
-- V1 中本地 food/workout/weight 历史仍属于设备本地数据，不会自动归属到登录账号。
+- Phase 3 后，food、workout 和 body metric 正式记录以云端为权威来源；本地 SQLite 只保存最近窗口、用户访问过的历史日期/月、summary cache、cache metadata 和草稿。
+- 本地 partial cache 默认保留最近 30 天和当前查看日期/月；用户查看更早记录时按日期或月份从云端按需加载。cache 达到容量边界时，只淘汰已确认云端可重建、非 pending、非当前查看、非最近窗口的数据。
+- Profile 底部账号卡提供明确退出入口。退出账号会清除 auth session、运行期草稿、账号绑定 Cloud Profile 缓存元数据、本地 singleton Profile 缓存和本地 records cache，但不会删除云端正式记录。
 
 Profile 仍是正式饮食设置变更的位置。AI 可以解释或建议，但设置变更应通过 Profile UI 完成。
 
@@ -245,7 +247,8 @@ App 应保留隐私提示，但不应占据太多屏幕。
 UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
-- 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、本机记录摘要授权开关，以及五 tab 浮动底部导航。
+- 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关，以及五 tab 浮动底部导航。
+- Phase 3 计划行为：Cloud Records Foundation，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries`、summary API 和本地 partial cache。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
-在代码实现前，不要把 AI Gateway、云端 chat history、RAG 或 LLM 调用写成已实现。账号登录、订阅状态和 Cloud Profile 是 Phase 2 客户端/schema 能力，需要配置 Supabase 后才能连接真实后端测试。
+在代码实现前，不要把 Cloud Records、AI Gateway、云端 chat history、RAG 或 LLM 调用写成已实现。账号登录、订阅状态和 Cloud Profile 是 Phase 2 客户端/schema 能力，需要配置 Supabase 后才能连接真实后端测试。
