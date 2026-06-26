@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_utils.dart';
+import '../../data/repositories/daily_summary_cache_repository.dart';
 import '../../data/repositories/food_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -23,12 +24,14 @@ class DailySummaryService {
     MacroTargetCalculator? macroTargetCalculator,
     TrainingFrequencySelfCheckService? trainingFrequencySelfCheckService,
     required DietPlanStrategyService dietPlanStrategyService,
+    DailySummaryCacheRepository? dailySummaryCacheRepository,
   }) : _foodRepository = foodRepository,
        _workoutRepository = workoutRepository,
        _profileRepository = profileRepository,
        _macroTargetCalculator =
            macroTargetCalculator ?? const MacroTargetCalculator(),
        _dietPlanStrategyService = dietPlanStrategyService,
+       _dailySummaryCacheRepository = dailySummaryCacheRepository,
        _trainingFrequencySelfCheckService =
            trainingFrequencySelfCheckService ??
            TrainingFrequencySelfCheckService(
@@ -41,6 +44,7 @@ class DailySummaryService {
   final MacroTargetCalculator _macroTargetCalculator;
   final DietPlanStrategyService _dietPlanStrategyService;
   final TrainingFrequencySelfCheckService _trainingFrequencySelfCheckService;
+  final DailySummaryCacheRepository? _dailySummaryCacheRepository;
 
   static const double _minLifestyleFactor = 1.10;
   static const double _maxLifestyleFactor = 1.70;
@@ -197,6 +201,37 @@ class DailySummaryService {
       foodRecords: foodRecords,
       workoutSessions: workoutSessions,
     );
+  }
+
+  Future<DailySummary?> getCachedSummaryForDate({
+    required String? accountId,
+    required String day,
+  }) async {
+    if ((accountId ?? '').isEmpty || _dailySummaryCacheRepository == null) {
+      return null;
+    }
+    return _dailySummaryCacheRepository.getCachedSummary(
+      accountId: accountId!,
+      date: day,
+    );
+  }
+
+  Future<DailySummary> getSummaryForDateAndCache({
+    required String day,
+    required String? accountId,
+  }) async {
+    final summary = await getSummaryForDate(day);
+    if ((accountId ?? '').isNotEmpty && _dailySummaryCacheRepository != null) {
+      try {
+        await _dailySummaryCacheRepository.upsertConfirmedSummary(
+          accountId: accountId!,
+          summary: summary,
+        );
+      } catch (_) {
+        // Summary cache accelerates Home reads; it must not block live summary.
+      }
+    }
+    return summary;
   }
 
   double calculateBmr(UserProfile profile, {double? weightKgOverride}) {

@@ -150,6 +150,42 @@ class AppStrings {
         );
       case 'auth_required':
         return authRequired;
+      case 'device_replaced':
+        return _t(
+          'This account was signed in on another device. Sign in again to take over.',
+          '该账号已在另一台设备登录。请重新登录以接管。',
+        );
+      case 'active_device_rpc_missing':
+        return _t(
+          'Active-device functions are missing. Run the Phase 3 Supabase migration.',
+          '缺少 active-device 云端函数，请运行 Phase 3 Supabase migration。',
+        );
+      case 'active_device_claim_failed':
+      case 'active_device_assert_failed':
+        return _t(
+          'Device session could not be verified. Please sign in again.',
+          '设备会话无法验证，请重新登录。',
+        );
+      case 'record_rls_denied':
+        return _t(
+          'Cloud record access was blocked by Supabase RLS.',
+          '云端记录被 Supabase RLS 拦截。',
+        );
+      case 'record_network_error':
+        return _t(
+          'Network connection failed while saving cloud records.',
+          '保存云端记录时网络连接失败。',
+        );
+      case 'record_schema_mismatch':
+        return _t(
+          'Cloud Records schema is incomplete. Run the Phase 3 Supabase migration.',
+          'Cloud Records schema 不完整，请运行 Phase 3 Supabase migration。',
+        );
+      case 'cloud_record_missing':
+        return _t(
+          'This local cache row is not linked to a cloud record. Refresh from cloud and try again.',
+          '这条本地缓存没有关联云端记录，请从云端刷新后再试。',
+        );
       case 'subscription_load_failed':
         return _t(
           'Subscription status could not be loaded. Retry after checking Supabase.',
@@ -307,6 +343,9 @@ class AppStrings {
       _t('Delete "$mealName" on $date?', '确认删除 $date 的“$mealName”？');
 
   String get foodDeleted => _t('Food record deleted.', '食物记录已删除。');
+
+  String failedToDeleteFood(Object error) =>
+      _t('Failed to delete food record: $error', '删除食物记录失败：$error');
 
   String foodCopied(String mealName, String date) =>
       _t('"$mealName" copied to $date.', '已将 "$mealName" 复制到 $date。');
@@ -761,6 +800,10 @@ class AppStrings {
       _t('Failed to load workout records: $error', '加载训练记录失败：$error');
 
   String get workoutDeleted => _t('Workout deleted.', '训练记录已删除。');
+
+  String failedToDeleteWorkout(Object error) =>
+      _t('Failed to delete workout: $error', '删除训练记录失败：$error');
+
   String get workoutPlan => _t('Workout Record', '训练记录');
   String get workoutPlanList => _t('Workout Records', '训练记录');
   String get startTimeLabel => _t('Start time', '开始时间');

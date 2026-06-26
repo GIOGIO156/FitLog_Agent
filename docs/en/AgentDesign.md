@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 should land Cloud Records Foundation first, moving body/food/workout official records and daily summaries to the cloud source of truth before AI Gateway, remote model calls, cloud chat history, and RAG. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 Cloud Records Foundation connects signed-in body/food/workout official records to the cloud source of truth and adds Home selected-day summary cache with stale-while-revalidate; the daily-summary cloud upsert coordinator remains hardening work before AI Gateway, remote model calls, cloud chat history, and RAG. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -273,32 +273,13 @@ Document indexing scope:
 
 ## Cloud Data Boundary
 
-V1 cloud storage is used for account-bound official records and AI experience; local SQLite is partial cache, draft storage, and runtime acceleration.
+V1 cloud/local data authority, cache, writes, reads, failures, and repair rules live in `CloudLocalDataBoundary.md`. AgentDesign only defines how AI uses that data.
 
-Cloud-stored in V1:
+AI context should prefer Cloud Profile, cloud records/daily_summaries, or compact summaries produced by controlled summary/context builders. AI Gateway should not treat local SQLite cache as authoritative context and should not upload complete raw history by default.
 
-- account identity
-- subscription status
-- Cloud Profile
-- body metric logs
-- food/workout records
-- daily summaries
-- AI chat sessions
-- AI chat messages
-- final AI answers
-- AI request/response metadata
-- compact debug/action summaries for operations and troubleshooting
+V1 uses one active device per account. AI context building and AI Gateway send must come from the current active device/session; an older device replaced by a newer login cannot keep using local cache to send AI requests.
 
-Not provided to the model or client by default in V1:
-
-- full raw food-history context
-- full raw workout-history context
-- full raw body-metric-history context
-- one-shot full-history local download
-- local export archives
-- local workout drafts
-
-When the user request needs record context, cloud records may be summarized by a summary/context builder and temporarily sent to the AI Gateway. AI context builders should use compact summaries with user-visible permission or settings; they must not treat local SQLite cache as authoritative context.
+By default, V1 does not provide the model with complete raw food history, complete raw workout history, complete raw body-metric history, local export archives, or local workout drafts. When record context is needed, the app should use user-visible permission or settings and send only the minimum necessary summary.
 
 ## Cloud Profile
 
@@ -314,7 +295,7 @@ Rules:
 - Subscription-status loading is separate from Cloud Profile loading. If subscription lookup fails but Cloud Profile loads, Profile remains usable while AI sending stays unavailable.
 - The device may cache the profile for display, but a local cache write failure must not block the already loaded authoritative Cloud Profile. Cached Profile values may be shown during cloud refresh only when account-bound cache metadata matches the current signed-in account.
 - Profile UI edits are staged as a page-local draft. Taps and inputs update the Profile preview immediately, changed sections show visible modified markers, and the bottom Save Changes bar stays anchored near the bottom of the Profile body, expands upward for compact change details, and upserts one complete Cloud Profile snapshot.
-- Current body metrics on the Profile page, including weight, body-fat percentage, and waist circumference, are part of the Cloud Profile snapshot after login. Historical weight, body-fat, and waist records belong to cloud `body_metric_logs` after Phase 3. The Body Profile card provides the calendar/add record entry, and Body Trends remains read-only.
+- Current body metrics on the Profile page, including weight, body-fat percentage, and waist circumference, are part of the Cloud Profile snapshot after login. Historical weight, body-fat, and waist records belong to cloud `body_metric_logs`, while local `user_weight_logs` is only confirmed cache. The Body Profile card provides the calendar/add record entry, and Body Trends remains read-only.
 - Until Save Changes succeeds, other app areas and AI context should continue using the last saved authoritative Cloud Profile rather than the unsaved draft.
 - Offline profile editing is disabled.
 - If the user is offline, the Profile page may show cached values but cannot save changes.
@@ -337,9 +318,10 @@ AI send is disabled when:
 
 - user is not logged in
 - device is offline
+- current device has been replaced by a newer login for the same account
 - subscription is inactive
 
-The app may still let the user type or edit an unfinished prompt in disabled states. Sending requires all gates to pass.
+The app may still let the user type or edit an unfinished prompt in disabled states. Sending requires login, network, active device, Cloud Profile, subscription, and Gateway server checks to pass.
 
 Backend may log request counts and model cost internally, but V1 should not show a quota or remaining-credit UI unless that product decision changes.
 

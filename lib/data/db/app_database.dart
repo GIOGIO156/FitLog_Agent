@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 12;
+  static const int dbVersion = 15;
 
   Database? _database;
 
@@ -128,6 +128,20 @@ class AppDatabase {
           await _addBodyMetricProfileColumns(db);
           await _migrateWeightLogsForBodyMetrics(db);
         }
+        if (oldVersion < 13) {
+          await _addCloudCacheColumns(db);
+          await _createDailySummaryCacheTable(db);
+        }
+        if (oldVersion < 14) {
+          await _addCloudCacheColumns(db);
+          await _createDailySummaryCacheTable(db);
+        }
+        if (oldVersion < 15) {
+          await _createDailySummaryCacheTable(db);
+          await _ensureDailySummaryCacheColumns(db);
+          await _dedupeDailySummaryCache(db);
+          await _createDailySummaryCacheIndexes(db);
+        }
       },
     );
   }
@@ -173,6 +187,8 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE food_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id TEXT,
+        cloud_id TEXT,
         date TEXT NOT NULL,
         meal_name TEXT NOT NULL,
         total_weight_g REAL NOT NULL,
@@ -183,6 +199,11 @@ class AppDatabase {
         confidence REAL,
         estimation_notes TEXT,
         source TEXT NOT NULL,
+        record_version INTEGER NOT NULL DEFAULT 0,
+        cloud_updated_at TEXT,
+        deleted_at TEXT,
+        cache_confirmed INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -191,6 +212,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE food_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cloud_id TEXT,
         food_record_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         estimated_weight_g REAL NOT NULL,
@@ -206,6 +228,8 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE workout_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id TEXT,
+        cloud_id TEXT,
         plan_id TEXT,
         record_name TEXT,
         date TEXT NOT NULL,
@@ -228,6 +252,11 @@ class AppDatabase {
         exercise_snapshot_json TEXT,
         estimated_calories REAL NOT NULL,
         notes TEXT,
+        record_version INTEGER NOT NULL DEFAULT 0,
+        cloud_updated_at TEXT,
+        deleted_at TEXT,
+        cache_confirmed INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -236,6 +265,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE workout_sets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cloud_id TEXT,
         workout_session_id INTEGER NOT NULL,
         set_number INTEGER NOT NULL,
         weight_kg REAL NOT NULL,
@@ -258,6 +288,7 @@ class AppDatabase {
     await _createDietAdjustmentReviewTable(db);
     await _createWorkoutDraftTable(db);
     await _createCustomExerciseTable(db);
+    await _createDailySummaryCacheTable(db);
   }
 
   Future<void> _addWorkoutSnapshotColumns(Database db) async {
@@ -327,11 +358,17 @@ class AppDatabase {
       CREATE TABLE IF NOT EXISTS user_weight_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         account_id TEXT,
+        cloud_id TEXT,
         date TEXT NOT NULL,
         weight_kg REAL NOT NULL,
         body_fat_percent REAL,
         waist_cm REAL,
         source TEXT NOT NULL,
+        record_version INTEGER NOT NULL DEFAULT 0,
+        cloud_updated_at TEXT,
+        deleted_at TEXT,
+        cache_confirmed INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(account_id, date)
@@ -392,11 +429,17 @@ class AppDatabase {
       CREATE TABLE user_weight_logs_body_metrics_migration (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         account_id TEXT,
+        cloud_id TEXT,
         date TEXT NOT NULL,
         weight_kg REAL NOT NULL,
         body_fat_percent REAL,
         waist_cm REAL,
         source TEXT NOT NULL,
+        record_version INTEGER NOT NULL DEFAULT 0,
+        cloud_updated_at TEXT,
+        deleted_at TEXT,
+        cache_confirmed INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(account_id, date)
@@ -406,22 +449,34 @@ class AppDatabase {
       INSERT INTO user_weight_logs_body_metrics_migration (
         id,
         account_id,
+        cloud_id,
         date,
         weight_kg,
         body_fat_percent,
         waist_cm,
         source,
+        record_version,
+        cloud_updated_at,
+        deleted_at,
+        cache_confirmed,
+        cached_at,
         created_at,
         updated_at
       )
       SELECT
         id,
         NULL,
+        NULL,
         date,
         weight_kg,
         NULL,
         NULL,
         source,
+        0,
+        NULL,
+        NULL,
+        1,
+        NULL,
         created_at,
         updated_at
       FROM user_weight_logs
@@ -471,6 +526,161 @@ class AppDatabase {
     ''');
   }
 
+  Future<void> _createDailySummaryCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS daily_summary_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        summary_json TEXT NOT NULL,
+        summary_version INTEGER NOT NULL DEFAULT 0,
+        source_updated_at TEXT,
+        cloud_updated_at TEXT,
+        cache_confirmed INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(account_id, date)
+      )
+    ''');
+    await _ensureDailySummaryCacheColumns(db);
+    await _dedupeDailySummaryCache(db);
+    await _createDailySummaryCacheIndexes(db);
+  }
+
+  Future<void> _ensureDailySummaryCacheColumns(Database db) async {
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'account_id TEXT');
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'date TEXT');
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'summary_json TEXT');
+    await _addColumnIfMissing(
+      db,
+      'daily_summary_cache',
+      'summary_version INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      'daily_summary_cache',
+      'source_updated_at TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'daily_summary_cache',
+      'cloud_updated_at TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'daily_summary_cache',
+      'cache_confirmed INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'cached_at TEXT');
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'created_at TEXT');
+    await _addColumnIfMissing(db, 'daily_summary_cache', 'updated_at TEXT');
+  }
+
+  Future<void> _dedupeDailySummaryCache(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(daily_summary_cache)');
+    final names = columns.map((column) => column['name']).toSet();
+    if (!names.contains('id') ||
+        !names.contains('account_id') ||
+        !names.contains('date')) {
+      return;
+    }
+    await db.execute('''
+      DELETE FROM daily_summary_cache
+      WHERE id NOT IN (
+        SELECT MAX(id)
+        FROM daily_summary_cache
+        GROUP BY account_id, date
+      )
+    ''');
+  }
+
+  Future<void> _createDailySummaryCacheIndexes(Database db) async {
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_cache_account_date ON daily_summary_cache(account_id, date)',
+    );
+  }
+
+  Future<void> _addCloudCacheColumns(Database db) async {
+    await _addColumnIfMissing(db, 'food_records', 'account_id TEXT');
+    await _addColumnIfMissing(db, 'food_records', 'cloud_id TEXT');
+    await _addColumnIfMissing(
+      db,
+      'food_records',
+      'record_version INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(db, 'food_records', 'cloud_updated_at TEXT');
+    await _addColumnIfMissing(db, 'food_records', 'deleted_at TEXT');
+    await _addColumnIfMissing(
+      db,
+      'food_records',
+      'cache_confirmed INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(db, 'food_records', 'cached_at TEXT');
+    await _addColumnIfMissing(db, 'food_items', 'cloud_id TEXT');
+
+    await _addColumnIfMissing(db, 'workout_sessions', 'account_id TEXT');
+    await _addColumnIfMissing(db, 'workout_sessions', 'cloud_id TEXT');
+    await _addColumnIfMissing(
+      db,
+      'workout_sessions',
+      'record_version INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(db, 'workout_sessions', 'cloud_updated_at TEXT');
+    await _addColumnIfMissing(db, 'workout_sessions', 'deleted_at TEXT');
+    await _addColumnIfMissing(
+      db,
+      'workout_sessions',
+      'cache_confirmed INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(db, 'workout_sessions', 'cached_at TEXT');
+    await _addColumnIfMissing(db, 'workout_sets', 'cloud_id TEXT');
+
+    await _addColumnIfMissing(db, 'user_weight_logs', 'cloud_id TEXT');
+    await _addColumnIfMissing(
+      db,
+      'user_weight_logs',
+      'record_version INTEGER NOT NULL DEFAULT 0',
+    );
+    await _addColumnIfMissing(db, 'user_weight_logs', 'cloud_updated_at TEXT');
+    await _addColumnIfMissing(db, 'user_weight_logs', 'deleted_at TEXT');
+    await _addColumnIfMissing(
+      db,
+      'user_weight_logs',
+      'cache_confirmed INTEGER NOT NULL DEFAULT 1',
+    );
+    await _addColumnIfMissing(db, 'user_weight_logs', 'cached_at TEXT');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_food_records_account_date ON food_records(account_id, date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_food_records_cloud_id ON food_records(cloud_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_workout_sessions_account_date ON workout_sessions(account_id, date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_workout_sessions_cloud_id ON workout_sessions(cloud_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_weight_logs_account_date ON user_weight_logs(account_id, date)',
+    );
+  }
+
+  Future<void> _addColumnIfMissing(
+    Database db,
+    String table,
+    String columnDefinition,
+  ) async {
+    final columnName = columnDefinition.split(' ').first;
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = columns.any((column) => column['name'] == columnName);
+    if (!exists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $columnDefinition');
+    }
+  }
+
   Future<void> clearAllLocalData() async {
     final db = await database;
     await db.transaction((txn) async {
@@ -484,6 +694,7 @@ class AppDatabase {
       await txn.delete('calorie_calibration_state');
       await txn.delete('diet_adjustment_reviews');
       await txn.delete('user_profile');
+      await txn.delete('daily_summary_cache');
     });
   }
 }

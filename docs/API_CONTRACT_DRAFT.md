@@ -68,7 +68,7 @@ Locked backend mapping:
 | Auth/session | Supabase Auth, email OTP only for V1 start |
 | Cloud database | Supabase Postgres |
 | Cloud Profile | `cloud_profiles` table in Supabase Postgres |
-| Cloud Records | `body_metric_logs`, `food_records`, `food_items`, `workout_records`, `workout_sessions`, `workout_sets` |
+| Cloud Records | `body_metric_logs`, `food_records`, `food_items`, `workout_sessions`, `workout_sets`; a separate `workout_records` parent can be added later if the workout UI needs a record header distinct from sessions |
 | Daily summaries | `daily_summaries` table or equivalent service-maintained summary view |
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
@@ -121,6 +121,7 @@ Stable error code families:
 ```text
 auth_required
 auth_expired
+device_replaced
 subscription_inactive
 network_unavailable
 profile_not_found
@@ -145,6 +146,8 @@ Recommended endpoints:
 
 ```text
 POST /auth/*
+POST /account/active-device/claim
+POST /account/active-device/release
 GET  /subscription/status
 GET  /profile
 PUT  /profile
@@ -233,9 +236,46 @@ Rules:
 - Offline saves are disabled. No pending profile merge is introduced in V1.
 - Account deletion deletes Cloud Profile and account-bound identifiable AI conversation data.
 
+## Active Device Contract
+
+V1 uses one active device per account. A newer login takes over the account (`last login wins`). This avoids realtime multi-device sync and prevents older devices from continuing official writes while their old access token may still be temporarily valid.
+
+Client behavior:
+
+- Each app install creates and locally stores a stable `device_id`.
+- After sign-in succeeds, the app calls `claim_active_device`.
+- If a later cloud read, official write, subscription refresh, or AI request returns `device_replaced`, the app clears local auth/session state and shows a specific account-replaced message instead of a generic upload failure.
+- Older devices do not need realtime push logout; they become inactive on their next cloud interaction.
+
+Recommended RPCs/endpoints:
+
+```text
+POST /account/active-device/claim
+POST /account/active-device/release
+```
+
+`claim_active_device` request:
+
+```json
+{
+  "device_id": "dev_...",
+  "session_id": "sess_...",
+  "platform": "android",
+  "app_version": "1.0.0"
+}
+```
+
+Rules:
+
+- The server derives `account_id` from auth context.
+- The newest successful claim overwrites the previous active device.
+- Official body/food/workout writes, Cloud Profile saves, and AI Gateway requests must call an active-device guard such as `assert_active_device`.
+- `device_replaced` is stable and non-retryable with the old session. Re-login may claim the account again.
+- Supabase single-session behavior may assist session cleanup, but correctness must not rely on immediate old-session revocation.
+
 ## Cloud Records Contract
 
-Cloud Records are introduced before AI Gateway workflows depend on user history. They are the official source of truth for signed-in body metrics, food records, workout records, and daily summaries. Local SQLite may cache subsets for performance, but cache completeness must not be required for AI context or export correctness.
+Cloud Records are introduced before AI Gateway workflows depend on user history. They are the official source of truth for signed-in body metrics, food records, workout records, and daily summaries. Local SQLite may cache subsets for performance, but cache completeness must not be required for AI context or export correctness. Detailed cache-first, warm-cache, eviction, failure, conflict, and repair policy lives in `docs/en/CloudLocalDataBoundary.md` / `docs/zh/CloudLocalDataBoundary.md`.
 
 Core tables:
 
@@ -267,6 +307,7 @@ Common record fields:
 Rules:
 
 - All record reads and writes are scoped to the authenticated account.
+- Official writes must pass active-device verification; older devices receive `device_replaced` and must not create local official records.
 - `body_metric_logs` stores historical measurements only: weight, body-fat percentage, and waist circumference.
 - The current Profile body fields remain in Cloud Profile; historical body logs do not include age, height, or sex.
 - `body_metric_logs` should be unique per `account_id + date`.
@@ -297,12 +338,10 @@ GET    /summaries/daily?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
 
 Local cache contract:
 
-- The app may prefetch and pin the most recent 30 days.
-- The app may cache older dates or months after the user opens them.
-- Cache entries should track `last_accessed_at`, pinned state, pending state, and source record version.
-- Cache eviction may remove old, unpinned, cloud-confirmed entries when size limits are reached.
-- Cache eviction must not remove pending writes, pending deletes, or the currently viewed date/month.
+- Local cache is a performance and read-model layer, not the official source.
+- Cache entries should track enough account, freshness, pending, and source-version metadata to enforce the boundary rules.
 - Eviction deletes local cache only; cloud records remain authoritative and can be fetched again.
+- Detailed cache-first, warm-cache, pinning, eviction, account-switch, failure, and repair rules live in `docs/en/CloudLocalDataBoundary.md` / `docs/zh/CloudLocalDataBoundary.md`.
 
 ## AI Gateway Request
 
@@ -319,6 +358,7 @@ Local cache contract:
   "workflow_hint": "auto",
   "selected_date": "2026-06-17",
   "profile_version": "profile_42",
+  "device_id": "dev_...",
   "attachments": [
     {
       "attachment_id": "att_...",
@@ -620,9 +660,9 @@ Rules:
 | AI request log / debug summary model | Drafted |
 | Cloud Profile fields | Drafted |
 | Cloud Profile and local cache relationship | Locked |
-| Cloud Records source of truth | Drafted: cloud records authoritative, local SQLite partial cache |
-| Records API shape | Drafted |
-| Daily summary API shape | Drafted |
+| Cloud Records source of truth | Implemented foundation: active-device guard, Cloud Records migration, cloud-backed body/food/workout repositories, local SQLite partial cache |
+| Records API shape | Implemented in Flutter repositories for body/food/workout; formal service API can still wrap the same contract |
+| Daily summary API shape | Table drafted/created; cloud upsert coordinator remains Phase 3 hardening |
 | Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
 | Offline Profile behavior | Locked |
 | Image upload/compression/temporary retention | Locked: Supabase Storage temp bucket, 2 images/request, target <= 1.5 MB, hard reject > 5 MB, 24h TTL |

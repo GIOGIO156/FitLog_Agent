@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:fitlog_local/data/db/app_database.dart';
 import 'package:fitlog_local/data/repositories/ai_local_context_permission_repository.dart';
+import 'package:fitlog_local/data/repositories/active_device_repository.dart';
 import 'package:fitlog_local/data/repositories/auth_repository.dart';
 import 'package:fitlog_local/data/repositories/cloud_profile_repository.dart';
 import 'package:fitlog_local/data/repositories/custom_exercise_repository.dart';
@@ -44,13 +47,47 @@ void main() {
     final cloudProfile = const CloudProfileMapper().defaultForAccount('acct_1');
     final controller = _buildController(cloudProfile: cloudProfile);
 
-    await controller.initialize();
+    await _initializeController(controller);
 
     expect(controller.authSession.isSignedIn, isTrue);
     expect(controller.subscriptionStatus.isActive, isTrue);
     expect(controller.cloudProfileState.isReady, isTrue);
     expect(controller.localContextPermission?.allowed, isFalse);
   });
+
+  test(
+    'AccountController cold start does not wait for active device claim',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final claimCompleter = Completer<void>();
+      final cloudProfile = const CloudProfileMapper().defaultForAccount(
+        'acct_1',
+      );
+      final controller = AccountController(
+        authRepository: _FakeAuthRepository(),
+        subscriptionRepository: _FakeSubscriptionRepository(),
+        cloudProfileRepository: _FakeCloudProfileRepository(cloudProfile),
+        profileRepository: _FakeProfileRepository(AppDatabase.instance),
+        contextPermissionRepository: const AiLocalContextPermissionRepository(),
+        activeDeviceRepository: _BlockingActiveDeviceRepository(
+          claimCompleter.future,
+        ),
+        backendConfigured: true,
+      );
+
+      await controller.initialize().timeout(const Duration(seconds: 1));
+
+      expect(controller.initialized, isTrue);
+      expect(controller.authSession.isSignedIn, isTrue);
+      expect(controller.cloudProfileState.isReady, isFalse);
+
+      claimCompleter.complete();
+      await controller.waitForBackgroundAccountState();
+
+      expect(controller.subscriptionStatus.isActive, isTrue);
+      expect(controller.cloudProfileState.isReady, isTrue);
+    },
+  );
 
   test(
     'AccountController creates a default Cloud Profile for new accounts',
@@ -67,7 +104,7 @@ void main() {
         backendConfigured: true,
       );
 
-      await controller.initialize();
+      await _initializeController(controller);
 
       expect(controller.authSession.isSignedIn, isTrue);
       expect(controller.cloudProfileState.isReady, isTrue);
@@ -94,7 +131,7 @@ void main() {
         backendConfigured: true,
       );
 
-      await controller.initialize();
+      await _initializeController(controller);
 
       expect(controller.authSession.isSignedIn, isTrue);
       expect(controller.subscriptionStatus.state, SubscriptionState.error);
@@ -123,7 +160,7 @@ void main() {
         backendConfigured: true,
       );
 
-      await controller.initialize();
+      await _initializeController(controller);
 
       expect(controller.cloudProfileState.isReady, isTrue);
       expect(controller.cloudProfileState.cloudProfile?.accountId, 'acct_1');
@@ -143,7 +180,7 @@ void main() {
       backendConfigured: true,
     );
 
-    await controller.initialize();
+    await _initializeController(controller);
 
     expect(controller.cloudProfileState.status, CloudProfileStatus.error);
     expect(controller.cloudProfileState.errorCode, 'profile_schema_mismatch');
@@ -169,7 +206,7 @@ void main() {
         backendConfigured: true,
       );
 
-      await controller.initialize();
+      await _initializeController(controller);
       expect(controller.cloudProfileState.isReady, isTrue);
 
       await expectLater(
@@ -189,7 +226,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final cloudProfile = const CloudProfileMapper().defaultForAccount('acct_1');
     final controller = _buildController(cloudProfile: cloudProfile);
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       MultiProvider(
@@ -226,7 +263,7 @@ void main() {
       profileVersion: 1,
     );
     final controller = _buildController(cloudProfile: cloudProfile);
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       MultiProvider(
@@ -259,7 +296,7 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     final cloudProfile = const CloudProfileMapper().defaultForAccount('acct_1');
     final controller = _buildController(cloudProfile: cloudProfile);
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       MultiProvider(
@@ -312,7 +349,7 @@ void main() {
         contextPermissionRepository: const AiLocalContextPermissionRepository(),
         backendConfigured: true,
       );
-      await controller.initialize();
+      await _initializeController(controller);
 
       await tester.pumpWidget(
         _buildProfileTestApp(
@@ -453,7 +490,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -503,7 +540,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -557,7 +594,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -635,7 +672,7 @@ void main() {
         contextPermissionRepository: const AiLocalContextPermissionRepository(),
         backendConfigured: true,
       );
-      await controller.initialize();
+      await _initializeController(controller);
 
       await tester.pumpWidget(
         _buildProfileTestApp(
@@ -689,7 +726,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -760,7 +797,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -813,7 +850,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -865,7 +902,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -917,7 +954,7 @@ void main() {
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
       backendConfigured: true,
     );
-    await controller.initialize();
+    await _initializeController(controller);
 
     await tester.pumpWidget(
       _buildProfileTestApp(
@@ -968,6 +1005,11 @@ void main() {
   });
 }
 
+Future<void> _initializeController(AccountController controller) async {
+  await controller.initialize();
+  await controller.waitForBackgroundAccountState();
+}
+
 AccountController _buildController({required CloudProfile cloudProfile}) {
   return AccountController(
     authRepository: _FakeAuthRepository(),
@@ -977,6 +1019,21 @@ AccountController _buildController({required CloudProfile cloudProfile}) {
     contextPermissionRepository: const AiLocalContextPermissionRepository(),
     backendConfigured: true,
   );
+}
+
+class _BlockingActiveDeviceRepository implements ActiveDeviceRepository {
+  const _BlockingActiveDeviceRepository(this.claimFuture);
+
+  final Future<void> claimFuture;
+
+  @override
+  Future<void> claim(AuthSession session) => claimFuture;
+
+  @override
+  Future<void> assertActive() async {}
+
+  @override
+  Future<void> release() async {}
 }
 
 class _FakeAuthRepository implements AuthRepository {

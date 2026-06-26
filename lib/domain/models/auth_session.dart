@@ -4,6 +4,7 @@ class AuthSession {
   const AuthSession({
     required this.status,
     this.accountId,
+    this.sessionId,
     this.email,
     this.displayName,
     this.accessTokenExpiresAt,
@@ -21,6 +22,7 @@ class AuthSession {
 
   final AuthSessionStatus status;
   final String? accountId;
+  final String? sessionId;
   final String? email;
   final String? displayName;
   final DateTime? accessTokenExpiresAt;
@@ -32,6 +34,7 @@ class AuthSession {
   AuthSession copyWith({
     AuthSessionStatus? status,
     String? accountId,
+    String? sessionId,
     String? email,
     String? displayName,
     DateTime? accessTokenExpiresAt,
@@ -40,6 +43,7 @@ class AuthSession {
     return AuthSession(
       status: status ?? this.status,
       accountId: accountId ?? this.accountId,
+      sessionId: sessionId ?? this.sessionId,
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
       accessTokenExpiresAt: accessTokenExpiresAt ?? this.accessTokenExpiresAt,

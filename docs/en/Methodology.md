@@ -244,7 +244,7 @@ Agent V1 needs account-bound AI personalization:
 
 Therefore, after login, Cloud Profile is the authoritative profile. The device may cache it for display. Offline profile saving is disabled in V1 so there is no profile merge conflict.
 
-After Phase 3, signed-in body, food, and workout official records also use the cloud as the authoritative source. Local SQLite is only partial cache, draft storage, and runtime acceleration; it is not a complete history mirror. When AI needs recent context, the app should send compact summaries from cloud summary/context builders instead of uploading complete raw history.
+After Phase 3, signed-in body, food, and workout official records also use the cloud as the authoritative source. Local SQLite is only partial cache, draft storage, and runtime acceleration; it is not a complete history mirror. When AI needs recent context, the app should send compact summaries from cloud summary/context builders instead of uploading complete raw history. Engineering rules live in `CloudLocalDataBoundary.md`.
 
 ## Why User Confirmation Is Required
 

@@ -36,6 +36,7 @@ V1 已锁定的关键取舍：
 - 离线时 Profile 可查看缓存，但禁止保存修改。
 - Chat history 登录后云端保存，左侧可折叠历史栏展示，本地不长期保存。
 - V1 采用订阅制，不做用户可见的按次额度 UI。
+- V1 采用单 active device，last login wins；旧设备收到 `device_replaced` 后不能继续正式写入或 AI 发送。
 - AI 使用远程 LLM；模型 API key 由服务端统一管理，不让用户在 App 内填写。
 - V1 支持 Structured RAG 和 Document RAG 设计，但不把用户业务数据做长期 embedding / semantic memory。
 - Phase 3 Cloud Records Foundation 后，body/food/workout 正式记录以云端为 source of truth；本地 SQLite 只做 partial cache，不做完整历史镜像。
@@ -700,10 +701,7 @@ request status / error code
 V1 本地保存：
 
 ```text
-recent body/food/workout cache
-visited historical date/month cache
-daily summary cache
-cache metadata
+account-bound records/read-model cache
 draft records
 custom exercise cache
 workout_record_drafts
@@ -714,14 +712,15 @@ cached selected date / UI state
 
 ## 9.3 本地 partial cache 边界
 
-本地 SQLite 在 Phase 3 后不是正式业务 source of truth，而是 partial cache：
+本地 SQLite 在 Phase 3 后不是正式业务 source of truth，而是 partial cache、草稿和运行期加速层。cache-first 读取、warm cache、容量、淘汰、账号切换、失败和修复规则以 `docs/zh/CloudLocalDataBoundary.md` / `docs/en/CloudLocalDataBoundary.md` 为准。
 
-- 默认预取最近 30 天记录和 daily summaries；
-- 最近 30 天、当前查看日期/月、pending 草稿和未成功同步操作不得被清理；
-- 用户查看 30 天以前历史时按日期或月份从云端加载，显示后写入 cache；
-- cache 达到容量或行数上限时，按 `last_accessed_at`、数据体积和 pinned/pending 状态清理可重建数据；
-- 清理 cache 不删除云端正式记录；
-- 不做完整历史 SQLite 镜像。
+本阶段仍不做完整历史 SQLite 镜像；清理 cache 不删除云端正式记录。
+
+## 9.3.1 单 active device 与旧设备替换
+
+Phase 3 应先落账号级 active-device 边界，再开放 Cloud Records 写入。登录成功后当前设备调用 `claim_active_device` 接管账号；正式 body/food/workout records、Cloud Profile 保存和后续 AI Gateway 请求都必须通过 active-device guard。
+
+新设备登录采用 last login wins。旧设备不需要实时收到推送下线，但下一次 session refresh、云端读取、正式写入、订阅刷新或 AI 请求返回 `device_replaced` 时，App 必须显示“账号已在另一台设备登录”，清本地登录态并回到登录/重新接管路径。`device_replaced` 不能显示成普通上传失败，也不能允许旧设备继续重试同一 session。
 
 ## 9.4 旧本机历史与迁移
 

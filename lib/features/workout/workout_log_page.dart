@@ -370,12 +370,22 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
       return;
     }
 
-    if (group.planId == null) {
-      await services.workoutRepository.deleteWorkoutSession(
-        group.sessions.first.id!,
+    try {
+      if (group.planId == null) {
+        await services.workoutRepository.deleteWorkoutSession(
+          group.sessions.first.id!,
+        );
+      } else {
+        await services.workoutRepository.deleteWorkoutPlan(group.planId!);
+      }
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.failedToDeleteWorkout(error))),
       );
-    } else {
-      await services.workoutRepository.deleteWorkoutPlan(group.planId!);
+      return;
     }
 
     if (!context.mounted) {

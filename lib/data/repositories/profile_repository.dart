@@ -1,11 +1,15 @@
 import '../../core/utils/date_utils.dart';
 import '../../domain/models/calorie_calibration_state.dart';
 import '../../domain/models/diet_adjustment_review.dart';
+import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/user_profile.dart';
 import '../../domain/models/weight_log.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:supabase/supabase.dart' as supabase;
 
+import 'active_device_repository.dart';
 import '../db/app_database.dart';
+import 'phase2_repository_exception.dart';
 
 class ProfileRepository {
   ProfileRepository(this._database);
@@ -51,7 +55,7 @@ class ProfileRepository {
     );
 
     final today = DateUtilsX.todayKey();
-    await upsertWeightLog(
+    await _upsertLocalWeightLog(
       accountId: accountId ?? _activeAccountId,
       date: today,
       weightKg: payload.weightKg,
@@ -178,6 +182,27 @@ class ProfileRepository {
     double? waistCm,
     String source = 'manual',
   }) async {
+    await _upsertLocalWeightLog(
+      accountId: accountId,
+      date: date,
+      weightKg: weightKg,
+      bodyFatPercent: bodyFatPercent,
+      waistCm: waistCm,
+      source: source,
+    );
+  }
+
+  Future<void> _upsertLocalWeightLog({
+    String? accountId,
+    required String date,
+    required double weightKg,
+    double? bodyFatPercent,
+    double? waistCm,
+    String source = 'manual',
+    String? cloudId,
+    int recordVersion = 0,
+    String? cloudUpdatedAt,
+  }) async {
     final db = await _database.database;
     final now = DateTime.now().toIso8601String();
     final effectiveAccountId = accountId ?? _activeAccountId;
@@ -204,6 +229,12 @@ class ProfileRepository {
         'body_fat_percent': bodyFatPercent,
         'waist_cm': waistCm,
         'source': source,
+        'cloud_id': cloudId,
+        'record_version': recordVersion,
+        'cloud_updated_at': cloudUpdatedAt,
+        'deleted_at': null,
+        'cache_confirmed': 1,
+        'cached_at': now,
         'created_at': now,
         'updated_at': now,
       });
@@ -221,6 +252,12 @@ class ProfileRepository {
         'body_fat_percent': bodyFatPercent,
         'waist_cm': waistCm,
         'source': source,
+        'cloud_id': cloudId,
+        'record_version': recordVersion,
+        'cloud_updated_at': cloudUpdatedAt,
+        'deleted_at': null,
+        'cache_confirmed': 1,
+        'cached_at': now,
         'created_at': existingCreatedAt,
         'updated_at': now,
       },
@@ -237,8 +274,8 @@ class ProfileRepository {
     final db = await _database.database;
     final effectiveAccountId = accountId ?? _activeAccountId;
     final where = effectiveAccountId == null
-        ? 'date >= ? AND date <= ? AND account_id IS NULL'
-        : 'date >= ? AND date <= ? AND account_id = ?';
+        ? 'date >= ? AND date <= ? AND account_id IS NULL AND deleted_at IS NULL'
+        : 'date >= ? AND date <= ? AND account_id = ? AND deleted_at IS NULL';
     final whereArgs = effectiveAccountId == null
         ? <Object?>[startDate, endDate]
         : <Object?>[startDate, endDate, effectiveAccountId];
@@ -281,5 +318,193 @@ class ProfileRepository {
       payload.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+}
+
+class CloudBackedProfileRepository extends ProfileRepository {
+  CloudBackedProfileRepository({
+    required AppDatabase database,
+    required this.client,
+    required this.runtimeContext,
+    required this.activeDeviceRepository,
+  }) : super(database);
+
+  final supabase.SupabaseClient client;
+  final CloudRuntimeContext runtimeContext;
+  final ActiveDeviceRepository activeDeviceRepository;
+
+  @override
+  Future<void> upsertWeightLog({
+    String? accountId,
+    required String date,
+    required double weightKg,
+    double? bodyFatPercent,
+    double? waistCm,
+    String source = 'manual',
+  }) async {
+    final effectiveAccountId = accountId ?? _requireAccountId();
+    setActiveAccountId(effectiveAccountId);
+    await activeDeviceRepository.assertActive();
+    try {
+      final rows = await client
+          .from('body_metric_logs')
+          .upsert(<String, dynamic>{
+            'account_id': effectiveAccountId,
+            'date': date,
+            'weight_kg': weightKg,
+            'body_fat_percent': bodyFatPercent,
+            'waist_cm': waistCm,
+            'source': source,
+          }, onConflict: 'account_id,date')
+          .select()
+          .limit(1);
+      if (rows.isEmpty) {
+        throw const Phase2RepositoryException('body_metric_save_no_row');
+      }
+      final row = Map<String, dynamic>.from(rows.first);
+      await _upsertLocalWeightLog(
+        accountId: effectiveAccountId,
+        date: row['date']?.toString() ?? date,
+        weightKg: _toDouble(row['weight_kg'], fallback: weightKg),
+        bodyFatPercent: _toNullableDouble(row['body_fat_percent']),
+        waistCm: _toNullableDouble(row['waist_cm']),
+        source: row['source']?.toString() ?? source,
+        cloudId: row['id']?.toString(),
+        recordVersion: _recordVersion(row),
+        cloudUpdatedAt: _updatedAt(row),
+      );
+    } on Phase2RepositoryException {
+      rethrow;
+    } catch (error) {
+      throw _cloudRecordExceptionFor('body_metric_save_failed', error);
+    }
+  }
+
+  @override
+  Future<List<WeightLog>> getWeightLogsBetween({
+    required String startDate,
+    required String endDate,
+    String? accountId,
+  }) async {
+    final effectiveAccountId = accountId ?? runtimeContext.accountId;
+    if ((effectiveAccountId ?? '').isEmpty) {
+      return super.getWeightLogsBetween(
+        startDate: startDate,
+        endDate: endDate,
+        accountId: accountId,
+      );
+    }
+    setActiveAccountId(effectiveAccountId);
+    final cached = await super.getWeightLogsBetween(
+      startDate: startDate,
+      endDate: endDate,
+      accountId: effectiveAccountId,
+    );
+    if (cached.isNotEmpty) {
+      return cached;
+    }
+    try {
+      await activeDeviceRepository.assertActive();
+      final rows = await client
+          .from('body_metric_logs')
+          .select()
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .filter('deleted_at', 'is', null)
+          .order('date', ascending: true);
+      for (final rawRow in rows) {
+        final row = Map<String, dynamic>.from(rawRow);
+        await _upsertLocalWeightLog(
+          accountId: effectiveAccountId!,
+          date: row['date']?.toString() ?? '',
+          weightKg: _toDouble(row['weight_kg']),
+          bodyFatPercent: _toNullableDouble(row['body_fat_percent']),
+          waistCm: _toNullableDouble(row['waist_cm']),
+          source: row['source']?.toString() ?? 'cloud',
+          cloudId: row['id']?.toString(),
+          recordVersion: _recordVersion(row),
+          cloudUpdatedAt: _updatedAt(row),
+        );
+      }
+      return super.getWeightLogsBetween(
+        startDate: startDate,
+        endDate: endDate,
+        accountId: effectiveAccountId,
+      );
+    } catch (_) {
+      return cached;
+    }
+  }
+
+  String _requireAccountId() {
+    final accountId = runtimeContext.accountId;
+    if ((accountId ?? '').isEmpty) {
+      throw const Phase2RepositoryException('auth_required');
+    }
+    return accountId!;
+  }
+
+  int _recordVersion(Map<String, dynamic> row) {
+    final value = row['record_version'];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _updatedAt(Map<String, dynamic> row) {
+    return row['updated_at']?.toString() ?? DateTime.now().toIso8601String();
+  }
+
+  double _toDouble(Object? value, {double fallback = 0}) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  double? _toNullableDouble(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    return _toDouble(value);
+  }
+
+  Phase2RepositoryException _cloudRecordExceptionFor(
+    String fallbackCode,
+    Object error,
+  ) {
+    if (error is Phase2RepositoryException) {
+      return error;
+    }
+    final raw = error.toString();
+    final normalized = raw.toLowerCase();
+    if (normalized.contains('device_replaced') ||
+        normalized.contains('not_active_device')) {
+      runtimeContext.markDeviceReplaced();
+      return Phase2RepositoryException('device_replaced', raw);
+    }
+    if (normalized.contains('row-level security') ||
+        normalized.contains('permission denied') ||
+        normalized.contains('401') ||
+        normalized.contains('403')) {
+      return Phase2RepositoryException('record_rls_denied', raw);
+    }
+    if (normalized.contains('socket') ||
+        normalized.contains('failed host lookup') ||
+        normalized.contains('connection') ||
+        normalized.contains('timeout') ||
+        normalized.contains('network')) {
+      return Phase2RepositoryException('record_network_error', raw);
+    }
+    if (normalized.contains('schema cache') ||
+        normalized.contains('column') ||
+        normalized.contains('does not exist')) {
+      return Phase2RepositoryException('record_schema_mismatch', raw);
+    }
+    return Phase2RepositoryException(fallbackCode, raw);
   }
 }

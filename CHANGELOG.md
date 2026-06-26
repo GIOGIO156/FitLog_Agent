@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-06-27 Phase 3 Home Summary Cache Migration Repair
+
+### Fixed
+
+- Bumped the local SQLite schema to v15 and added an idempotent `daily_summary_cache` repair so devices that installed an intermediate v14 build receive the `summary_json` cache column and account/date unique index without clearing local data.
+- Kept selected-day summary cache writes off the Home critical path: if the optional local cache write fails, Home still displays the freshly built summary.
+
+### Validation
+
+- Ran `dart format lib\data\db\app_database.dart lib\domain\services\daily_summary_service.dart test\daily_summary_cache_test.dart`.
+- Ran targeted `flutter test test\daily_summary_cache_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Confirmed the required documentation tree and searched for replacement characters.
+- Rebuilt debug split APKs with `config/supabase.local.json`.
+
+## 2026-06-27 Phase 3 Cache-First Hardening
+
+### Added
+
+- Added selected-day `daily_summary_cache` support for Home, including `DailySummary` JSON round-trip serialization for dashboard totals and compact food/workout records.
+- Added Home stale-while-revalidate behavior: matching confirmed summary cache renders first, then the selected day is rebuilt in the background and the local confirmed summary cache is refreshed.
+- Added a non-blocking signed-in startup path so persisted sessions can enter the tab shell before active-device claim, subscription refresh, and Cloud Profile refresh finish.
+
+### Changed
+
+- Kept matching cached Cloud Profile data visible while background account refresh runs, avoiding a downgrade back to Profile loading/error states during normal recovery.
+- Updated bilingual design docs and roadmap to distinguish the implemented selected-day cache/SWR hardening from the remaining cloud daily-summary upsert coordinator, broader warm-cache scheduler, repair UI, and export hardening.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran `flutter analyze`.
+- Ran targeted `flutter test test\daily_summary_cache_test.dart` and `flutter test test\phase2_account_controller_test.dart`.
+- Ran `flutter test`.
+- Rebuilt debug split APKs with `config/supabase.local.json`.
+
+## 2026-06-27 Phase 3 Local Cache Migration Repair
+
+### Fixed
+
+- Bumped the local SQLite schema to v14 and re-ran the idempotent Phase 3 cache-column migration for devices that installed an intermediate v13 build without all cloud/cache columns.
+- Fixed body, food, and workout cloud writes failing during local confirmed-cache updates with missing `cloud_id` or `cloud_updated_at` SQLite columns.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Rebuilt debug split APKs with `config/supabase.local.json`.
+
+## 2026-06-26 Phase 3 Cloud Records Foundation
+
+### Added
+
+- Added the Phase 3 Supabase migration for active-device RPCs, Cloud Records tables, RLS, soft delete, record versions, timestamps, and `daily_summaries`.
+- Added Flutter active-device runtime state and repository support for `claim_active_device`, `assert_active_device`, `release_active_device`, and `device_replaced`.
+- Added cloud-backed body, food, and workout repositories that write to Supabase first and update local confirmed cache only after cloud success.
+- Added local SQLite schema v13 cloud/cache metadata for account-bound partial cache and confirmed read models.
+
+### Changed
+
+- Moved the app root behind an auth gate so signed-out users do not see the five-tab official-record shell.
+- Kept subscription failures scoped to AI availability while non-AI record pages depend on auth/Cloud Records instead.
+- Updated design docs and roadmap to reflect the implemented Phase 3 foundation and remaining hardening for daily-summary upsert, warm-cache scheduling, repair UI, and export completeness.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+
+## 2026-06-26 Cloud Local Boundary Source Split
+
+### Changed
+
+- Reintroduced bilingual `CloudLocalDataBoundary.md` as the Phase 3 target source for cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair.
+- Trimmed duplicated cloud/local cache and authority rules from README, Product, AppGuide, Database, AgentDesign, Methodology, API contract, roadmap, and implementation planning docs so they summarize and link to the boundary doc.
+- Added Phase 3 guardrails for auth independence, state-slice isolation, user-action feedback, bounded refresh traffic, visual stability, daily-summary rebuild strategy, and landing-order regression tests.
+- Added the Phase 3 single-active-device policy, active-device schema/RPC contract, `device_replaced` behavior, and last-login-wins UX so older devices cannot keep writing official records.
+- Marked the CloudLocal implementation map and acceptance criteria as Phase 3 target behavior, not current Phase 2.5 implementation.
+
+### Validation
+
+- Documentation-only change; Flutter analysis/tests were not run.
+- Confirmed required documentation tree exists and searched docs for replacement characters, stale design-doc paths, date-appended stable-doc headings, and CloudLocal references.
+
 ## 2026-06-25 Cloud Records Foundation Planning
 
 ### Changed

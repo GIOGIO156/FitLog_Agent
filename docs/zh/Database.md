@@ -2,16 +2,16 @@
 
 ## 目标
 
-本文定义 FitLog_Agent V1 的存储边界。
+本文定义 FitLog_Agent V1 的 schema、migration、表、字段和存储概念。云端/本地权威、cache-first 读取、写入成功标准、刷新、异常、冲突和修复规则统一定义在 `CloudLocalDataBoundary.md`。
 
-当前复制来的源码使用 FitLog Local 的 SQLite schema 保存业务记录。Phase 2 新增基于 Supabase 的账号、订阅状态和 Cloud Profile 基础。Phase 3 Cloud Records Foundation 应把 body/food/workout 正式记录和 daily summaries 上云，并把本地 SQLite 降级为 partial cache、草稿和运行期加速层。后续 AI Gateway、RAG 和 Food Draft 都应基于云端正式记录或 summary builder，而不是本地完整 SQLite。
+当前复制来的源码使用 FitLog Local 的 SQLite schema 保存业务记录。Phase 2 新增基于 Supabase 的账号、订阅状态和 Cloud Profile 基础。Phase 3 Cloud Records Foundation 已落地 root auth gate、单 active device、Cloud Records 表、body/food/workout 云端写入守卫、账号绑定的本地 cache 元数据、cloud-backed body/food/workout repository，以及 Home stale-while-revalidate 所需的选中日期 daily summary 本地 cache。登录后正式记录以云端为权威；本地 SQLite 降级为 partial cache、草稿和运行期加速层。后续 AI Gateway、RAG 和 Food Draft 都应基于云端正式记录或 summary builder，而不是本地完整 SQLite。
 
 ## 存储总览
 
 | 存储 | 用途 | 当前状态 |
 | --- | --- | --- |
-| SQLite / `sqflite` | 当前实现中的本地饮食、训练、身体指标历史、profile 基线/cache、校准、策略复盘、自定义动作、训练草稿；Phase 3 后作为 partial cache 和草稿层。 | Local 基线已实现，Phase 3 需降级角色。 |
-| Supabase Cloud Records | `body_metric_logs`、food/workout records、`daily_summaries`。 | Phase 3 目标。 |
+| SQLite / `sqflite` | 本地 profile/cache、校准、策略复盘、自定义动作、训练草稿、账号绑定 confirmed read model、选中日期 `daily_summary_cache` 和 partial cache。 | Local 基线已实现；Phase 3 schema v15 承载 cloud/cache 元数据和选中日期 summary cache。 |
+| Supabase Cloud Records | `body_metric_logs`、`food_records`/`food_items`、`workout_sessions`/`workout_sets`、`daily_summaries`。 | Phase 3 migration 已新增；body/food/workout 读写已接入 cloud-backed repository。 |
 | SharedPreferences | UI 语言偏好、本地主题偏好、轻量 app 偏好、按账号保存的用户记录摘要授权、Cloud Profile 展示缓存，以及 Supabase 注册验证码所需的 PKCE verifier 状态。 | Local 基线和 Phase 2 账号基础已实现；auth verifier 和 theme key 是本机运行期/展示状态，不是业务记录同步。 |
 | 本地文件 | App documents directory 中的 XLSX 和 CSV ZIP 导出。 | Local 基线已实现。 |
 | 云端数据库 | Supabase Auth 账号身份、订阅 entitlement rows、Cloud Profile，以及后续 AI chats/request logs/最终回答/debug summaries。 | Phase 2 migration 已新增 `subscriptions` 和 `cloud_profiles`；后续 AI 表仍是计划。 |
@@ -20,7 +20,7 @@
 
 当前本地数据库名：`fitlog_local.db`。
 
-当前本地 SQLite schema version：`12`。
+当前本地 SQLite schema version：`15`。
 
 Foreign keys 启用方式：
 
@@ -46,6 +46,9 @@ PRAGMA foreign_keys = ON
 | 10 | 新增 `workout_record_drafts`。 |
 | 11 | 新增 `custom_exercises`、动作快照、有氧强度 metadata、workout set 原始值与计算值字段。 |
 | 12 | 在 `user_profile` 新增体脂和腰围字段，并在 `user_weight_logs` 新增账号作用域和身体指标字段。 |
+| 13 | 为 food/workout/body 本地 cache 增加 `account_id`、`cloud_id`、`record_version`、`cloud_updated_at`、`deleted_at`、`cache_confirmed`、`cached_at` 等云端 confirmed read model 元数据，并新增 `daily_summary_cache`。 |
+| 14 | 重新运行幂等的 Phase 3 cache 补列迁移，让安装过中间 v13 测试包的设备无需清除本地数据也能补齐 cloud/cache 字段。 |
+| 15 | 新增幂等的 `daily_summary_cache` 修复迁移，用于给安装过中间 v14 测试包的设备补齐选中日期 summary JSON cache 字段、唯一索引，并确保 cache 写入失败不阻断首页实时 summary。 |
 
 兼容规则：
 
@@ -306,7 +309,7 @@ Agent V1 应复用云端 daily summaries 或 service-built summaries 做 Structu
 
 ## 云端表与计划中的表
 
-以下是 Agent V1 的服务端存储概念。Phase 2 已在 `supabase/migrations/202606190001_phase2_account_profile.sql` 实现 Supabase `subscriptions` 和 `cloud_profiles` 表，在 `supabase/migrations/202606230002_cloud_profile_schema_compat.sql` 为已建项目补齐 Cloud Profile schema，在 `supabase/migrations/202606230003_cloud_profile_body_metrics.sql` 提供身体指标 Cloud Profile 补列，并在 `supabase/migrations/202606230001_internal_subscription_codes.sql` 实现开发期内部兑换码支持；Cloud Records 表属于 Phase 3 目标，AI 表在对应阶段落地前仍是设计概念。
+以下是 Agent V1 的服务端存储概念。Phase 2 已在 `supabase/migrations/202606190001_phase2_account_profile.sql` 实现 Supabase `subscriptions` 和 `cloud_profiles` 表，在 `supabase/migrations/202606230002_cloud_profile_schema_compat.sql` 为已建项目补齐 Cloud Profile schema，在 `supabase/migrations/202606230003_cloud_profile_body_metrics.sql` 提供身体指标 Cloud Profile 补列，并在 `supabase/migrations/202606230001_internal_subscription_codes.sql` 实现开发期内部兑换码支持。Phase 3 已在 `supabase/migrations/202606260001_phase3_cloud_records.sql` 新增 active-device RPC、Cloud Records 表、RLS、soft delete、version/timestamp 触发器和 `daily_summaries` 表；AI 表在对应阶段落地前仍是设计概念。
 
 ### `accounts`
 
@@ -370,6 +373,36 @@ Phase 2 只在 Supabase 存储兑换码 hash。客户端不能读取或更新这
 - `code_id`
 - `account_id`
 - redeemed timestamp
+
+### `account_active_devices`
+
+用途：V1 单 active device 边界。它记录当前账号被哪一个 App 安装/device/session 接管，用于避免旧设备继续正式写入；它不是实时在线心跳表，也不用于多端同步。
+
+Phase 3 实现：登录成功后客户端调用 `claim_active_device` RPC，把当前账号的 active device/session 更新为本设备。正式 body/food/workout records、Cloud Profile 保存和后续 AI Gateway 请求在服务端或 RPC 边界调用 `assert_active_device`。如果请求来自旧设备，返回稳定错误码 `device_replaced`。
+
+推荐字段：
+
+- `account_id`
+- `active_device_id`
+- `active_session_id`
+- platform
+- app version
+- claimed timestamp
+- last seen timestamp
+- replaced timestamp 或 diagnostic reason
+
+推荐 RPC：
+
+- `claim_active_device(device_id text, session_id text, platform text, app_version text)`
+- `assert_active_device(device_id text, session_id text)`
+- 可选 `release_active_device(device_id text, session_id text)`
+
+规则：
+
+- `account_id` 必须来自 `auth.uid()`，不能信任客户端传入。
+- 新登录设备覆盖旧 active device，采用 last login wins。
+- 旧设备物理 session 可能不会立刻从 Supabase Auth 表删除；产品正确性依赖 active-device 写入守卫，而不是依赖旧 session 立即消失。
+- `device_replaced` 不等同于网络失败或普通上传失败；客户端应清本地登录态并进入重新登录/接管路径。
 
 ### `cloud_profiles`
 
@@ -476,7 +509,7 @@ Phase 2 将它实现为 Supabase Postgres 表，具备 own-row select/insert/upd
 
 规则：
 
-- 可以由服务端增量维护，也可以由 summary service 按需生成；Phase 3 实现前需明确一种策略。
+- Phase 3 已创建云端 `daily_summaries` 表。当前 App 侧 `DailySummaryService` 按需用 cloud-backed records repository 构建 deterministic summary，并可把选中日期 confirmed summary 写入本地 `daily_summary_cache`，供 Home stale-while-revalidate 使用；summary 云端 upsert/builder coordinator 仍是 Cloud Records hardening 点，不能让 AI/export 依赖本地完整 SQLite。
 - AI wrapper 优先读 summaries 或 summary builder，而不是扫原始记录全量。
 
 ### `ai_chat_sessions`
@@ -594,11 +627,14 @@ Structured RAG 应传递紧凑 typed objects，而不是任意数据库访问。
 | `weight_trend_summary` | 云端 `body_metric_logs` summary builder。 | 数据足够时才给趋势。 |
 | `strategy_context` | Profile strategy settings 和确定性 calculator 输出。 | 相关时包含 `carb_cycling` 或 `carb_tapering` 状态。 |
 
-## 权威来源规则
+## 权威来源摘要
+
+Cloud Profile、Cloud Records、daily summaries 和本地 cache 的完整权威边界由 `CloudLocalDataBoundary.md` 维护。Database 只记录这些数据落在哪些表以及字段含义。简要规则：
 
 | Data | V1 source of truth |
 | --- | --- |
 | Account identity | Cloud |
+| Active device | Cloud after Phase 3 |
 | Subscription | Cloud |
 | Cloud Profile | Cloud |
 | Body metric logs | Cloud after Phase 3; local SQLite cache only |
@@ -610,7 +646,7 @@ Structured RAG 应传递紧凑 typed objects，而不是任意数据库访问。
 | Document RAG index | Cloud 或 bundled service index |
 | Export files | 用户主动控制的本地文件 |
 
-本地 cache 默认预取最近 30 天和必要 summaries；用户访问更早历史时按日期或月份加载。cache eviction 只删除可重建本地缓存，不删除云端正式数据。
+cache 容量、淘汰资格、cache-first 读取、`auth_required` 处理和修复策略见 `CloudLocalDataBoundary.md`。
 
 ## 离线规则
 
@@ -618,7 +654,7 @@ Structured RAG 应传递紧凑 typed objects，而不是任意数据库访问。
 - 用户可以编辑未完成 prompt，但不能发送。
 - Profile 页面可以展示缓存 profile，但不能保存。
 - V1 不允许 pending offline profile edits。
-- Phase 3 后正式 food/workout/body 写入需要云端；离线正式写入队列属于 Post-V1 增强，不是 Cloud Records Foundation 的默认范围。
+- Phase 3 后正式 food/workout/body 写入需要云端；离线正式写入队列不属于 Cloud Records Foundation 默认范围，具体处理见 `CloudLocalDataBoundary.md`。
 
 ## 导出覆盖
 
@@ -636,7 +672,7 @@ Structured RAG 应传递紧凑 typed objects，而不是任意数据库访问。
 - self-check fields
 - diet adjustment review history
 
-Phase 3 后，导出应从 cloud-backed repository 或云端分页读取正式记录，不依赖本地完整历史。云端 AI chat history 和 AI request logs 不属于当前记录导出，除非未来显式增加账号数据导出能力。
+Phase 3 后，导出正确性以云端正式 records、云端 summaries 或 builders 为准；本地 cache 只可加速读取，不能要求完整。详细规则见 `CloudLocalDataBoundary.md`。云端 AI chat history 和 AI request logs 不属于当前记录导出，除非未来显式增加账号数据导出能力。
 
 ## 当前源码未实现
 

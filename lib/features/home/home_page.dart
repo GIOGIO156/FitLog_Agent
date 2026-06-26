@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/daily_summary.dart';
 import '../../domain/models/user_profile.dart';
+import '../account/account_controller.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -27,17 +29,94 @@ class _HomePageState extends State<HomePage> {
   Future<_HomePageData>? _dataFuture;
   String? _loadedDate;
   int? _loadedRefreshVersion;
+  String? _backgroundRefreshKey;
 
-  Future<_HomePageData> _loadData(BuildContext context, String day) async {
+  Future<_HomePageData> _loadData(
+    BuildContext context,
+    String day,
+    int refreshVersion,
+  ) async {
     final services = context.read<AppServices>();
+    final accountId = _accountIdFor(context);
+    DailySummary? cachedSummary;
+    try {
+      cachedSummary = await services.dailySummaryService
+          .getCachedSummaryForDate(accountId: accountId, day: day);
+    } catch (_) {
+      cachedSummary = null;
+    }
+    if (cachedSummary != null) {
+      final profile = await services.profileRepository.getProfile();
+      _refreshDataInBackground(
+        services: services,
+        day: day,
+        accountId: accountId,
+        refreshVersion: refreshVersion,
+      );
+      return _HomePageData(summary: cachedSummary, profile: profile);
+    }
+
     final results = await Future.wait<Object?>(<Future<Object?>>[
-      services.dailySummaryService.getSummaryForDate(day),
+      services.dailySummaryService.getSummaryForDateAndCache(
+        day: day,
+        accountId: accountId,
+      ),
       services.profileRepository.getProfile(),
     ]);
 
     return _HomePageData(
       summary: results[0]! as DailySummary,
       profile: results[1] as UserProfile?,
+    );
+  }
+
+  String? _accountIdFor(BuildContext context) {
+    try {
+      return context.read<AccountController>().authSession.accountId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _refreshDataInBackground({
+    required AppServices services,
+    required String day,
+    required String? accountId,
+    required int refreshVersion,
+  }) {
+    final key = '${accountId ?? 'local'}|$day|$refreshVersion';
+    if (_backgroundRefreshKey == key) {
+      return;
+    }
+    _backgroundRefreshKey = key;
+    unawaited(
+      Future<void>(() async {
+        try {
+          final results = await Future.wait<Object?>(<Future<Object?>>[
+            services.dailySummaryService.getSummaryForDateAndCache(
+              day: day,
+              accountId: accountId,
+            ),
+            services.profileRepository.getProfile(),
+          ]);
+          if (!mounted ||
+              _loadedDate != day ||
+              _loadedRefreshVersion != refreshVersion) {
+            return;
+          }
+          final data = _HomePageData(
+            summary: results[0]! as DailySummary,
+            profile: results[1] as UserProfile?,
+          );
+          setState(() {
+            _dataFuture = Future<_HomePageData>.value(data);
+          });
+        } catch (_) {
+          if (_backgroundRefreshKey == key) {
+            _backgroundRefreshKey = null;
+          }
+        }
+      }),
     );
   }
 
@@ -82,7 +161,7 @@ class _HomePageState extends State<HomePage> {
               _loadedRefreshVersion != refresh.version) {
             _loadedDate = selectedDate;
             _loadedRefreshVersion = refresh.version;
-            _dataFuture = _loadData(context, selectedDate);
+            _dataFuture = _loadData(context, selectedDate, refresh.version);
           }
 
           return FutureBuilder<_HomePageData>(

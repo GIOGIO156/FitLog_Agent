@@ -2,7 +2,7 @@
 
 ## 目标
 
-本文说明每个 App 区域做什么，以及应该去哪个设计文件读细节。它是导航型文档。算法公式属于 `Algorithm.md`；存储细节属于 `Database.md`；AI 边界属于 `AgentDesign.md`。
+本文说明每个 App 区域做什么，以及应该去哪个设计文件读细节。它是导航型文档。算法公式属于 `Algorithm.md`；schema 和字段属于 `Database.md`；云端/本地读写、cache、刷新、冲突和修复规则属于 `CloudLocalDataBoundary.md`；AI 边界属于 `AgentDesign.md`。
 
 FitLog_Agent V1 保留现有 FitLog Local 的 App 区域，并新增一个主要 AI 区域。
 
@@ -113,7 +113,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 离线：灰色不可用状态
 - 未订阅：不可用状态，并解释账号/订阅情况
 
-当前 Phase 2 说明：即使账号、订阅和 Cloud Profile gate 都已就绪，发送仍要等 Phase 4 Gateway 接入后才会开放；Phase 3 先完成 Cloud Records Foundation。
+当前说明：即使账号、订阅、Cloud Profile 和 Cloud Records gate 都已就绪，发送仍要等 Phase 4 Gateway 接入后才会开放。
 
 不可用状态规则：
 
@@ -174,7 +174,7 @@ Local 基线：
 
 - 昵称
 - 身体资料：年龄、身高、体重、性别、体脂、腰围
-- 身体趋势卡片：Local 基线读本机历史；Phase 3 后读云端 `body_metric_logs` 的本地 partial cache
+- 身体趋势卡片：读云端 `body_metric_logs` 的本地 partial cache；没有 cache 时按当前窗口从云端恢复
 - 饮食阶段
 - 计算模式
 - 策略
@@ -190,6 +190,7 @@ Agent V1 profile 模型：
 - 当前未登录页使用当前主题纯色背景、无星 FitLog logo base asset 与基于 SVG 曲线并贴近 logo 右上角的饱和固定圆润 AI 四角星群错峰呼吸闪烁动画，星群经过轻微左下位置微调且最小态保持更饱满，并统一使用 app 主题字体 `NotoSansSC` 与中等/半粗登录文字层级；需要提示后端配置时，提示位于页面顶部；无键盘静态入口不可上下滑动，输入框聚焦后切换为可避让键盘的紧凑可滚动布局，包含邮箱密码登录，以及注册邮箱验证码和密码确认表单。注册不要求 username；昵称稍后在 Cloud Profile 中编辑。
 - 登录和注册错误应保留当前表单，并通过底部 snackbar 显示可读提示，而不是展示后端原始异常。
 - 登录成功后 Supabase session 会保存在设备上；除非用户主动退出账号，重启 App 后仍保持登录。
+- V1 使用单 active device：新设备登录会接管账号。旧设备下一次云端读取、保存、订阅刷新或 AI 请求收到 `device_replaced` 时，应显示“账号已在另一台设备登录”，清本机登录态并回到登录/重新接管路径；不得显示成普通上传失败。
 - 登录后 Cloud Profile 是权威版本。
 - 新注册或新登录账号没有 Cloud Profile row 时，App 会自动创建默认 Cloud Profile，并进入正常 Profile 编辑页。
 - Cloud Profile 加载/保存失败时，应显示可读提示和诊断错误码，例如 schema 不匹配、RLS 拦截、session 过期、网络失败或表缺失。
@@ -203,16 +204,17 @@ Agent V1 profile 模型：
 - 离线时禁止保存 Profile。
 - AI 默认使用 Cloud Profile 作为上下文。
 - 删除账号时删除 Cloud Profile。
-- Phase 3 后，food、workout 和 body metric 正式记录以云端为权威来源；本地 SQLite 只保存最近窗口、用户访问过的历史日期/月、summary cache、cache metadata 和草稿。
-- 本地 partial cache 默认保留最近 30 天和当前查看日期/月；用户查看更早记录时按日期或月份从云端按需加载。cache 达到容量边界时，只淘汰已确认云端可重建、非 pending、非当前查看、非最近窗口的数据。
-- Profile 底部账号卡提供明确退出入口。退出账号会清除 auth session、运行期草稿、账号绑定 Cloud Profile 缓存元数据、本地 singleton Profile 缓存和本地 records cache，但不会删除云端正式记录。
+- Phase 3 Cloud Records Foundation 后，food、workout 和 body metric 正式记录以云端为权威来源；本地 SQLite 只作为 cache、草稿和运行期加速层。具体读写、cache-first、预取、淘汰、异常和修复规则见 `CloudLocalDataBoundary.md`。
+- Profile 底部账号卡提供明确退出入口。退出账号会清除 auth session 和运行期草稿；账号绑定 cache 清理规则见 `CloudLocalDataBoundary.md`，不得删除云端正式记录。
+- 被新设备替换的旧设备不能继续保存 Profile、身体记录、饮食记录或训练记录。
 
 Profile 仍是正式饮食设置变更的位置。AI 可以解释或建议，但设置变更应通过 Profile UI 完成。
 
 阅读更多：
 
 - Profile 权威来源：`AgentDesign.md`
-- Profile 字段与云端/本地边界：`Database.md`
+- 云端/本地边界：`CloudLocalDataBoundary.md`
+- Profile 字段与 schema：`Database.md`
 - 饮食设置逻辑：`Algorithm.md`
 
 ## Export
@@ -248,7 +250,7 @@ UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
 - 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关，以及五 tab 浮动底部导航。
-- Phase 3 计划行为：Cloud Records Foundation，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries`、summary API 和本地 partial cache。
+- Phase 3 已接入 Cloud Records Foundation 核心，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、本地 partial cache，以及 Home 选中日期 summary cache 和 stale-while-revalidate；summary 云端 upsert/API coordinator 仍是 hardening。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
 在代码实现前，不要把 Cloud Records、AI Gateway、云端 chat history、RAG 或 LLM 调用写成已实现。账号登录、订阅状态和 Cloud Profile 是 Phase 2 客户端/schema 能力，需要配置 Supabase 后才能连接真实后端测试。

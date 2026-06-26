@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:supabase/supabase.dart' as supabase;
 
 import '../../core/config/supabase_pkce_storage.dart';
@@ -215,9 +217,29 @@ class SupabaseAuthRepository implements AuthRepository {
     return AuthSession(
       status: AuthSessionStatus.signedIn,
       accountId: user.id,
+      sessionId: _sessionIdFromAccessToken(session.accessToken),
       email: user.email,
       displayName: displayName,
       accessTokenExpiresAt: expiresAt,
     );
+  }
+
+  String? _sessionIdFromAccessToken(String accessToken) {
+    final parts = accessToken.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+    try {
+      final normalized = base64Url.normalize(parts[1]);
+      final payload = jsonDecode(utf8.decode(base64Url.decode(normalized)));
+      if (payload is! Map) {
+        return null;
+      }
+      return payload['session_id']?.toString() ??
+          payload['sid']?.toString() ??
+          payload['jti']?.toString();
+    } catch (_) {
+      return null;
+    }
   }
 }

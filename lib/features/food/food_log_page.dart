@@ -83,7 +83,17 @@ class _FoodLogPageState extends State<FoodLogPage> {
       return;
     }
 
-    await services.foodRepository.deleteFoodRecord(record.id!);
+    try {
+      await services.foodRepository.deleteFoodRecord(record.id!);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.failedToDeleteFood(error))),
+      );
+      return;
+    }
 
     if (!context.mounted) {
       return;

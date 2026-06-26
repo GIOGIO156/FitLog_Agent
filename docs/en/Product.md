@@ -18,8 +18,10 @@ Write official data only after the user confirms.
 
 - Preserve Local behavior unless an Agent V1 requirement explicitly changes it.
 - Require sign-in before official record features in the Agent version.
-- After Phase 3 Cloud Records Foundation, body/food/workout official records use the cloud as the source of truth.
+- Phase 3 Cloud Records Foundation connects signed-in body/food/workout official records to the cloud source of truth.
 - Local SQLite is partial cache, draft storage, and runtime acceleration; it is not a full-history mirror.
+- Detailed cloud/local read, write, cache, refresh, conflict, and repair rules live in `CloudLocalDataBoundary.md`.
+- V1 uses one active device per account with last-login-wins behavior; it does not promise realtime multi-device sync.
 - Use cloud services for account, subscription, Cloud Profile, Cloud Records, daily summaries, AI Gateway, chat history, and AI audit needs.
 - Treat the Cloud Profile as account-bound user information after login.
 - Do not require users to bring their own model API key.
@@ -33,11 +35,11 @@ Write official data only after the user confirms.
 
 | Module | V1 role | Implemented baseline | V1 planned additions |
 | --- | --- | --- | --- |
-| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | After Phase 3, reads cloud-backed daily summaries; may surface non-intrusive AI entry hints only if routed to AI page. |
-| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | After Phase 3, official records write to cloud; receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
+| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, and refreshes Home with stale-while-revalidate; cloud daily-summary upsert remains Phase 3 hardening. |
+| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | After sign-in, official records write cloud-first; receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
 | Add Food | Food creation workflow. | Manual entry, prompt copy, JSON paste, Photo AI placeholder. | Photo recognition shortcut may call AI Gateway and create Food Draft. |
 | AI | Primary Agent entry. | Phase 2 implements the centered tab, disabled AI shell, editable composer, provider selector, account/subscription status sheet, subscription/Profile availability gating, and user-record summary permission. Sending is disabled until AI Gateway is added. | AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
-| Workout | Official workout-record management. | Local workout records, custom exercises, draft editor, calorie heuristics. | After Phase 3, official records write to cloud; V1 AI may explain or review workout context but should not silently modify records. |
+| Workout | Official workout-record management. | Workout records, custom exercises, draft editor, calorie heuristics. | After sign-in, official records write cloud-first; V1 AI may explain or review workout context but should not silently modify records. |
 | Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; Phase 2 shows sign-in before login and saves formal profile changes through Cloud Profile when signed in. | Account deletion, production subscription management, and later AI personalization flows. |
 | Export | User-controlled data export. | XLSX and CSV ZIP export. | No default cloud backup/export replacement in V1. |
 
@@ -172,6 +174,7 @@ V1 profile rules:
 - Cloud Profile is authoritative.
 - Local device may cache it for display, but cached values may be shown during cloud refresh only when the cache metadata matches the current signed-in account.
 - Supabase auth sessions persist on the device and are recovered on startup until the user explicitly signs out or the session cannot be recovered.
+- A newer device login takes over the account; the older device should show "account signed in on another device" on its next cloud interaction and return to sign-in/re-takeover flow.
 - Profile page edits are local drafts until the user taps the bottom Save Changes bar; modified sections are visibly marked in the page, and saving uploads one complete Cloud Profile snapshot.
 - Auth failures keep the active sign-in or registration form visible and show readable snackbar feedback.
 - Subscription-status loading failures do not replace a successfully loaded Cloud Profile editor with a Profile error screen; AI sending remains gated by subscription availability.
@@ -202,7 +205,7 @@ Profile should include the existing profile information needed by FitLog's diet 
 - carb-tapering settings
 - language preference when account-bound
 
-After Phase 3, workout, food, and body metric records use the cloud as the official source. Local SQLite is only partial cache; it prefetches the recent 30-day window and necessary summaries by default, then loads older history by date or month when the user opens it. AI reads cloud summary/context builders for record context instead of treating local cache as authoritative.
+After Phase 3 Cloud Records Foundation, workout, food, and body metric records use the cloud as the official source, and local SQLite is only cache, draft storage, and runtime acceleration. AI reads cloud records/summary/context builders for record context instead of treating local cache as authoritative. Cache-first reads, prefetch, eviction, export correctness, and repair rules live in `CloudLocalDataBoundary.md`.
 
 The Profile body section shows the current Profile's six fields: age, height, weight, sex, body-fat percentage, and waist circumference. The Body Profile card provides the calendar/add body-record entry. Selecting a date opens a body-record sheet whose top shows only the exact date; the sheet edits only weight, body-fat percentage, and waist circumference. Backfilling a past date does not silently modify the current Cloud Profile; setting a historical record as current body data requires explicit confirmation. The Body Trends card below is read-only and plots weight, body-fat, or waist records over 7/14/21/28-day windows. Trend controls stay at the bottom of the card, summary text stays above the chart, real record points extend from left to right by their real day spacing within the current window, insufficient-record messages appear inside the chart area, and tapping a real record dot shows that point's value inline.
 
@@ -227,15 +230,12 @@ V1 cloud data:
 
 V1 local data:
 
-- recent-window records cache
-- visited historical date/month cache
-- daily summary cache
-- cache metadata
+- account-bound records/read-model cache
 - local workout drafts
 - pending drafts
 - exports
 
-AI requests should upload the minimum necessary context. For user-data context, prefer cloud summaries over raw rows. Cache eviction removes only rebuildable local cache, not cloud official data.
+AI requests should upload the minimum necessary context. For user-data context, prefer cloud summaries over raw rows. Cache cleanup, eviction, and account-switch rules live in `CloudLocalDataBoundary.md`.
 
 ## User Confirmation Model
 

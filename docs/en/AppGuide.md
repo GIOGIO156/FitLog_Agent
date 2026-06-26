@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This guide explains what each app area does and where to read deeper design details. It is navigational. Algorithm formulas belong in `Algorithm.md`; storage details belong in `Database.md`; AI boundaries belong in `AgentDesign.md`.
+This guide explains what each app area does and where to read deeper design details. It is navigational. Algorithm formulas belong in `Algorithm.md`; schema and fields belong in `Database.md`; cloud/local reads, writes, cache, refresh, conflict, and repair rules belong in `CloudLocalDataBoundary.md`; AI boundaries belong in `AgentDesign.md`.
 
 FitLog_Agent V1 keeps the existing FitLog Local app areas and adds one primary AI area.
 
@@ -113,7 +113,7 @@ Availability:
 - offline: gray disabled state
 - not subscribed: disabled state with account/subscription explanation
 
-Current Phase 2 note: even when the account, subscription, and Cloud Profile gates are ready, sending remains disabled until the Phase 4 Gateway exists; Phase 3 first lands Cloud Records Foundation.
+Current note: even when account, subscription, Cloud Profile, and Cloud Records gates are ready, sending remains disabled until the Phase 4 Gateway exists.
 
 Disabled-state rule:
 
@@ -174,7 +174,7 @@ Local baseline:
 
 - nickname
 - body profile: age, height, weight, sex, body-fat percentage, and waist circumference
-- Body Trends: the Local baseline reads device history; after Phase 3 it reads the partial cache for cloud `body_metric_logs`
+- Body Trends: reads the partial cache for cloud `body_metric_logs`; when no cache exists, the current window can be restored from cloud
 - diet phase
 - calculation mode
 - strategy
@@ -190,6 +190,7 @@ Agent V1 profile model:
 - The current signed-out screen uses a solid theme background, the no-star FitLog logo base asset with a saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right, a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, a top backend-configuration notice when needed, a static non-scrolling no-keyboard landing action, keyboard-aware compact scrolling while fields are focused, email-password sign-in, and a registration form with email code plus password confirmation. Registration does not ask for username; nickname is edited later in Cloud Profile.
 - Sign-in and registration errors keep the active form in place and use readable bottom snackbar messages instead of raw backend exception text.
 - A successful sign-in persists the Supabase session on the device; the user remains signed in after app restart until they explicitly sign out.
+- V1 uses one active device per account. A newer device login takes over the account. When an older device receives `device_replaced` during the next cloud read, save, subscription refresh, or AI request, it should show "account signed in on another device", clear local sign-in state, and return to sign-in/re-takeover flow instead of showing a generic upload failure.
 - After login, Cloud Profile is authoritative.
 - If a newly registered or newly signed-in account has no Cloud Profile row yet, the app creates a default Cloud Profile automatically and opens the normal Profile editor.
 - Cloud Profile load/save failures should show a readable message plus a diagnostic error code such as schema mismatch, RLS denial, expired session, network failure, or missing table.
@@ -203,16 +204,17 @@ Agent V1 profile model:
 - Offline profile saving is disabled.
 - AI uses Cloud Profile as the default context.
 - Account deletion deletes Cloud Profile.
-- After Phase 3, food, workout, and body metric official records use the cloud as the authoritative source; local SQLite stores only recent-window records, visited historical date/month cache, summary cache, cache metadata, and drafts.
-- Local partial cache keeps the recent 30 days and the currently viewed date/month by default; older records are loaded from the cloud by date or month when the user opens them. When cache reaches its capacity boundary, eviction removes only cloud-confirmed, rebuildable entries that are not pending, not currently viewed, and not inside the recent window.
-- The bottom account card provides explicit sign-out. Signing out clears the auth session, runtime drafts, account-bound Cloud Profile cache metadata, local singleton Profile cache, and local records cache, but it does not delete cloud official records.
+- After Phase 3, food, workout, and body metric official records use the cloud as the authoritative source; local SQLite is only cache, draft storage, and runtime acceleration. Read/write, cache-first, prefetch, eviction, failure, and repair rules live in `CloudLocalDataBoundary.md`.
+- The bottom account card provides explicit sign-out. Signing out clears the auth session and runtime drafts; account-bound cache cleanup rules live in `CloudLocalDataBoundary.md`, and sign-out must not delete cloud official records.
+- An older device replaced by a newer login cannot continue saving Profile, body, food, or workout records.
 
 Profile remains the place where official diet settings change. AI can explain or suggest, but settings changes should happen through Profile UI.
 
 Read more:
 
 - Profile source of truth: `AgentDesign.md`
-- Profile fields and cloud/local boundary: `Database.md`
+- Cloud/local boundary: `CloudLocalDataBoundary.md`
+- Profile fields and schema: `Database.md`
 - Diet setup logic: `Algorithm.md`
 
 ## Export
@@ -248,7 +250,7 @@ When writing UI copy or documentation, keep these states separate:
 
 - Implemented Local behavior: already present in the copied codebase.
 - Implemented Agent Phase 1-2 behavior: the centered AI tab, disabled AI page, editable composer, provider selector, account/subscription status sheet, Cloud Profile Profile gate, user-record summary permission, and floating five-tab bottom navigation.
-- Planned Phase 3 behavior: Cloud Records Foundation, including `body_metric_logs`, cloud official food/workout records, `daily_summaries`, summary APIs, and local partial cache.
+- Phase 3 has connected the Cloud Records Foundation core, including `body_metric_logs`, cloud official food/workout records, the `daily_summaries` table, local partial cache, and Home selected-day summary cache with stale-while-revalidate; the summary cloud upsert/API coordinator remains hardening work.
 - Planned Agent V1 behavior: documented target, not necessarily shipped yet.
 
 Do not describe Cloud Records, AI Gateway, cloud chat history, RAG, or LLM calls as implemented until code exists. Account login, subscription status, and Cloud Profile are Phase 2 client/schema capabilities and require Supabase configuration to test against a real backend.

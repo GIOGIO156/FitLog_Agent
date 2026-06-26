@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/repositories/ai_local_context_permission_repository.dart';
+import '../../data/repositories/active_device_repository.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/cloud_profile_repository.dart';
 import '../../data/repositories/phase2_repository_exception.dart';
@@ -10,6 +13,7 @@ import '../../data/repositories/subscription_repository.dart';
 import '../../domain/models/ai_availability.dart';
 import '../../domain/models/ai_local_context_permission.dart';
 import '../../domain/models/auth_session.dart';
+import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/cloud_profile.dart';
 import '../../domain/models/network_status.dart';
 import '../../domain/models/subscription_status.dart';
@@ -23,15 +27,21 @@ class AccountController extends ChangeNotifier {
     required this.cloudProfileRepository,
     required this.profileRepository,
     required this.contextPermissionRepository,
+    this.activeDeviceRepository = const NoopActiveDeviceRepository(),
+    this.cloudRuntimeContext,
     this.mapper = const CloudProfileMapper(),
     required this.backendConfigured,
-  });
+  }) {
+    cloudRuntimeContext?.addListener(_handleCloudRuntimeChanged);
+  }
 
   final AuthRepository authRepository;
   final SubscriptionRepository subscriptionRepository;
   final CloudProfileRepository cloudProfileRepository;
   final ProfileRepository profileRepository;
   final AiLocalContextPermissionRepository contextPermissionRepository;
+  final ActiveDeviceRepository activeDeviceRepository;
+  final CloudRuntimeContext? cloudRuntimeContext;
   final CloudProfileMapper mapper;
   final bool backendConfigured;
 
@@ -44,6 +54,8 @@ class AccountController extends ChangeNotifier {
   int accountChangeEpoch = 0;
   String? cachedCloudProfileAccountId;
   int? cachedCloudProfileVersion;
+  bool _handlingDeviceReplacement = false;
+  Future<void>? _backgroundAccountStateTask;
 
   static const String _cacheAccountIdKey = 'cached_cloud_profile_account_id';
   static const String _cacheVersionKey = 'cached_cloud_profile_version';
@@ -106,11 +118,14 @@ class AccountController extends ChangeNotifier {
       await _loadCacheMetadata();
       initialized = true;
       profileRepository.setActiveAccountId(authSession.accountId);
-      notifyListeners();
       if (authSession.isSignedIn) {
-        await _loadAccountBoundState();
+        await _loadCachedCloudProfileIfAvailable();
       } else {
         _clearAccountBoundState();
+      }
+      notifyListeners();
+      if (authSession.isSignedIn) {
+        _startBackgroundAccountStateLoad();
       }
     } on Phase2RepositoryException catch (error) {
       initialized = true;
@@ -155,6 +170,7 @@ class AccountController extends ChangeNotifier {
     final previousAccountId = authSession.accountId;
     try {
       authSession = await action();
+      await _claimActiveDeviceIfNeeded();
       profileRepository.setActiveAccountId(authSession.accountId);
       if (previousAccountId != authSession.accountId) {
         accountChangeEpoch++;
@@ -177,14 +193,22 @@ class AccountController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    await activeDeviceRepository.release();
     await authRepository.signOut();
     await profileRepository.clearProfile();
     profileRepository.setActiveAccountId(null);
+    cloudRuntimeContext?.clear();
     authSession = const AuthSession.signedOut();
     _clearAccountBoundState();
     accountChangeEpoch++;
     await _clearCacheMetadata();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    cloudRuntimeContext?.removeListener(_handleCloudRuntimeChanged);
+    super.dispose();
   }
 
   Future<void> refreshAccountState() async {
@@ -195,7 +219,12 @@ class AccountController extends ChangeNotifier {
       return;
     }
     profileRepository.setActiveAccountId(authSession.accountId);
-    await _loadAccountBoundState();
+    _backgroundAccountStateTask = _loadAccountBoundStateAfterDeviceClaim();
+    await _backgroundAccountStateTask;
+  }
+
+  Future<void> waitForBackgroundAccountState() async {
+    await _backgroundAccountStateTask;
   }
 
   Future<void> refreshSubscriptionStatus() async {
@@ -284,8 +313,11 @@ class AccountController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final previousCloudProfileState = cloudProfileState;
     subscriptionStatus = const SubscriptionStatus.loading();
-    cloudProfileState = const CloudProfileState.loading();
+    if (!cloudProfileState.isReady) {
+      cloudProfileState = const CloudProfileState.loading();
+    }
     notifyListeners();
 
     await _loadSubscriptionStatus(accountId);
@@ -308,11 +340,113 @@ class AccountController extends ChangeNotifier {
       if (error.code.contains('network')) {
         networkStatus = const NetworkStatus.offline();
       }
-      cloudProfileState = CloudProfileState.error(error.code);
+      cloudProfileState = previousCloudProfileState.isReady
+          ? previousCloudProfileState
+          : CloudProfileState.error(error.code);
       notifyListeners();
     } catch (_) {
-      cloudProfileState = const CloudProfileState.error('profile_load_failed');
+      cloudProfileState = previousCloudProfileState.isReady
+          ? previousCloudProfileState
+          : const CloudProfileState.error('profile_load_failed');
       notifyListeners();
+    }
+  }
+
+  Future<void> _claimActiveDeviceIfNeeded() async {
+    if (!authSession.isSignedIn) {
+      cloudRuntimeContext?.clear();
+      return;
+    }
+    await activeDeviceRepository.claim(authSession);
+  }
+
+  void _startBackgroundAccountStateLoad() {
+    _backgroundAccountStateTask = _loadAccountBoundStateAfterDeviceClaim();
+    unawaited(_backgroundAccountStateTask);
+  }
+
+  Future<void> _loadAccountBoundStateAfterDeviceClaim() async {
+    try {
+      await _claimActiveDeviceIfNeeded();
+    } on Phase2RepositoryException catch (error) {
+      if (error.code == 'device_replaced') {
+        await _handleDeviceReplaced();
+        return;
+      }
+      if (error.code.contains('network')) {
+        networkStatus = const NetworkStatus.offline();
+        notifyListeners();
+      } else {
+        cloudProfileState = CloudProfileState.error(error.code);
+        notifyListeners();
+        return;
+      }
+    } catch (_) {
+      cloudProfileState = const CloudProfileState.error(
+        'active_device_claim_failed',
+      );
+      notifyListeners();
+      return;
+    }
+    await _loadAccountBoundState();
+  }
+
+  Future<void> _loadCachedCloudProfileIfAvailable() async {
+    if (!hasCurrentAccountCachedCloudProfile) {
+      return;
+    }
+    try {
+      final profile = await profileRepository.getProfile();
+      final accountId = authSession.accountId;
+      final profileVersion = cachedCloudProfileVersion;
+      if (profile == null || accountId == null || profileVersion == null) {
+        return;
+      }
+      cloudProfileState = CloudProfileState(
+        status: CloudProfileStatus.ready,
+        cloudProfile: CloudProfile(
+          accountId: accountId,
+          profile: profile,
+          profileVersion: profileVersion,
+        ),
+      );
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Cloud Profile cached read failed: $error');
+      }
+    }
+  }
+
+  void _handleCloudRuntimeChanged() {
+    if (cloudRuntimeContext?.deviceReplaced != true ||
+        !authSession.isSignedIn ||
+        _handlingDeviceReplacement) {
+      return;
+    }
+    unawaited(_handleDeviceReplaced());
+  }
+
+  Future<void> _handleDeviceReplaced() async {
+    _handlingDeviceReplacement = true;
+    try {
+      try {
+        await authRepository.signOut();
+      } catch (_) {
+        // The active-device server guard already prevents official writes.
+      }
+      try {
+        await profileRepository.clearProfile();
+      } catch (_) {
+        // Local cache cleanup is best-effort; auth state still moves out.
+      }
+      profileRepository.setActiveAccountId(null);
+      _clearAccountBoundState();
+      await _clearCacheMetadata();
+      authSession = const AuthSession.error('device_replaced');
+      accountChangeEpoch++;
+      notifyListeners();
+    } finally {
+      _handlingDeviceReplacement = false;
     }
   }
 

@@ -32,7 +32,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - Phase 1 AI shell：居中 AI tab、不可用 AI 页面、可编辑输入框、ChatGPT/千问模型选择器占位和 history 入口占位。
 - Phase 2 账号/Profile 基础：Supabase 配置入口、邮箱密码与注册验证码 auth repository、订阅状态 repository、内部兑换码 entitlement RPC、Cloud Profile repository/mapper、Profile 登录 gate、Cloud Profile 自动初始化、Profile 订阅卡、AI 账号/订阅状态 sheet、用户记录摘要授权开关。
 - Phase 2 Supabase migration：`subscriptions`、`cloud_profiles`、`internal_subscription_codes` 和 `internal_subscription_redemptions` 表、既有 `cloud_profiles` 兼容补列、RLS、字段约束、内部兑换码 RPC 和开发 seed 说明。
-- Phase 3 待实现 Cloud Records Foundation：登录前置的正式记录云端化、`body_metric_logs`、food/workout 云端表、`daily_summaries`、记录 API、summary API 和本地 partial cache。
+- Phase 3 Cloud Records Foundation 已落地核心基础：root auth gate、`account_active_devices`/active-device RPC、`body_metric_logs`、food/workout 云端表、`daily_summaries` 表、本地 v14 partial cache metadata、body/food/workout cloud-backed repository、正式写入 active-device guard、登录冷启动后台账号恢复，以及 Home 选中日期 `daily_summary_cache` + stale-while-revalidate；daily summary 云端 upsert coordinator、广义 warm-cache 调度和 repair UI 继续作为 Phase 3 hardening。
 - 浮动白色 bottom navigation pill，pill 外不绘制整行背景色。
 - SQLite 本地数据库。
 - 本地饮食记录、饮食 item、训练记录、训练 set、体重记录。
@@ -123,8 +123,7 @@ V1 完整落地是指：
 - Agent 版正式记录功能登录前置；未登录不创建正式 food/workout/body 记录。
 - Cloud Profile、body metric logs、food records、workout records 和 daily summaries 在 Cloud Records Foundation 后以云端为正式 source of truth。
 - 本地 SQLite 从正式业务底座降级为 partial cache、草稿和运行期加速层，不做完整历史镜像。
-- 默认预取最近 30 天和必要 summaries；30 天以前的历史按日期或月份从云端按需加载并可缓存。
-- cache 清理只删除可重建缓存，不删除云端正式数据；最近 30 天、当前查看日期/月和未成功同步草稿不得被清理。
+- cache-first、warm cache、按需加载、淘汰和修复规则以 `docs/zh/CloudLocalDataBoundary.md` / `docs/en/CloudLocalDataBoundary.md` 为准。
 - AI 请求只使用当前任务最小必要上下文，优先读取云端 summary/context builder，不依赖本地 cache 完整性。
 - 用户业务数据不做长期 embedding、semantic memory 或 GraphRAG。
 - Cloud Profile 跟账号走。
@@ -147,7 +146,7 @@ AI 行为原则：
 | Phase 0 | 否 | 技术选型、API contract、工程边界锁定。 | 后续边做边改方向。 |
 | Phase 1 | 是 | App Shell 与 AI 页面空壳。 | 导航和 UI 破坏现有 Local 体验。 |
 | Phase 2 | 是 | 账号、订阅、Cloud Profile 基础。 | 登录状态和 Profile 权威来源混乱。 |
-| Phase 3 | 是 | Cloud Records Foundation：正式记录云端化、本地 partial cache、summary API。 | 数据源混乱、cache 误当权威、记录删除/分页/summary 出错。 |
+| Phase 3 | 是 | Cloud Records Foundation：正式记录云端化、本地 partial cache、summary API/hardening。 | 数据源混乱、cache 误当权威、记录删除/分页/summary 出错。 |
 | Phase 4 | 是 | AI Gateway 与云端 Chat History。 | 网络、订阅 gating、会话持久化出错。 |
 | Phase 5 | 是 | Structured RAG / Document RAG 与只读 workflows。 | 上下文上传过多、回答越权、文档语言检索错误。 |
 | Phase 6 | 是 | Food Vision 与 Food Draft 写入闭环。 | AI 草稿写入错误或绕过用户确认。 |
@@ -1174,6 +1173,7 @@ flutter build apk --debug
 - Cloud Profile 仍是账号级 Profile 权威来源。
 - `body_metric_logs`、food records、workout records 和 `daily_summaries` 以云端为正式 source of truth。
 - 本地 SQLite 只作为 partial cache、草稿和运行期加速层。
+- V1 使用单 active device，last login wins；正式写入必须通过 active-device guard。
 - 记录类操作即时保存到云端，不使用 Profile 那种整页草稿保存。
 - AI wrapper / context builder 的 contract 已锁定为读取云端 source of truth 或 summary builder，不读取本地 SQLite cache 作为权威。
 
@@ -1183,27 +1183,37 @@ flutter build apk --debug
 
 当前 Agent 版还没有真实用户饮食/训练记录包袱，可以直接登录前置并把正式记录云端化；这样 Phase 4 之后的 AI 能力可以在统一数据源上开发。
 
-### 本阶段实现
+### 本阶段实现状态
+
+已落地：
 
 - 登录前置的正式记录 gate。
+- `account_active_devices` / active-device RPC，用于新设备接管和旧设备写入阻断。
 - 云端 `body_metric_logs`。
 - 云端 `food_records`。
 - 云端 `food_items`。
-- 云端 `workout_records`。
 - 云端 `workout_sessions`。
 - 云端 `workout_sets`。
 - 云端 `daily_summaries`。
-- 记录 API。
-- summary API。
+- body/food/workout cloud-backed repository。
+- Cloud Profile/body/food/workout 正式写入 active-device guard。
 - 本地 partial cache schema 和 cache metadata。
 - 按日期/月份分页或范围加载历史记录。
-- cache pin / eviction 策略。
 - soft delete / tombstone 策略。
 - record version / optimistic conflict 基础字段。
 - 记录类即时保存、编辑、删除行为。
-- Profile 身体资料卡的身体记录入口。
+- Profile 保存成功后写入当日 `body_metric_logs`。
 - Body Trends 只读展示云端/缓存身体记录。
 - AI context wrapper contract 更新为云端 summary source。
+- Home 选中日期 summary 本地 confirmed cache 和 stale-while-revalidate 后台重算。
+
+继续作为 Phase 3 hardening：
+
+- `daily_summaries` 云端 upsert coordinator / summary API。
+- 最近 30 天 warm-cache 调度、freshness/backoff 和 cache pin/eviction 策略的独立 coordinator。
+- 更完整的 repair UI。
+- 记录版本冲突的显式 refresh/retry UX。
+- 导出从云端 records/summaries 分页读取的完整路径。
 
 ### 本阶段不实现
 
@@ -1216,6 +1226,7 @@ flutter build apk --debug
 - 不做离线正式写入队列。
 - 不做完整历史一次性下放到本地。
 - 不做用户业务数据 embedding / semantic memory。
+- 不做实时多设备同步或在线 presence 检测。
 - 不做复杂跨设备 merge UI；本阶段优先使用云端为准和记录级版本冲突提示。
 
 ### 云端表与关键字段
@@ -1275,18 +1286,9 @@ flutter build apk --debug
 
 ### 本地 partial cache 边界
 
-本地 SQLite 可以继续存在，但角色变更为 partial cache：
+本地 SQLite 可以继续存在，但角色变更为 partial cache、草稿和运行期加速层。具体 cache-first 读取、warm cache、pinning、淘汰资格、账号切换、失败和修复规则以 `docs/zh/CloudLocalDataBoundary.md` / `docs/en/CloudLocalDataBoundary.md` 为准。
 
-- 默认预取最近 30 天记录和 `daily_summaries`。
-- 最近 30 天 cache 默认 pin 住。
-- 当前查看日期或月份 pin 住。
-- 未成功同步的草稿、pending edit 或 pending delete 不得被清理。
-- 用户查看 30 天以前的历史时，按日期或月份从云端加载，显示后写入 cache。
-- cache 达到容量或行数上限时，优先清理最久未访问且可从云端重建的数据。
-- cache eviction 依据 `last_accessed_at`、数据体积、是否 pinned、是否 pending。
-- 被清理的是本地 cache，不是云端正式数据。
-- 下次访问被清理的历史日期时重新从云端加载。
-- 不做完整历史 SQLite 镜像。
+本阶段仍不做完整历史 SQLite 镜像；被清理的是本地 cache，不是云端正式数据。
 
 ### Summary 与增长管理
 
@@ -1349,57 +1351,63 @@ flutter build apk --debug
 
 ### 执行步骤
 
-1. 锁定 Supabase schema。
+1. 先落 active-device 边界。
+   - 建 `account_active_devices` 或等价表/RPC。
+   - 建 `claim_active_device` 和 `assert_active_device`。
+   - 登录成功后新设备接管账号。
+   - 正式写入前校验 active device，旧设备返回 `device_replaced`。
+
+2. 锁定 Supabase schema。
    - 建 records tables。
    - 建 indexes。
    - 建 RLS。
    - 建 soft delete 字段。
    - 建 record version 字段。
 
-2. 锁定 API contract。
+3. 锁定 API contract。
    - date range 查询。
    - record CRUD。
    - body metric upsert by date。
    - daily summary 查询。
    - cache pagination contract。
+   - active-device claim / device replacement error contract。
 
-3. 登录前置正式记录功能。
+4. 登录前置正式记录功能。
    - 未登录只能看到登录入口。
    - 不再创建匿名正式记录。
 
-4. 改 body metric flow。
+5. 改 body metric flow。
    - 身体资料卡加日历/新增记录入口。
    - record sheet 编辑体重、体脂、腰围。
    - Body Trends 只读。
 
-5. 改 food flow。
+6. 改 food flow。
    - 新增/编辑/删除走云端。
    - 写成功后更新 partial cache。
 
-6. 改 workout flow。
+7. 改 workout flow。
    - 新增/编辑/删除走云端。
    - session/set 归属 workout record。
 
-7. 建 daily summaries。
+8. 建 daily summaries。
    - Home 读取 summary。
    - selected-day summary 保留 mode-primary 语义。
 
-8. 建本地 partial cache。
-   - cache metadata。
-   - pinned 最近 30 天。
-   - last accessed。
-   - eviction。
+9. 建本地 partial cache。
+   - 按 `docs/zh/CloudLocalDataBoundary.md` / `docs/en/CloudLocalDataBoundary.md` 落地 cache metadata、pinning、last accessed、eviction 和修复规则。
 
-9. 改导出。
+10. 改导出。
    - 导出从云端分页读取或从 cloud-backed repository 读取。
    - 不依赖本地完整历史。
 
-10. 写测试。
+11. 写测试。
+    - 新设备登录 claim active device。
+    - 旧设备收到 `device_replaced` 后不能继续写入。
     - RLS / account isolation。
     - date range pagination。
     - body metric one row per account/day。
     - soft delete excludes summaries。
-    - local cache eviction 不删除 pending 或 pinned。
+    - local cache 行为符合 CloudLocalDataBoundary 的 pending、pinning 和淘汰边界。
     - AI wrapper contract 不依赖本地 cache。
 
 ### 自动化验证
@@ -1415,6 +1423,7 @@ flutter build apk --debug
 后端/API 验证：
 
 - 未登录 record API 被拒绝。
+- 旧设备或非 active device 的 record write 被 `device_replaced` 拒绝。
 - 用户不能读写别人的 records。
 - date range 查询只返回当前账号。
 - soft delete 后列表和 summary 不再包含该记录。
@@ -1428,8 +1437,8 @@ App 测试：
 - 登录后可新增/编辑/删除 workout。
 - 身体资料卡打开指定日期身体记录 sheet。
 - 身体趋势卡不提供记录入口。
-- 查看 30 天以前日期会按需加载。
-- cache 满时清理可重建旧 cache，不清 pinned/pending。
+- 查看旧日期会按需加载。
+- cache 满时只清理 CloudLocalDataBoundary 允许淘汰的可重建旧 cache。
 
 ### 人工安装审查
 
@@ -1442,20 +1451,23 @@ App 测试：
 - 身体资料卡可新增过去日期体重/体脂/腰围。
 - 身体趋势只展示趋势。
 - 删除单条记录需要确认并即时生效。
-- 切到 30 天以前日期能加载历史。
+- 切到旧历史日期能加载历史。
 - 重启后最近记录从 cache 或云端恢复。
 - 断网时不会把失败写入伪装成正式记录。
+- 同账号新设备登录后，旧设备下一次云端交互进入“账号已在另一台设备登录”状态，不能继续写入。
 
 ### 阻断条件
 
 以下问题不解决不能进入 Phase 4：
 
 - 未登录仍能创建正式记录。
+- 非 active device 仍能创建、编辑、删除正式记录。
+- `device_replaced` 被显示成普通上传失败，或允许旧设备继续重试同一 session。
 - 本地 SQLite 仍被当成正式 source of truth。
 - AI context contract 仍要求读取本地完整 SQLite。
 - records 表缺少 `account_id` 隔离或 RLS。
 - 删除记录没有 soft delete / tombstone 规则。
-- cache eviction 可能删除 pending 或 pinned 数据。
+- cache 行为违反 CloudLocalDataBoundary 的 pending、pinning 或淘汰边界。
 - Body Trends 承担记录入口。
 - 过去日期身体记录会静默改当前 Profile。
 - Home summary 与云端 records 不一致。

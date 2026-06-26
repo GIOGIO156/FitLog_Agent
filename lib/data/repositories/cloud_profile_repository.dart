@@ -2,6 +2,7 @@ import 'package:supabase/supabase.dart' as supabase;
 
 import '../../domain/models/cloud_profile.dart';
 import '../../domain/services/cloud_profile_mapper.dart';
+import 'active_device_repository.dart';
 import 'phase2_repository_exception.dart';
 
 abstract class CloudProfileRepository {
@@ -26,10 +27,12 @@ class SupabaseCloudProfileRepository implements CloudProfileRepository {
   const SupabaseCloudProfileRepository({
     required this.client,
     this.mapper = const CloudProfileMapper(),
+    this.activeDeviceRepository = const NoopActiveDeviceRepository(),
   });
 
   final supabase.SupabaseClient client;
   final CloudProfileMapper mapper;
+  final ActiveDeviceRepository activeDeviceRepository;
 
   @override
   Future<CloudProfile?> fetch(String accountId) async {
@@ -51,6 +54,7 @@ class SupabaseCloudProfileRepository implements CloudProfileRepository {
   @override
   Future<CloudProfile> save(CloudProfile cloudProfile) async {
     try {
+      await activeDeviceRepository.assertActive();
       final rows = await client
           .from('cloud_profiles')
           .upsert(mapper.toRow(cloudProfile))

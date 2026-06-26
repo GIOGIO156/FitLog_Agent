@@ -244,7 +244,7 @@ Agent V1 需要账号绑定的 AI 个性化：
 
 因此，登录后 Cloud Profile 是权威版本。设备可以缓存用于展示。V1 禁止离线保存 Profile，所以不会产生 profile merge conflict。
 
-Phase 3 后，登录用户的 body、food 和 workout 正式记录也以云端为权威来源。本地 SQLite 只做 partial cache、草稿和运行期加速，不做完整历史镜像。当 AI 需要近期上下文时，App 应发送云端 summary/context builder 生成的紧凑摘要，而不是上传完整原始历史。
+Phase 3 后，登录用户的 body、food 和 workout 正式记录也以云端为权威来源。本地 SQLite 只做 partial cache、草稿和运行期加速，不做完整历史镜像。当 AI 需要近期上下文时，App 应发送云端 summary/context builder 生成的紧凑摘要，而不是上传完整原始历史。工程规则见 `CloudLocalDataBoundary.md`。
 
 ## 为什么需要用户确认
 

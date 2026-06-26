@@ -1162,6 +1162,14 @@ class _ProfilePageState extends State<ProfilePage> {
     final accountController = _maybeAccountController(listen: false);
     if (accountController != null && accountController.authSession.isSignedIn) {
       await accountController.saveCloudProfile(profile);
+      await services.profileRepository.upsertWeightLog(
+        accountId: accountController.authSession.accountId,
+        date: DateUtilsX.todayKey(),
+        weightKg: profile.weightKg,
+        bodyFatPercent: profile.bodyFatPercent,
+        waistCm: profile.waistCm,
+        source: 'profile_save',
+      );
     } else {
       await services.profileRepository.saveProfile(profile);
     }

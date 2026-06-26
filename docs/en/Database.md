@@ -2,16 +2,16 @@
 
 ## Purpose
 
-This document defines FitLog_Agent V1 storage boundaries.
+This document defines FitLog_Agent V1 schema, migrations, tables, fields, and storage concepts. Cloud/local authority, cache-first reads, write-success rules, refresh, failures, conflicts, and repair rules are defined in `CloudLocalDataBoundary.md`.
 
-The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation should move body/food/workout official records and daily summaries to the cloud, while local SQLite becomes partial cache, draft storage, and runtime acceleration. Later AI Gateway, RAG, and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
+The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, and selected-day daily-summary local cache for Home stale-while-revalidate. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. Later AI Gateway, RAG, and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
 
 ## Storage Overview
 
 | Storage | Purpose | Current status |
 | --- | --- | --- |
-| SQLite / `sqflite` | Current implementation's local food, workout, body metric history, profile baseline/cache, calibration, strategy review, custom exercises, workout drafts; after Phase 3 it is partial cache and draft storage. | Implemented from Local baseline; Phase 3 changes the role. |
-| Supabase Cloud Records | `body_metric_logs`, food/workout records, `daily_summaries`. | Phase 3 target. |
+| SQLite / `sqflite` | Local profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, selected-day `daily_summary_cache`, and partial cache. | Implemented from Local baseline; Phase 3 schema v15 carries cloud/cache metadata and selected-day summary cache. |
+| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes are wired through cloud-backed repositories. |
 | SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, and Supabase registration-code PKCE verifier state. | Implemented from Local baseline and Phase 2 account work; auth verifier and theme key are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
 | Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, and later AI chats/request logs/final answers/debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; later AI tables remain planned. |
@@ -20,7 +20,7 @@ The copied source uses the FitLog Local SQLite schema for business records. Phas
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `12`.
+Current local SQLite schema version: `15`.
 
 Foreign keys are enabled with:
 
@@ -46,6 +46,9 @@ Local migrations must remain additive and compatible.
 | 10 | Added `workout_record_drafts`. |
 | 11 | Added `custom_exercises`, exercise snapshots, cardio-intensity metadata, and raw-vs-calculation workout-set fields. |
 | 12 | Added body fat and waist fields to `user_profile`, and account-scoped body metric fields to `user_weight_logs`. |
+| 13 | Added cloud confirmed-read-model metadata to local food/workout/body caches: `account_id`, `cloud_id`, `record_version`, `cloud_updated_at`, `deleted_at`, `cache_confirmed`, `cached_at`, plus `daily_summary_cache`. |
+| 14 | Re-runs the idempotent Phase 3 cache-column migration so devices that installed an intermediate v13 build still receive the cloud/cache columns without clearing local data. |
+| 15 | Adds an idempotent `daily_summary_cache` repair for devices that installed an intermediate v14 build before the selected-day summary JSON cache columns, unique index, and cache-write downgrade were complete. |
 
 Compatibility rules:
 
@@ -306,7 +309,7 @@ Agent V1 should reuse cloud daily summaries or service-built summaries for Struc
 
 ## Cloud Tables And Planned Tables
 
-The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Cloud Records tables are Phase 3 targets, and AI tables remain design concepts until their phases land.
+The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Phase 3 adds active-device RPCs, Cloud Records tables, RLS, soft delete, version/timestamp triggers, and the `daily_summaries` table in `supabase/migrations/202606260001_phase3_cloud_records.sql`. AI tables remain design concepts until their phases land.
 
 ### `accounts`
 
@@ -370,6 +373,36 @@ Fields:
 - `code_id`
 - `account_id`
 - redeemed timestamp
+
+### `account_active_devices`
+
+Purpose: V1 single-active-device boundary. It records which app install/device/session has taken over the account so older devices cannot continue official writes. It is not a realtime online-presence table and is not a multi-device sync system.
+
+Phase 3 implementation: after sign-in succeeds, the client calls the `claim_active_device` RPC to update the account's active device/session to the current device. Official body/food/workout records, Cloud Profile saves, and later AI Gateway requests call `assert_active_device` at the server/RPC boundary. Requests from older devices return the stable `device_replaced` error code.
+
+Recommended fields:
+
+- `account_id`
+- `active_device_id`
+- `active_session_id`
+- platform
+- app version
+- claimed timestamp
+- last seen timestamp
+- replaced timestamp or diagnostic reason
+
+Recommended RPCs:
+
+- `claim_active_device(device_id text, session_id text, platform text, app_version text)`
+- `assert_active_device(device_id text, session_id text)`
+- optional `release_active_device(device_id text, session_id text)`
+
+Rules:
+
+- `account_id` must come from `auth.uid()` and must not trust a client-supplied account id.
+- A newer login overwrites the older active device: last login wins.
+- The older physical session may not disappear immediately from Supabase Auth tables; product correctness relies on the active-device write guard, not immediate deletion of the old session.
+- `device_replaced` is not a network failure or ordinary upload failure; the client should clear local sign-in state and enter the re-login/takeover path.
 
 ### `cloud_profiles`
 
@@ -476,7 +509,7 @@ Fields should cover:
 
 Rules:
 
-- Summaries may be maintained incrementally by the service or generated on demand; Phase 3 implementation must choose one strategy before coding.
+- Phase 3 creates the cloud `daily_summaries` table. The current app-side `DailySummaryService` builds deterministic summaries on demand from cloud-backed record repositories and can persist selected-day confirmed summaries into local `daily_summary_cache` for Home stale-while-revalidate. The summary cloud upsert/builder coordinator remains a Cloud Records hardening point, and AI/export must not depend on complete local SQLite.
 - AI wrappers should prefer summaries or summary builders over scanning full raw records.
 
 ### `ai_chat_sessions`
@@ -594,11 +627,14 @@ Recommended context objects:
 | `weight_trend_summary` | Cloud `body_metric_logs` summary builder. | Trend only when enough data exists. |
 | `strategy_context` | Profile strategy settings and deterministic calculator output. | Includes `carb_cycling` or `carb_tapering` state when relevant. |
 
-## Source Of Truth Rules
+## Source Of Truth Summary
+
+The complete authority boundary for Cloud Profile, Cloud Records, daily summaries, and local cache lives in `CloudLocalDataBoundary.md`. Database records where the data is stored and what each field means. Summary rules:
 
 | Data | V1 source of truth |
 | --- | --- |
 | Account identity | Cloud |
+| Active device | Cloud after Phase 3 |
 | Subscription | Cloud |
 | Cloud Profile | Cloud |
 | Body metric logs | Cloud after Phase 3; local SQLite cache only |
@@ -610,7 +646,7 @@ Recommended context objects:
 | Document RAG index | Cloud or bundled service index |
 | Export files | Local user-controlled files |
 
-Local cache prefetches the recent 30-day window and necessary summaries by default; older history loads by date or month when opened. Cache eviction removes only rebuildable local cache, not cloud official data.
+Cache capacity, eviction eligibility, cache-first reads, `auth_required` handling, and repair policy live in `CloudLocalDataBoundary.md`.
 
 ## Offline Rules
 
@@ -618,7 +654,7 @@ Local cache prefetches the recent 30-day window and necessary summaries by defau
 - User may edit unfinished prompt text but cannot send.
 - Profile page may display cached profile but cannot save.
 - V1 does not allow pending offline profile edits.
-- After Phase 3, official food/workout/body writes require cloud access; offline official-write queues are a Post-V1 enhancement, not the default Cloud Records Foundation scope.
+- After Phase 3, official food/workout/body writes require cloud access; offline official-write queues are outside the default Cloud Records Foundation scope, with handling defined in `CloudLocalDataBoundary.md`.
 
 ## Export Coverage
 
@@ -636,7 +672,7 @@ Export should continue to cover:
 - self-check fields
 - diet adjustment review history
 
-After Phase 3, export should read official records through cloud-backed repositories or cloud pagination rather than relying on complete local history. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
+After Phase 3, export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
 
 ## Not Implemented In Current Source
 

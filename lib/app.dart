@@ -13,14 +13,18 @@ import 'core/utils/date_utils.dart';
 import 'core/widgets/fitlog_bottom_nav_bar.dart';
 import 'data/db/app_database.dart';
 import 'data/repositories/ai_local_context_permission_repository.dart';
+import 'data/repositories/active_device_repository.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/cloud_profile_repository.dart';
 import 'data/repositories/custom_exercise_repository.dart';
+import 'data/repositories/daily_summary_cache_repository.dart';
 import 'data/repositories/food_repository.dart';
 import 'data/repositories/profile_repository.dart';
 import 'data/repositories/subscription_repository.dart';
 import 'data/repositories/workout_draft_repository.dart';
 import 'data/repositories/workout_repository.dart';
+import 'domain/models/auth_session.dart';
+import 'domain/models/cloud_runtime_context.dart';
 import 'domain/services/daily_summary_service.dart';
 import 'domain/services/diet_plan_strategy_service.dart';
 import 'domain/services/carb_taper_review_service.dart';
@@ -62,6 +66,7 @@ class _FitLogAppState extends State<FitLogApp> {
   late final LanguageController _languageController;
   late final FitLogThemeController _themeController;
   late final AccountController _accountController;
+  late final CloudRuntimeContext _cloudRuntimeContext;
   StreamSubscription<supabase.AuthState>? _supabaseAuthSubscription;
 
   @override
@@ -69,11 +74,9 @@ class _FitLogAppState extends State<FitLogApp> {
     super.initState();
 
     final database = AppDatabase.instance;
-    final foodRepository = FoodRepository(database);
+    _cloudRuntimeContext = CloudRuntimeContext();
     final customExerciseRepository = CustomExerciseRepository(database);
-    final workoutRepository = WorkoutRepository(database);
     final workoutDraftRepository = WorkoutDraftRepository(database);
-    final profileRepository = ProfileRepository(database);
     final authSessionStorage = widget.config.hasSupabase
         ? const SharedPreferencesSupabaseAuthSessionStorage()
         : null;
@@ -86,6 +89,36 @@ class _FitLogAppState extends State<FitLogApp> {
             ),
           )
         : null;
+    final activeDeviceRepository = supabaseClient == null
+        ? const NoopActiveDeviceRepository()
+        : SupabaseActiveDeviceRepository(
+            client: supabaseClient,
+            runtimeContext: _cloudRuntimeContext,
+          );
+    final foodRepository = supabaseClient == null
+        ? FoodRepository(database)
+        : CloudBackedFoodRepository(
+            database: database,
+            client: supabaseClient,
+            runtimeContext: _cloudRuntimeContext,
+            activeDeviceRepository: activeDeviceRepository,
+          );
+    final workoutRepository = supabaseClient == null
+        ? WorkoutRepository(database)
+        : CloudBackedWorkoutRepository(
+            database: database,
+            client: supabaseClient,
+            runtimeContext: _cloudRuntimeContext,
+            activeDeviceRepository: activeDeviceRepository,
+          );
+    final profileRepository = supabaseClient == null
+        ? ProfileRepository(database)
+        : CloudBackedProfileRepository(
+            database: database,
+            client: supabaseClient,
+            runtimeContext: _cloudRuntimeContext,
+            activeDeviceRepository: activeDeviceRepository,
+          );
     if (supabaseClient != null && authSessionStorage != null) {
       _supabaseAuthSubscription = supabaseClient.auth.onAuthStateChange.listen((
         state,
@@ -110,6 +143,7 @@ class _FitLogAppState extends State<FitLogApp> {
     final dietPlanStrategyService = DietPlanStrategyService(
       carbTaperReviewService: carbTaperReviewService,
     );
+    final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
 
     final dailySummaryService = DailySummaryService(
       foodRepository: foodRepository,
@@ -117,6 +151,7 @@ class _FitLogAppState extends State<FitLogApp> {
       profileRepository: profileRepository,
       trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
       dietPlanStrategyService: dietPlanStrategyService,
+      dailySummaryCacheRepository: dailySummaryCacheRepository,
     );
 
     _services = AppServices(
@@ -158,9 +193,14 @@ class _FitLogAppState extends State<FitLogApp> {
           : SupabaseSubscriptionRepository(supabaseClient),
       cloudProfileRepository: supabaseClient == null
           ? const UnconfiguredCloudProfileRepository()
-          : SupabaseCloudProfileRepository(client: supabaseClient),
+          : SupabaseCloudProfileRepository(
+              client: supabaseClient,
+              activeDeviceRepository: activeDeviceRepository,
+            ),
       profileRepository: profileRepository,
       contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      activeDeviceRepository: activeDeviceRepository,
+      cloudRuntimeContext: _cloudRuntimeContext,
       backendConfigured: widget.config.hasSupabase,
     )..initialize();
 
@@ -172,6 +212,7 @@ class _FitLogAppState extends State<FitLogApp> {
   void dispose() {
     _supabaseAuthSubscription?.cancel();
     _accountController.dispose();
+    _cloudRuntimeContext.dispose();
     _themeController.dispose();
     super.dispose();
   }
@@ -183,6 +224,9 @@ class _FitLogAppState extends State<FitLogApp> {
         Provider<AppServices>.value(value: _services),
         ChangeNotifierProvider<AccountController>.value(
           value: _accountController,
+        ),
+        ChangeNotifierProvider<CloudRuntimeContext>.value(
+          value: _cloudRuntimeContext,
         ),
         ChangeNotifierProvider<RefreshNotifier>(
           create: (_) => RefreshNotifier(),
@@ -224,7 +268,7 @@ class _FitLogAppState extends State<FitLogApp> {
               Brightness.dark,
               themeKey: themeController.theme,
             ),
-            home: const _RootShell(),
+            home: const _RootAuthGate(),
           );
         },
       ),
@@ -411,6 +455,30 @@ TextStyle? _withFontFallback(TextStyle? style) {
     fontFamily: fitLogFontFamily,
     fontFamilyFallback: fitLogChineseSansFallback,
   );
+}
+
+class _RootAuthGate extends StatelessWidget {
+  const _RootAuthGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final accountController = context.watch<AccountController>();
+    final status = accountController.authSession.status;
+    if (!accountController.initialized ||
+        status == AuthSessionStatus.unknown ||
+        status == AuthSessionStatus.loading) {
+      return Scaffold(
+        body: DecoratedBox(
+          decoration: BoxDecoration(gradient: context.fitLogTheme.pageGradient),
+          child: Center(child: Text(context.strings.loading)),
+        ),
+      );
+    }
+    if (!accountController.authSession.isSignedIn) {
+      return const Scaffold(body: ProfilePage());
+    }
+    return const _RootShell();
+  }
 }
 
 class _RootShell extends StatefulWidget {
