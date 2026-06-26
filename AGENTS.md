@@ -84,6 +84,17 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - flutter test
 - For audit/refactor tasks, report risks before modifying code.
 
+## FitLog SQLite Migration Rules
+
+- Do not bump `AppDatabase.dbVersion` for every build. Bump it only when SQLite schema, index, constraint, cache/read-model shape, or persisted field semantics change.
+- Any SQLite schema change must bump `AppDatabase.dbVersion` and add an idempotent `onUpgrade` migration for existing installs.
+- `CREATE TABLE IF NOT EXISTS` is not enough for existing users. Existing tables do not gain new columns, indexes, constraints, or defaults unless the upgrade path explicitly adds or repairs them.
+- Prefer additive migrations and `_addColumnIfMissing`-style guards. Preserve installed debug APK users without requiring local data clearing.
+- For new cache/read-model tables or columns, include upgrade repair for intermediate test builds that may have created an older partial table.
+- Optional local cache writes must not block live UI rendering, cloud-confirmed writes, or the user's ability to see freshly computed data.
+- When local schema version changes, update `docs/en/Database.md`, `docs/zh/Database.md`, and `CHANGELOG.md` in the same task.
+- Add or update targeted tests for migration boundaries, schema version expectations, or cache-failure downgrade behavior when practical.
+
 ## FitLog Design Documentation Rules
 
 Design docs are maintained as finished source-of-truth documents, not as running notes.
