@@ -1077,6 +1077,151 @@ void main() {
     );
   });
 
+  testWidgets('Profile nickname draft saves only from the draft bar', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final cloudProfileRepository = _FakeCloudProfileRepository(
+      const CloudProfileMapper().defaultForAccount('acct_1'),
+    );
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: cloudProfileRepository,
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_nickname_display')),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('profile_nickname_field')),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(FilledButton, 'Done'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profile_nickname_field')),
+      'Rinko',
+    );
+    await tester.pump();
+
+    expect(cloudProfileRepository.saveCount, 0);
+    expect(
+      find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+      findsOneWidget,
+    );
+    expect(find.text('1 unsaved'), findsOneWidget);
+
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('profile_draft_save_button')),
+    );
+    expect(saveButton.onPressed, isNotNull);
+    saveButton.onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(cloudProfileRepository.saveCount, 1);
+    expect(cloudProfileRepository.cloudProfile?.profile.nickname, 'Rinko');
+    expect(
+      find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Profile current body draft saves only from the draft bar', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final cloudProfileRepository = _FakeCloudProfileRepository(
+      const CloudProfileMapper().defaultForAccount('acct_1'),
+    );
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: cloudProfileRepository,
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_weight_tile')),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_weight_field')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_save_button')),
+      findsNothing,
+    );
+    expect(find.widgetWithText(FilledButton, 'Done'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profile_body_weight_field')),
+      '66.1',
+    );
+    await tester.pump();
+
+    expect(cloudProfileRepository.saveCount, 0);
+    expect(profileRepository.weightLogSaveCount, 0);
+    expect(
+      find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+      findsOneWidget,
+    );
+    expect(find.text('1 unsaved'), findsOneWidget);
+
+    final saveButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('profile_draft_save_button')),
+    );
+    expect(saveButton.onPressed, isNotNull);
+    saveButton.onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(cloudProfileRepository.saveCount, 1);
+    expect(cloudProfileRepository.cloudProfile?.profile.weightKg, 66.1);
+    expect(profileRepository.weightLogSaveCount, 1);
+    expect(profileRepository.savedWeightLog?.source, 'profile_save');
+    expect(
+      find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+      findsNothing,
+    );
+  });
+
   testWidgets('Past body metric edit saves only a body metric log', (
     tester,
   ) async {

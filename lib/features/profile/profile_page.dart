@@ -115,7 +115,6 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _draftChangesExpanded = false;
   bool _editingNickname = false;
   _BodyProfileField? _editingBodyField;
-  UserProfile? _bodyProfileEditSnapshot;
   String? _editingBodyMetricDate;
   bool _savingBodyMetricRecord = false;
   RootInteractionLockController? _rootInteractionLockController;
@@ -281,7 +280,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _macroSelfCheckPeriodDays = profile.macroSelfCheckPeriodDays;
     _macroSelfCheckEnabled = profile.macroSelfCheckEnabled;
     _lastMacroSelfCheckAt = profile.lastMacroSelfCheckAt;
-    _bodyProfileEditSnapshot = null;
     _draftChangesExpanded = false;
     _normalizeGoalByAge();
     _normalizeStrategyByContext();
@@ -359,7 +357,6 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() {
       _editingNickname = false;
       _editingBodyField = null;
-      _bodyProfileEditSnapshot = null;
       _editingBodyMetricDate = date;
       _bodyMetricWeightController.text = weight.toStringAsFixed(1);
       _bodyMetricBodyFatController.text = bodyFat == null
@@ -747,9 +744,6 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() {
       if (_editingNickname && !_hasNicknameDraft) {
         _editingNickname = false;
-      }
-      if (_editingBodyField == null) {
-        _bodyProfileEditSnapshot = _buildDraftProfile();
       }
       _editingBodyField = field;
     });
@@ -1390,50 +1384,9 @@ class _ProfilePageState extends State<ProfilePage> {
           ?.cloudProfileState
           .cloudProfile
           ?.profileVersion;
-      _bodyProfileEditSnapshot = null;
       _draftChangesExpanded = false;
     });
     FitLogNotifications.success(context, strings.profileSaved);
-  }
-
-  void _completeNicknameDraft() {
-    FocusScope.of(context).unfocus();
-    setState(() => _editingNickname = false);
-  }
-
-  void _completeBodyProfileDraft() {
-    if (_hasBodyProfileDraft && !_validateBodyProfile()) {
-      return;
-    }
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _editingBodyField = null;
-      _bodyProfileEditSnapshot = null;
-    });
-  }
-
-  void _cancelBodyProfileEdit() {
-    final snapshot = _bodyProfileEditSnapshot ?? _loadedProfile;
-    if (snapshot == null) {
-      return;
-    }
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _ageController.text = snapshot.age.toString();
-      _heightController.text = snapshot.heightCm.toStringAsFixed(1);
-      _weightController.text = snapshot.weightKg.toStringAsFixed(1);
-      _bodyFatController.text = snapshot.bodyFatPercent == null
-          ? ''
-          : snapshot.bodyFatPercent!.toStringAsFixed(1);
-      _waistController.text = snapshot.waistCm == null
-          ? ''
-          : snapshot.waistCm!.toStringAsFixed(1);
-      _sexForFormula = snapshot.sexForFormula;
-      _editingBodyField = null;
-      _bodyProfileEditSnapshot = null;
-      _normalizeGoalByAge();
-      _normalizeStrategyByContext();
-    });
   }
 
   Future<void> _saveProfileDraft() async {
@@ -1455,7 +1408,6 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _editingNickname = false;
         _editingBodyField = null;
-        _bodyProfileEditSnapshot = null;
         _draftChangesExpanded = false;
       });
       return;
@@ -1469,7 +1421,6 @@ class _ProfilePageState extends State<ProfilePage> {
         setState(() {
           _editingNickname = false;
           _editingBodyField = null;
-          _bodyProfileEditSnapshot = null;
         });
       }
     } catch (error) {
@@ -1957,6 +1908,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       Expanded(
                         child: _editingNickname
                             ? TextField(
+                                key: const ValueKey<String>(
+                                  'profile_nickname_field',
+                                ),
                                 controller: _nicknameController,
                                 autofocus: true,
                                 onChanged: (_) => setState(() {}),
@@ -1976,6 +1930,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               )
                             : InkWell(
+                                key: const ValueKey<String>(
+                                  'profile_nickname_display',
+                                ),
                                 borderRadius: BorderRadius.circular(12),
                                 onTap: _openNicknameEditor,
                                 child: Padding(
@@ -1998,14 +1955,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               ),
                       ),
-                      if (_editingNickname) ...<Widget>[
-                        const SizedBox(width: 8),
-                        _InlineCompactSaveButton(
-                          saving: false,
-                          label: strings.done,
-                          onPressed: _completeNicknameDraft,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -2110,6 +2059,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         children: <Widget>[
                           Expanded(
                             child: _BodyProfileTile(
+                              key: const ValueKey<String>(
+                                'profile_body_weight_tile',
+                              ),
                               label: _labelWithoutUnit(strings.weightKgLabel),
                               icon: Icons.monitor_weight_outlined,
                               value: isEditingBodyMetricRecord
@@ -2131,7 +2083,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ? const ValueKey<String>(
                                         'profile_body_metric_weight_field',
                                       )
-                                    : null,
+                                    : const ValueKey<String>(
+                                        'profile_body_weight_field',
+                                      ),
                                 autofocus:
                                     isEditingBodyMetricRecord ||
                                     _editingBodyField ==
@@ -2218,7 +2172,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ? const ValueKey<String>(
                                         'profile_body_metric_body_fat_field',
                                       )
-                                    : null,
+                                    : const ValueKey<String>(
+                                        'profile_body_fat_field',
+                                      ),
                                 autofocus:
                                     !isEditingBodyMetricRecord &&
                                     _editingBodyField ==
@@ -2256,7 +2212,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ? const ValueKey<String>(
                                         'profile_body_metric_waist_field',
                                       )
-                                    : null,
+                                    : const ValueKey<String>(
+                                        'profile_body_waist_field',
+                                      ),
                                 autofocus:
                                     !isEditingBodyMetricRecord &&
                                     _editingBodyField ==
@@ -2272,30 +2230,19 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ],
                       ),
-                      if (_editingBodyField != null ||
-                          isEditingBodyMetricRecord) ...<Widget>[
+                      if (isEditingBodyMetricRecord) ...<Widget>[
                         const SizedBox(height: 14),
                         _InlineSaveActions(
                           saving: _savingBodyMetricRecord,
-                          saveLabel: isEditingBodyMetricRecord
-                              ? strings.save
-                              : strings.done,
-                          cancelButtonKey: isEditingBodyMetricRecord
-                              ? const ValueKey<String>(
-                                  'profile_body_metric_cancel_button',
-                                )
-                              : null,
-                          saveButtonKey: isEditingBodyMetricRecord
-                              ? const ValueKey<String>(
-                                  'profile_body_metric_save_button',
-                                )
-                              : null,
-                          onCancel: isEditingBodyMetricRecord
-                              ? _cancelBodyMetricEdit
-                              : _cancelBodyProfileEdit,
-                          onSave: isEditingBodyMetricRecord
-                              ? _saveBodyMetricRecord
-                              : _completeBodyProfileDraft,
+                          saveLabel: strings.save,
+                          cancelButtonKey: const ValueKey<String>(
+                            'profile_body_metric_cancel_button',
+                          ),
+                          saveButtonKey: const ValueKey<String>(
+                            'profile_body_metric_save_button',
+                          ),
+                          onCancel: _cancelBodyMetricEdit,
+                          onSave: _saveBodyMetricRecord,
                         ),
                       ],
                     ],
@@ -5556,6 +5503,7 @@ class _BodyTrendChartPainter extends CustomPainter {
 
 class _BodyProfileTile extends StatelessWidget {
   const _BodyProfileTile({
+    super.key,
     required this.label,
     required this.icon,
     required this.value,
@@ -5924,40 +5872,6 @@ class _InlineSaveActions extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _InlineCompactSaveButton extends StatelessWidget {
-  const _InlineCompactSaveButton({
-    required this.saving,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final bool saving;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final fitTheme = context.fitLogTheme;
-    return FilledButton(
-      onPressed: saving ? null : onPressed,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(58, 34),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        backgroundColor: fitTheme.primary,
-        foregroundColor: fitTheme.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      child: saving
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Text(label),
     );
   }
 }

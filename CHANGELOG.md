@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-06-27 Profile Draft Save Consolidation
+
+### Added
+
+- Added Profile widget coverage for nickname and current body edits, confirming both remain local drafts and do not save Cloud Profile until the bottom Save Changes bar is used.
+
+### Changed
+
+- Removed the remaining card-level Done/save controls from ordinary Profile nickname and current body editing, leaving the bottom Save Changes bar as the only ordinary Profile save entry.
+- Kept the historical body-record editor's independent save action because it writes a dated `body_metric_logs` record rather than the current Cloud Profile snapshot.
+- Updated bilingual README, Product, AppGuide, and AgentDesign docs to document the consolidated Profile save boundary.
+
+### Validation
+
+- Ran `dart format lib\features\profile\profile_page.dart test\phase2_account_controller_test.dart`.
+- Ran targeted `flutter test test\phase2_account_controller_test.dart`.
+- Confirmed the required documentation tree exists and searched docs/code for root-level design-doc links, date-appended stable-doc headings, stale local-doc references, and replacement characters.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-27 System Notifications Refactor
 
 ### Added
