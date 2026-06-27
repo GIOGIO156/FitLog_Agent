@@ -22,6 +22,8 @@ import 'package:fitlog_local/domain/models/subscription_status.dart';
 import 'package:fitlog_local/domain/models/user_profile.dart';
 import 'package:fitlog_local/domain/models/weight_log.dart';
 import 'package:fitlog_local/domain/models/workout_session.dart';
+import 'package:fitlog_local/core/widgets/fitlog_bottom_nav_bar.dart';
+import 'package:fitlog_local/core/widgets/fitlog_guide_sheet.dart';
 import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/cloud_profile_mapper.dart';
@@ -886,6 +888,73 @@ void main() {
     expect(controller.subscriptionStatus.state, SubscriptionState.inactive);
   });
 
+  testWidgets('Profile method guide opens above the root bottom navigation', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+    final rootTabController = RootTabController()
+      ..setIndex(RootTabIndex.profile);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+        withRootNavOverlay: true,
+        rootTabController: rootTabController,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.info_outline_rounded).first);
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Method Guide'), findsOneWidget);
+    expect(find.byType(ModalBarrier), findsWidgets);
+
+    final sheetRect = tester.getRect(
+      find.byKey(const ValueKey<String>('fitlog_guide_sheet_panel')),
+    );
+    final navRect = tester.getRect(
+      find.byKey(const ValueKey<String>('fitlog_bottom_nav_bar')),
+    );
+    expect(
+      sheetRect.bottom,
+      moreOrLessEquals(
+        navRect.top - FitLogGuideSheetGeometry.sheetToNavGap,
+        epsilon: 1,
+      ),
+    );
+    expect(
+      sheetRect.top,
+      greaterThanOrEqualTo(FitLogGuideSheetGeometry.topFocusGap),
+    );
+
+    await tester.tapAt(tester.getCenter(find.text('Home')));
+    await tester.pump();
+
+    expect(rootTabController.index, RootTabIndex.profile);
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
   testWidgets('Profile sign out card clears the local profile cache', (
     tester,
   ) async {
@@ -1289,7 +1358,10 @@ Widget _buildProfileTestApp({
   required AppDatabase database,
   required AccountController accountController,
   required _FakeProfileRepository profileRepository,
+  bool withRootNavOverlay = false,
+  RootTabController? rootTabController,
 }) {
+  final effectiveRootTabController = rootTabController ?? RootTabController();
   final foodRepository = _FakeFoodRepository(database);
   final workoutRepository = _FakeWorkoutRepository(database);
   final trainingFrequencySelfCheckService = TrainingFrequencySelfCheckService(
@@ -1350,6 +1422,9 @@ Widget _buildProfileTestApp({
         ),
       ),
       ChangeNotifierProvider<AccountController>.value(value: accountController),
+      ChangeNotifierProvider<RootTabController>.value(
+        value: effectiveRootTabController,
+      ),
       ChangeNotifierProvider<RefreshNotifier>(create: (_) => RefreshNotifier()),
       ChangeNotifierProvider<LanguageController>(
         create: (_) => LanguageController(),
@@ -1360,7 +1435,59 @@ Widget _buildProfileTestApp({
     ],
     child: MaterialApp(
       theme: buildFitLogTheme(Brightness.light),
-      home: const Scaffold(body: ProfilePage()),
+      home: Scaffold(
+        extendBody: withRootNavOverlay,
+        body: withRootNavOverlay
+            ? Stack(
+                children: <Widget>[
+                  const Positioned.fill(child: ProfilePage()),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: AnimatedBuilder(
+                      animation: effectiveRootTabController,
+                      builder: (context, _) {
+                        return FitLogBottomNavBar(
+                          items: _profileGuideTestNavItems,
+                          currentIndex: effectiveRootTabController.index,
+                          onTap: effectiveRootTabController.setIndex,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              )
+            : const ProfilePage(),
+      ),
     ),
   );
 }
+
+const _profileGuideTestNavItems = <FitLogNavItem>[
+  FitLogNavItem(
+    label: 'Home',
+    icon: Icons.home_outlined,
+    activeIcon: Icons.home_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Food',
+    icon: Icons.restaurant_menu_outlined,
+    activeIcon: Icons.restaurant_menu_rounded,
+  ),
+  FitLogNavItem(
+    label: 'AI',
+    icon: Icons.auto_awesome_outlined,
+    activeIcon: Icons.auto_awesome_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Workout',
+    icon: Icons.fitness_center_outlined,
+    activeIcon: Icons.fitness_center_rounded,
+  ),
+  FitLogNavItem(
+    label: 'Profile',
+    icon: Icons.person_outline_rounded,
+    activeIcon: Icons.person_rounded,
+  ),
+];

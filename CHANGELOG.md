@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-06-27 Guide Sheet Navigation Fix
+
+### Fixed
+
+- Unified the Home strategy guide and Profile current-plan method guide on a shared root modal guide sheet, removing the Profile page-local overlay/early-return path that left the root bottom navigation highlighted, clickable, and visually mixed with an extra full-width overlay.
+
+### Changed
+
+- Added shared guide-sheet geometry for explanation sheets: modal scrim over root navigation, 12 px clearance above the nav pill footprint, at least 64 px of top focus space, and internal body scrolling for long guide copy.
+- Updated bilingual Product and AppGuide docs with the guide sheet and bottom-navigation interaction rules.
+
+### Validation
+
+- Ran `dart format lib\core\widgets\fitlog_guide_sheet.dart lib\features\home\home_page.dart lib\features\profile\profile_page.dart test\home_page_test.dart test\phase2_account_controller_test.dart`.
+- Ran targeted `flutter test test\home_page_test.dart test\phase2_account_controller_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Ran `flutter build apk --debug`.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-27 Phase 3 Hardening Completion
 
 ### Added

@@ -58,6 +58,7 @@ Home | Food | AI | Workout | Profile
 - AI tab 位于底部导航正中间。
 - 底部导航是主题化浮动 pill；导航组件本身不在 pill 外绘制整行底色。
 - 非 AI 页面使用实体主题色导航 pill，并在 pill 中线以下保留与导航等宽、使用页面背景色的底部遮挡层，以遮住滚动内容但不形成整屏宽底色；AI 页面使用无此遮挡层的玻璃态导航 pill，让动效背景仍然可见。
+- 说明类 guide sheet，包括 Home 策略说明和 Profile 当前计划计算方法说明，都使用 root modal sheet。遮罩覆盖并禁用底部导航，sheet 底部停在 nav pill footprint 上方 12 px，顶部至少保留 64 px 焦点留白，长说明内容在 sheet body 内部滚动，不通过缩小文字或覆盖导航解决高度问题。
 - Root shell 不缩短页面主体，也不绘制与导航同高的整条底色；浮动导航几何区分两个坐标系：屏幕坐标里的导航占用是 pill 高度加 `max(设备底部安全区, 12)`，SafeArea 内容区里的导航避让是该占用减去已被 SafeArea 消耗的底部安全区。Home 首屏盒子使用 SafeArea 内容高度减去导航避让；g/kg macro strip 和 energy-ratio 卡片保持在盒子内，不把导航预留当成内容内部间距。energy-ratio 模式下，热量卡片保留自然圆环、字号、padding 并贴近顶部，宏量卡片保留自身自然内部高度并贴近底部，中间空白弹性伸缩。可滚动页面底部阅读留白和固定底部控件分别使用独立 helper。饮食和训练添加 CTA 是透明 overlay，列表自己预留滚动空间；它们和 AI 输入框一样使用屏幕坐标锚定到 nav pill 顶部，并共享同一段固定视觉间距，AI 页背景延伸到导航后方。
 - 全屏 AI 动效背景；可用状态使用更清晰的彩色慢流动，输入时键盘打开会暂停背景动画以降低输入卡顿。
 - 中心文案优先使用已保存的 Cloud Profile 昵称。

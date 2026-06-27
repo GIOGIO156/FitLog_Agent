@@ -12,6 +12,7 @@ import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
+import '../../core/widgets/fitlog_guide_sheet.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/daily_summary.dart';
@@ -1388,86 +1389,40 @@ class _StrategyCard extends StatelessWidget {
         ? strings.carbCyclingGuideKnow()
         : strings.carbTaperingGuideKnow();
 
-    showModalBottomSheet<void>(
+    showFitLogGuideSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        final fitTheme = context.fitLogTheme;
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-            child: GlassPanel(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      _PngBadgeIcon(
-                        assetName: FitLogIconAssets.strategy,
-                        backgroundColor: fitTheme.primarySoft,
-                        size: 44,
-                        iconSize: 29,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          strings.strategyGuideTitle(strategyLabel),
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: math.min(
-                      MediaQuery.of(context).size.height * 0.72,
-                      620,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideBaseMethodTitle,
-                            lines: <String>[
-                              strings.strategyGuideBaseMethodBody(modeText),
-                            ],
-                          ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideCorePrincipleTitle,
-                            lines: guidePrinciple,
-                          ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideNumbersTitle,
-                            lines: guideNumbers,
-                          ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideSetupTitle,
-                            lines: guideSetup,
-                          ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideKnowTitle,
-                            lines: whatToKnow,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      leading: _PngBadgeIcon(
+        assetName: FitLogIconAssets.strategy,
+        backgroundColor: context.fitLogTheme.primarySoft,
+        size: 44,
+        iconSize: 29,
+      ),
+      title: strings.strategyGuideTitle(strategyLabel),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideBaseMethodTitle,
+            lines: <String>[strings.strategyGuideBaseMethodBody(modeText)],
           ),
-        );
-      },
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideCorePrincipleTitle,
+            lines: guidePrinciple,
+          ),
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideNumbersTitle,
+            lines: guideNumbers,
+          ),
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideSetupTitle,
+            lines: guideSetup,
+          ),
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideKnowTitle,
+            lines: whatToKnow,
+          ),
+        ],
+      ),
     );
   }
 

@@ -16,6 +16,8 @@ Home | Food | AI | Workout | Profile
 
 AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，并从 pill 中线到底部屏幕保留与导航等宽、页面背景色的底部遮挡层，避免滚动文字从导航和底部安全区透出；该遮挡层不能延伸到 pill 与屏幕两侧之间的空隙。AI tab 使用没有这层遮挡的更透明玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
 
+说明类 guide sheet 是临时阅读层，不是页面内容。Home 策略说明和 Profile 当前计划计算方法说明必须使用共享 root modal guide sheet：modal 遮罩覆盖并禁用底部导航，说明内容停在 nav pill footprint 上方 12 px，顶部至少保留 64 px 焦点留白，长内容在 sheet body 内部滚动。
+
 ## Home
 
 Home 是选中日期仪表盘。

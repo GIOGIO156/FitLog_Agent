@@ -253,6 +253,63 @@ void main() {
     expect(tester.getTopLeft(strategyLabelFinder).dy, lessThan(932));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('home strategy guide opens in the shared guide sheet', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _buildHomeTestApp(
+        profile: UserProfile.defaults.copyWith(
+          nickname: 'Chris',
+          dietCalculationMode: AppConstants.dietCalculationModeEnergyRatio,
+          dietPlanStrategy: AppConstants.dietPlanStrategyCarbCycling,
+        ),
+        foodRecords: <FoodRecord>[
+          const FoodRecord(
+            date: _referenceDay,
+            mealName: 'Dinner',
+            totalWeightG: 450,
+            caloriesKcal: 820,
+            proteinG: 48,
+            carbsG: 72,
+            fatG: 24,
+            estimationNotes: '',
+            source: 'manual',
+          ),
+        ],
+        workoutSessions: <WorkoutSession>[
+          WorkoutSession(
+            date: _referenceDay,
+            bodyPart: 'Back',
+            exerciseName: 'Row',
+            exerciseType: 'strength',
+            durationMinutes: 35,
+            intensity: 'medium',
+            estimatedCalories: 180,
+            notes: '',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final strategyLabelFinder = find.textContaining('Carb cycle');
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(strategyLabelFinder);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('fitlog_guide_sheet_panel')),
+      findsOneWidget,
+    );
+    expect(find.byType(ModalBarrier), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 const String _referenceDay = '2026-06-08';

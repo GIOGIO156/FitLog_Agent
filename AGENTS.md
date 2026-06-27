@@ -82,6 +82,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - After code changes, run:
   - flutter analyze
   - flutter test
+- When rebuilding APKs for manual testing, default to the configured split build:
+  - `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`
+  Use an unconfigured APK build only when explicitly requested.
 - For audit/refactor tasks, report risks before modifying code.
 
 ## FitLog SQLite Migration Rules

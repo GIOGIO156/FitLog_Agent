@@ -16,6 +16,7 @@ import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/number_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
+import '../../core/widgets/fitlog_guide_sheet.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../core/widgets/profile_form_fields.dart';
@@ -108,7 +109,6 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _editingNickname = false;
   _BodyProfileField? _editingBodyField;
   UserProfile? _bodyProfileEditSnapshot;
-  bool _planGuideOverlayVisible = false;
   bool _exportingXlsx = false;
   bool _exportingCsv = false;
   bool _refreshingSubscription = false;
@@ -721,12 +721,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _openPlanMethodGuide() {
-    setState(() => _planGuideOverlayVisible = true);
-    if (_planGuideOverlayVisible) {
-      return;
-    }
-
-    final strings = context.strings;
+    final strings = context.stringsRead;
     final profile = _buildDraftProfile();
     final isGramPerKgMode =
         profile.dietCalculationMode ==
@@ -738,225 +733,156 @@ class _ProfilePageState extends State<ProfilePage> {
         ? const <String>['25%', '50%', '25%']
         : const <String>['30%', '40%', '30%'];
 
-    showModalBottomSheet<void>(
+    showFitLogGuideSheet<void>(
       context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-            child: GlassPanel(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+      leading: FitLogIconCircle(
+        icon: Icons.info_outline_rounded,
+        color: context.fitLogTheme.primary,
+        size: 44,
+      ),
+      title: strings.isChinese ? '计算方法说明' : 'Method Guide',
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideBaseMethodTitle,
+            lines: isGramPerKgMode
+                ? <String>[
+                    strings.gramPerKgModeNotice,
+                    strings.isChinese
+                        ? '当前展示的是 $phaseLabel / $sexLabel 的粗略查表档位。训练频率只决定你落在哪一行，不会推断训练强度、动作量或表现水平。'
+                        : 'This sheet is showing the coarse $phaseLabel / $sexLabel lookup row. Training frequency only decides which row you use; it does not estimate intensity, volume, or performance.',
+                  ]
+                : <String>[
+                    strings.isChinese
+                        ? '热量比例法会先算 BMR，再按每周训练频率选一个默认生活活动系数，随后叠加减脂/增肌目标，最后把当天净运动消耗加回今日可吃热量。'
+                        : 'Energy-ratio mode starts from BMR, picks a default lifestyle factor from your weekly training frequency, applies the cutting or bulking target, then adds today\'s net exercise calories back into the intake target.',
+                    strings.isChinese
+                        ? '在这个模式里，蛋白质 / 碳水 / 脂肪比例主要由你自己填写；训练频率不会直接改三大营养素百分比。'
+                        : 'In this mode, protein, carbs, and fat percentages are mainly user-controlled; training frequency does not directly rewrite the macro percentages.',
+                  ],
+          ),
+          if (isGramPerKgMode)
+            _ProfileGuideSectionCard(
+              title: strings.isChinese
+                  ? '当前 g/kg 系数表'
+                  : 'Current g/kg coefficient table',
+              subtitle: '$phaseLabel · $sexLabel',
+              child: _ProfileGuideTable(
+                headers: <String>[
+                  strings.isChinese ? '频率' : 'Freq',
+                  'P',
+                  'C',
+                  'F',
+                ],
+                rows: AppConstants.trainingFrequencyPerWeekOptions.map((
+                  frequency,
+                ) {
+                  final targets = _macroTargetCalculator.calculateByGramPerKg(
+                    profile: profile.copyWith(
+                      trainingFrequencyPerWeek: frequency,
+                    ),
+                  );
+                  final weight = math.max(profile.weightKg, 1);
+                  return <String>[
+                    '${frequency}d',
+                    (targets.proteinTargetG / weight).toStringAsFixed(1),
+                    (targets.carbsTargetG / weight).toStringAsFixed(1),
+                    (targets.fatTargetG / weight).toStringAsFixed(1),
+                  ];
+                }).toList(),
+              ),
+            ),
+          if (!isGramPerKgMode)
+            _ProfileGuideSectionCard(
+              title: strings.isChinese ? '默认起步参考' : 'Default starting point',
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      FitLogIconCircle(
-                        icon: Icons.info_outline_rounded,
-                        color: context.fitLogTheme.primary,
-                        size: 44,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          strings.isChinese ? '计算方法说明' : 'Method Guide',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
+                  _ProfileGuideTable(
+                    headers: <String>[
+                      strings.proteinLabel,
+                      strings.carbsLabel,
+                      strings.fatLabel,
                     ],
+                    rows: <List<String>>[ratioSummary],
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: math.min(
-                      MediaQuery.of(context).size.height * 0.72,
-                      620,
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideBaseMethodTitle,
-                            lines: isGramPerKgMode
-                                ? <String>[
-                                    strings.gramPerKgModeNotice,
-                                    strings.isChinese
-                                        ? '当前展示的是 $phaseLabel / $sexLabel 的粗略查表档位。训练频率只决定你落在哪一行，不会推断训练强度、动作量或表现水平。'
-                                        : 'This sheet is showing the coarse $phaseLabel / $sexLabel lookup row. Training frequency only decides which row you use; it does not estimate intensity, volume, or performance.',
-                                  ]
-                                : <String>[
-                                    strings.isChinese
-                                        ? '热量比例法会先算 BMR，再按每周训练频率选一个默认生活活动系数，随后叠加减脂/增肌目标，最后把当天净运动消耗加回今日可吃热量。'
-                                        : 'Energy-ratio mode starts from BMR, picks a default lifestyle factor from your weekly training frequency, applies the cutting or bulking target, then adds today\'s net exercise calories back into the intake target.',
-                                    strings.isChinese
-                                        ? '在这个模式里，蛋白质 / 碳水 / 脂肪比例主要由你自己填写；训练频率不会直接改三大营养素百分比。'
-                                        : 'In this mode, protein, carbs, and fat percentages are mainly user-controlled; training frequency does not directly rewrite the macro percentages.',
-                                  ],
-                          ),
-                          if (isGramPerKgMode)
-                            _ProfileGuideSectionCard(
-                              title: strings.isChinese
-                                  ? '当前 g/kg 系数表'
-                                  : 'Current g/kg coefficient table',
-                              subtitle: '$phaseLabel · $sexLabel',
-                              child: _ProfileGuideTable(
-                                headers: <String>[
-                                  strings.isChinese ? '频率' : 'Freq',
-                                  'P',
-                                  'C',
-                                  'F',
-                                ],
-                                rows: AppConstants
-                                    .trainingFrequencyPerWeekOptions
-                                    .map((frequency) {
-                                      final targets = _macroTargetCalculator
-                                          .calculateByGramPerKg(
-                                            profile: profile.copyWith(
-                                              trainingFrequencyPerWeek:
-                                                  frequency,
-                                            ),
-                                          );
-                                      final weight = math.max(
-                                        profile.weightKg,
-                                        1,
-                                      );
-                                      return <String>[
-                                        '${frequency}d',
-                                        (targets.proteinTargetG / weight)
-                                            .toStringAsFixed(1),
-                                        (targets.carbsTargetG / weight)
-                                            .toStringAsFixed(1),
-                                        (targets.fatTargetG / weight)
-                                            .toStringAsFixed(1),
-                                      ];
-                                    })
-                                    .toList(),
-                              ),
-                            ),
-                          if (!isGramPerKgMode)
-                            _ProfileGuideSectionCard(
-                              title: strings.isChinese
-                                  ? '默认起步参考'
-                                  : 'Default starting point',
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  _ProfileGuideTable(
-                                    headers: <String>[
-                                      strings.proteinLabel,
-                                      strings.carbsLabel,
-                                      strings.fatLabel,
-                                    ],
-                                    rows: <List<String>>[ratioSummary],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    profile.dietGoalPhase ==
-                                            AppConstants.dietGoalPhaseBulking
-                                        ? strings.bulkingMacroRatioSuggestion
-                                        : (strings.isChinese
-                                              ? '减脂/维持默认起步比例是蛋白质 30% / 碳水 40% / 脂肪 30%，你可以在下方卡片里继续手动改。'
-                                              : 'The default cutting or maintenance starting split is protein 30% / carbs 40% / fat 30%, and you can still override it below.'),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(
-                                          color:
-                                              context.fitLogTheme.textSecondary,
-                                          height: 1.45,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (!isGramPerKgMode)
-                            _ProfileGuideSectionCard(
-                              title: strings.isChinese
-                                  ? '训练频率对应的默认活动系数'
-                                  : 'Default lifestyle factor by frequency',
-                              child: _ProfileGuideTable(
-                                headers: <String>[
-                                  strings.isChinese ? '频率' : 'Freq',
-                                  strings.isChinese ? '系数' : 'Factor',
-                                ],
-                                rows: AppConstants
-                                    .trainingFrequencyPerWeekOptions
-                                    .map(
-                                      (frequency) => <String>[
-                                        '${frequency}d',
-                                        AppConstants.defaultLifestyleFactorForTrainingFrequency(
-                                          frequency,
-                                        ).toStringAsFixed(3),
-                                      ],
-                                    )
-                                    .toList(),
-                              ),
-                            ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideNumbersTitle,
-                            lines: isGramPerKgMode
-                                ? <String>[
-                                    strings.gramPerKgPhaseNotice(
-                                      profile.dietGoalPhase,
-                                    ),
-                                    strings.isChinese
-                                        ? '同一个频率下，不同性别与阶段会切到不同表；如果你选择“不透露”，FitLog 会取男女两张表的中间值。'
-                                        : 'At the same frequency, different sex and phase combinations switch to different tables; if you choose prefer-not-to-say, FitLog uses the midpoint between the male and female rows.',
-                                  ]
-                                : <String>[
-                                    strings.energyRatioPhaseNotice(
-                                      profile.dietGoalPhase,
-                                    ),
-                                    strings.isChinese
-                                        ? '如果本地校准已经积累了足够历史，实际计算会优先使用校准后的生活活动系数，而不是死守上表默认值。'
-                                        : 'If local calibration has enough history, the real calculation can replace the default lifestyle factor above with the calibrated factor.',
-                                  ],
-                          ),
-                          FitLogStrategyGuideSection(
-                            title: strings.strategyGuideKnowTitle,
-                            lines: isGramPerKgMode
-                                ? <String>[
-                                    strings.isChinese
-                                        ? 'g/kg 模式下，宏量营养素目标才是主目标，kcal 只是把这组宏量换算成一个辅助能量值，方便你理解数量级。'
-                                        : 'In g/kg mode, macro targets are the primary target, while kcal is only an auxiliary energy-equivalent number for context.',
-                                    strings.isChinese
-                                        ? '如果你的真实训练量和恢复状态长期变化很大，优先通过阶段、频率、体重和策略设置去修正，而不是把这张表当成自动自适应引擎。'
-                                        : 'If your real workload or recovery changes a lot over time, adjust phase, frequency, body weight, and strategy settings first instead of treating this table like an auto-adapting engine.',
-                                  ]
-                                : <String>[
-                                    strings.isChinese
-                                        ? '热量比例法更适合你想先抓住总热量与剩余量的时候；真正决定减脂/增肌节奏的，仍然是长期记录与执行稳定度。'
-                                        : 'Energy-ratio mode is better when you want to steer by total calories and remaining intake; long-term logging and consistency still drive the real cutting or bulking pace.',
-                                    strings.isChinese
-                                        ? '训练频率在这里是一个本地起步档位，不是医疗级活动评估；如果你后续记录越来越完整，校准会比默认档位更贴近你的实际情况。'
-                                        : 'Training frequency here is only a local starting tier, not a medical-grade activity assessment; once your history is fuller, calibration can become a better fit than the default tier.',
-                                  ],
-                          ),
-                        ],
-                      ),
+                  const SizedBox(height: 10),
+                  Text(
+                    profile.dietGoalPhase == AppConstants.dietGoalPhaseBulking
+                        ? strings.bulkingMacroRatioSuggestion
+                        : (strings.isChinese
+                              ? '减脂/维持默认起步比例是蛋白质 30% / 碳水 40% / 脂肪 30%，你可以在下方卡片里继续手动改。'
+                              : 'The default cutting or maintenance starting split is protein 30% / carbs 40% / fat 30%, and you can still override it below.'),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: context.fitLogTheme.textSecondary,
+                      height: 1.45,
                     ),
                   ),
                 ],
               ),
             ),
+          if (!isGramPerKgMode)
+            _ProfileGuideSectionCard(
+              title: strings.isChinese
+                  ? '训练频率对应的默认活动系数'
+                  : 'Default lifestyle factor by frequency',
+              child: _ProfileGuideTable(
+                headers: <String>[
+                  strings.isChinese ? '频率' : 'Freq',
+                  strings.isChinese ? '系数' : 'Factor',
+                ],
+                rows: AppConstants.trainingFrequencyPerWeekOptions
+                    .map(
+                      (frequency) => <String>[
+                        '${frequency}d',
+                        AppConstants.defaultLifestyleFactorForTrainingFrequency(
+                          frequency,
+                        ).toStringAsFixed(3),
+                      ],
+                    )
+                    .toList(),
+              ),
+            ),
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideNumbersTitle,
+            lines: isGramPerKgMode
+                ? <String>[
+                    strings.gramPerKgPhaseNotice(profile.dietGoalPhase),
+                    strings.isChinese
+                        ? '同一个频率下，不同性别与阶段会切到不同表；如果你选择“不透露”，FitLog 会取男女两张表的中间值。'
+                        : 'At the same frequency, different sex and phase combinations switch to different tables; if you choose prefer-not-to-say, FitLog uses the midpoint between the male and female rows.',
+                  ]
+                : <String>[
+                    strings.energyRatioPhaseNotice(profile.dietGoalPhase),
+                    strings.isChinese
+                        ? '如果本地校准已经积累了足够历史，实际计算会优先使用校准后的生活活动系数，而不是死守上表默认值。'
+                        : 'If local calibration has enough history, the real calculation can replace the default lifestyle factor above with the calibrated factor.',
+                  ],
           ),
-        );
-      },
+          FitLogStrategyGuideSection(
+            title: strings.strategyGuideKnowTitle,
+            lines: isGramPerKgMode
+                ? <String>[
+                    strings.isChinese
+                        ? 'g/kg 模式下，宏量营养素目标才是主目标，kcal 只是把这组宏量换算成一个辅助能量值，方便你理解数量级。'
+                        : 'In g/kg mode, macro targets are the primary target, while kcal is only an auxiliary energy-equivalent number for context.',
+                    strings.isChinese
+                        ? '如果你的真实训练量和恢复状态长期变化很大，优先通过阶段、频率、体重和策略设置去修正，而不是把这张表当成自动自适应引擎。'
+                        : 'If your real workload or recovery changes a lot over time, adjust phase, frequency, body weight, and strategy settings first instead of treating this table like an auto-adapting engine.',
+                  ]
+                : <String>[
+                    strings.isChinese
+                        ? '热量比例法更适合你想先抓住总热量与剩余量的时候；真正决定减脂/增肌节奏的，仍然是长期记录与执行稳定度。'
+                        : 'Energy-ratio mode is better when you want to steer by total calories and remaining intake; long-term logging and consistency still drive the real cutting or bulking pace.',
+                    strings.isChinese
+                        ? '训练频率在这里是一个本地起步档位，不是医疗级活动评估；如果你后续记录越来越完整，校准会比默认档位更贴近你的实际情况。'
+                        : 'Training frequency here is only a local starting tier, not a medical-grade activity assessment; once your history is fuller, calibration can become a better fit than the default tier.',
+                  ],
+          ),
+        ],
+      ),
     );
-  }
-
-  void _closePlanMethodGuideOverlay() {
-    setState(() => _planGuideOverlayVisible = false);
   }
 
   String _dietModeLabel(BuildContext context) {
@@ -2651,13 +2577,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 onSave: _saveProfileDraft,
               ),
             ),
-          if (_planGuideOverlayVisible)
-            _ProfilePlanGuideInPageOverlay(
-              strings: strings,
-              profile: draftProfile,
-              macroTargetCalculator: _macroTargetCalculator,
-              onDismiss: _closePlanMethodGuideOverlay,
-            ),
         ],
       ),
     );
@@ -3744,280 +3663,6 @@ class _Phase2NoticeBox extends StatelessWidget {
             height: 1.4,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ProfilePlanGuideInPageOverlay extends StatelessWidget {
-  const _ProfilePlanGuideInPageOverlay({
-    required this.strings,
-    required this.profile,
-    required this.macroTargetCalculator,
-    required this.onDismiss,
-  });
-
-  final dynamic strings;
-  final UserProfile profile;
-  final MacroTargetCalculator macroTargetCalculator;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final isGramPerKgMode =
-        profile.dietCalculationMode ==
-        AppConstants.dietCalculationModeGramPerKg;
-    final phaseLabel = strings.phaseLabel(profile.dietGoalPhase);
-    final sexLabel = strings.sexOptionLabel(profile.sexForFormula);
-    final ratioSummary =
-        profile.dietGoalPhase == AppConstants.dietGoalPhaseBulking
-        ? const <String>['25%', '50%', '25%']
-        : const <String>['30%', '40%', '30%'];
-
-    return Positioned.fill(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final navReservedHeight = FitLogBottomNavBar.reservedHeightFor(
-            context,
-          );
-          final maxPanelHeight = math.max(
-            240.0,
-            constraints.maxHeight - navReservedHeight - 24,
-          );
-          return Material(
-            color: const Color(0x66000000),
-            child: Stack(
-              children: <Widget>[
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onDismiss,
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(12, 12, 12, navReservedHeight),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: maxPanelHeight),
-                      child: GlassPanel(
-                        margin: EdgeInsets.zero,
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                FitLogIconCircle(
-                                  icon: Icons.info_outline_rounded,
-                                  color: context.fitLogTheme.primary,
-                                  size: 44,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    strings.isChinese
-                                        ? '计算方法说明'
-                                        : 'Method Guide',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(fontWeight: FontWeight.w800),
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: onDismiss,
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Flexible(
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    FitLogStrategyGuideSection(
-                                      title:
-                                          strings.strategyGuideBaseMethodTitle,
-                                      lines: isGramPerKgMode
-                                          ? <String>[
-                                              strings.gramPerKgModeNotice,
-                                              strings.isChinese
-                                                  ? '当前展示的是 $phaseLabel / $sexLabel 的粗略查表档位。训练频率只决定你落在哪一行，不会推断训练强度、动作量或表现水平。'
-                                                  : 'This sheet is showing the coarse $phaseLabel / $sexLabel lookup row. Training frequency only decides which row you use; it does not estimate intensity, volume, or performance.',
-                                            ]
-                                          : <String>[
-                                              strings.isChinese
-                                                  ? '热量比例法会先算 BMR，再按每周训练频率选一个默认生活活动系数，随后叠加减脂/增肌目标，最后把当天净运动消耗加回今日可吃热量。'
-                                                  : 'Energy-ratio mode starts from BMR, picks a default lifestyle factor from your weekly training frequency, applies the cutting or bulking target, then adds today\'s net exercise calories back into the intake target.',
-                                              strings.isChinese
-                                                  ? '在这个模式里，蛋白质 / 碳水 / 脂肪比例主要由你自己填写；训练频率不会直接改三大营养素百分比。'
-                                                  : 'In this mode, protein, carbs, and fat percentages are mainly user-controlled; training frequency does not directly rewrite the macro percentages.',
-                                            ],
-                                    ),
-                                    if (isGramPerKgMode)
-                                      _ProfileGuideSectionCard(
-                                        title: strings.isChinese
-                                            ? '当前 g/kg 系数表'
-                                            : 'Current g/kg coefficient table',
-                                        subtitle: '$phaseLabel · $sexLabel',
-                                        child: _ProfileGuideTable(
-                                          headers: <String>[
-                                            strings.isChinese ? '频率' : 'Freq',
-                                            'P',
-                                            'C',
-                                            'F',
-                                          ],
-                                          rows: AppConstants
-                                              .trainingFrequencyPerWeekOptions
-                                              .map((frequency) {
-                                                final targets = macroTargetCalculator
-                                                    .calculateByGramPerKg(
-                                                      profile: profile.copyWith(
-                                                        trainingFrequencyPerWeek:
-                                                            frequency,
-                                                      ),
-                                                    );
-                                                final weight = math.max(
-                                                  profile.weightKg,
-                                                  1,
-                                                );
-                                                return <String>[
-                                                  '${frequency}d',
-                                                  (targets.proteinTargetG /
-                                                          weight)
-                                                      .toStringAsFixed(1),
-                                                  (targets.carbsTargetG /
-                                                          weight)
-                                                      .toStringAsFixed(1),
-                                                  (targets.fatTargetG / weight)
-                                                      .toStringAsFixed(1),
-                                                ];
-                                              })
-                                              .toList(),
-                                        ),
-                                      ),
-                                    if (!isGramPerKgMode)
-                                      _ProfileGuideSectionCard(
-                                        title: strings.isChinese
-                                            ? '默认起步参考'
-                                            : 'Default starting point',
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            _ProfileGuideTable(
-                                              headers: <String>[
-                                                strings.proteinLabel,
-                                                strings.carbsLabel,
-                                                strings.fatLabel,
-                                              ],
-                                              rows: <List<String>>[
-                                                ratioSummary,
-                                              ],
-                                            ),
-                                            const SizedBox(height: 10),
-                                            Text(
-                                              profile.dietGoalPhase ==
-                                                      AppConstants
-                                                          .dietGoalPhaseBulking
-                                                  ? strings
-                                                        .bulkingMacroRatioSuggestion
-                                                  : (strings.isChinese
-                                                        ? '减脂/维持默认起步比例是蛋白质 30% / 碳水 40% / 脂肪 30%，你可以在下方卡片里继续手动改。'
-                                                        : 'The default cutting or maintenance starting split is protein 30% / carbs 40% / fat 30%, and you can still override it below.'),
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .bodyMedium
-                                                  ?.copyWith(
-                                                    color: context
-                                                        .fitLogTheme
-                                                        .textSecondary,
-                                                    height: 1.45,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    if (!isGramPerKgMode)
-                                      _ProfileGuideSectionCard(
-                                        title: strings.isChinese
-                                            ? '训练频率对应的默认活动系数'
-                                            : 'Default lifestyle factor by frequency',
-                                        child: _ProfileGuideTable(
-                                          headers: <String>[
-                                            strings.isChinese ? '频率' : 'Freq',
-                                            strings.isChinese ? '系数' : 'Factor',
-                                          ],
-                                          rows: AppConstants
-                                              .trainingFrequencyPerWeekOptions
-                                              .map(
-                                                (frequency) => <String>[
-                                                  '${frequency}d',
-                                                  AppConstants.defaultLifestyleFactorForTrainingFrequency(
-                                                    frequency,
-                                                  ).toStringAsFixed(3),
-                                                ],
-                                              )
-                                              .toList(),
-                                        ),
-                                      ),
-                                    FitLogStrategyGuideSection(
-                                      title: strings.strategyGuideNumbersTitle,
-                                      lines: isGramPerKgMode
-                                          ? <String>[
-                                              strings.gramPerKgPhaseNotice(
-                                                profile.dietGoalPhase,
-                                              ),
-                                              strings.isChinese
-                                                  ? '同一频率下，不同性别与阶段会切到不同表；如果你选择“不透露”，FitLog 会取男女两张表的中间值。'
-                                                  : 'At the same frequency, different sex and phase combinations switch to different tables; if you choose prefer-not-to-say, FitLog uses the midpoint between the male and female rows.',
-                                            ]
-                                          : <String>[
-                                              strings.energyRatioPhaseNotice(
-                                                profile.dietGoalPhase,
-                                              ),
-                                              strings.isChinese
-                                                  ? '如果本地校准已经积累了足够历史，实际计算会优先使用校准后的生活活动系数，而不是死守上表默认值。'
-                                                  : 'If local calibration has enough history, the real calculation can replace the default lifestyle factor above with the calibrated factor.',
-                                            ],
-                                    ),
-                                    FitLogStrategyGuideSection(
-                                      title: strings.strategyGuideKnowTitle,
-                                      lines: isGramPerKgMode
-                                          ? <String>[
-                                              strings.isChinese
-                                                  ? 'g/kg 模式下，宏量营养素目标才是主目标，kcal 只是把这组宏量换算成一个辅助能量值，方便你理解数量级。'
-                                                  : 'In g/kg mode, macro targets are the primary target, while kcal is only an auxiliary energy-equivalent number for context.',
-                                              strings.isChinese
-                                                  ? '如果真实训练量和恢复状态长期变化很大，优先通过阶段、频率、体重和策略设置去修正，而不是把这张表当成自动自适应引擎。'
-                                                  : 'If your real workload or recovery changes a lot over time, adjust phase, frequency, body weight, and strategy settings first instead of treating this table like an auto-adapting engine.',
-                                            ]
-                                          : <String>[
-                                              strings.isChinese
-                                                  ? '热量比例法更适合你想先抓住总热量与剩余量的时候；真正决定减脂/增肌节奏的，仍然是长期记录与执行稳定度。'
-                                                  : 'Energy-ratio mode is better when you want to steer by total calories and remaining intake; long-term logging and consistency still drive the real cutting or bulking pace.',
-                                              strings.isChinese
-                                                  ? '训练频率在这里是一个本地起步档位，不是医疗级活动评估；如果后续记录越来越完整，校准会比默认档位更贴近实际情况。'
-                                                  : 'Training frequency here is only a local starting tier, not a medical-grade activity assessment; once your history is fuller, calibration can become a better fit than the default tier.',
-                                            ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
       ),
     );
   }

@@ -16,6 +16,8 @@ Home | Food | AI | Workout | Profile
 
 The AI tab sits in the center because it is the primary Agent entry. The bottom navigation component should be a theme-aware floating pill and should not paint a full-width background strip outside the pill. Non-AI tabs use an opaque theme-surface pill plus a same-width page-background lower shield from the pill midline to the screen bottom so scrolling text does not show through the navigation or bottom safe area; the shield must not extend into the pill-to-screen side gaps. The AI tab uses a more transparent glass pill without that shield to keep the animated background visible. The root shell does not shrink page bodies; navigation helpers must distinguish the pill footprint in screen coordinates from the remaining overlap inside a page's SafeArea content. Home's first-viewport box subtracts that nav overlap, while its g/kg and energy-ratio dashboards adapt only the space between sections inside the box without shrinking card internals. Scrollable tabs keep their own bottom reading padding, and Food/Workout fixed bottom CTAs are transparent overlays anchored in the same screen-space nav-relative gap as the AI composer instead of using full-width footer bands.
 
+Explanation guide sheets are temporary reading layers, not page content. Home strategy help and Profile current-plan method help must use the shared root modal guide sheet: the modal scrim covers and disables the bottom navigation, the guide content stops 12 px above the nav pill footprint, the top keeps at least 64 px of focus space, and long content scrolls inside the sheet body.
+
 ## Home
 
 Home is the selected-day dashboard.
