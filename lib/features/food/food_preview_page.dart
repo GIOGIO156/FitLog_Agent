@@ -5,6 +5,7 @@ import '../../app.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/number_utils.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../domain/models/food_record.dart';
 import 'food_form_support.dart';
 
@@ -98,7 +99,6 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
 
     setState(() => _saving = true);
     final services = context.read<AppServices>();
-    final messenger = ScaffoldMessenger.of(context);
 
     try {
       final record = FoodRecord(
@@ -125,15 +125,13 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
 
       context.read<RefreshNotifier>().markDataChanged();
       context.refreshDailySummaryCacheForDate(_date);
-      messenger.showSnackBar(SnackBar(content: Text(strings.foodRecordSaved)));
+      FitLogNotifications.success(context, strings.foodRecordSaved);
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.failedToSaveFoodRecord(error))),
-      );
+      FitLogNotifications.error(context, strings.failedToSaveFoodRecord(error));
     } finally {
       if (mounted) {
         setState(() => _saving = false);

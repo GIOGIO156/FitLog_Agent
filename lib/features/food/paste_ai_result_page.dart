@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/localization/localization_extensions.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/services/nutrition_calculator.dart';
 import 'food_preview_page.dart';
@@ -29,9 +30,7 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
     final input = _jsonController.text.trim();
 
     if (input.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.pleasePasteJson)));
+      FitLogNotifications.error(context, strings.pleasePasteJson);
       return;
     }
 
@@ -56,16 +55,12 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.parseError(e.message))));
+      FitLogNotifications.error(context, strings.parseError(e.message));
     } catch (_) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.parseErrorGeneric)));
+      FitLogNotifications.error(context, strings.parseErrorGeneric);
     } finally {
       if (mounted) {
         setState(() => _isParsing = false);

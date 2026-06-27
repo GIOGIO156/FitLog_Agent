@@ -19,6 +19,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/number_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_guide_sheet.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../core/widgets/profile_form_fields.dart';
@@ -314,8 +315,9 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     final draftChanges = _buildProfileDraftChanges(context.stringsRead);
     if (draftChanges.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.stringsRead.bodyMetricDraftBlocked)),
+      FitLogNotifications.error(
+        context,
+        context.stringsRead.bodyMetricDraftBlocked,
       );
       return;
     }
@@ -339,8 +341,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _beginBodyMetricEdit(String date) async {
     if (!_isPastBodyMetricDate(date)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.stringsRead.bodyMetricPastDateRequired)),
+      FitLogNotifications.error(
+        context,
+        context.stringsRead.bodyMetricPastDateRequired,
       );
       return;
     }
@@ -411,29 +414,21 @@ class _ProfilePageState extends State<ProfilePage> {
     final strings = context.stringsRead;
     final date = _editingBodyMetricDate;
     if (date == null || !_isPastBodyMetricDate(date)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.bodyMetricPastDateRequired)),
-      );
+      FitLogNotifications.error(context, strings.bodyMetricPastDateRequired);
       return false;
     }
     if (_bodyMetricWeightKg <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidWeight)));
+      FitLogNotifications.error(context, strings.enterValidWeight);
       return false;
     }
     final bodyFat = _bodyMetricBodyFatPercent;
     if (bodyFat != null && (bodyFat <= 0 || bodyFat > 100)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidBodyFat)));
+      FitLogNotifications.error(context, strings.enterValidBodyFat);
       return false;
     }
     final waist = _bodyMetricWaistCm;
     if (waist != null && waist <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidWaist)));
+      FitLogNotifications.error(context, strings.enterValidWaist);
       return false;
     }
     return true;
@@ -446,7 +441,6 @@ class _ProfilePageState extends State<ProfilePage> {
     final date = _editingBodyMetricDate!;
     final services = context.read<AppServices>();
     final accountController = _maybeAccountController(listen: false);
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
     setState(() => _savingBodyMetricRecord = true);
     try {
@@ -477,15 +471,13 @@ class _ProfilePageState extends State<ProfilePage> {
         _bodyMetricWaistController.clear();
       });
       _rootInteractionLockController?.setNavigationLocked(false);
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.bodyMetricRecordSaved)),
-      );
+      FitLogNotifications.success(context, strings.bodyMetricRecordSaved);
     } catch (error) {
       if (mounted) {
         final message = error is Phase2RepositoryException
             ? strings.phase2ErrorMessage(error.code)
             : strings.summaryError(error);
-        messenger.showSnackBar(SnackBar(content: Text(message)));
+        FitLogNotifications.error(context, message);
       }
     } finally {
       if (mounted && _savingBodyMetricRecord) {
@@ -1176,35 +1168,25 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _validateBodyProfile() {
     final strings = context.stringsRead;
     if (_age <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidAge)));
+      FitLogNotifications.error(context, strings.enterValidAge);
       return false;
     }
     if (_heightCm <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidHeight)));
+      FitLogNotifications.error(context, strings.enterValidHeight);
       return false;
     }
     if (_weightKg <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidWeight)));
+      FitLogNotifications.error(context, strings.enterValidWeight);
       return false;
     }
     final bodyFat = _bodyFatPercent;
     if (bodyFat != null && (bodyFat <= 0 || bodyFat > 100)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidBodyFat)));
+      FitLogNotifications.error(context, strings.enterValidBodyFat);
       return false;
     }
     final waist = _waistCm;
     if (waist != null && waist <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidWaist)));
+      FitLogNotifications.error(context, strings.enterValidWaist);
       return false;
     }
     return true;
@@ -1213,9 +1195,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _validateEnergyRatioFields() {
     final strings = context.stringsRead;
     if (_goalKcal <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.dailyGoalKcalLabel)));
+      FitLogNotifications.error(context, strings.dailyGoalKcalLabel);
       return false;
     }
     final ratios = <double>[
@@ -1224,15 +1204,11 @@ class _ProfilePageState extends State<ProfilePage> {
       _fatRatioPercent,
     ];
     if (ratios.any((value) => value < 0 || value > 100)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.enterValidMacroRatio)));
+      FitLogNotifications.error(context, strings.enterValidMacroRatio);
       return false;
     }
     if ((_macroRatioTotal - 100).abs() > 0.01) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.macroRatioTotalInvalid)));
+      FitLogNotifications.error(context, strings.macroRatioTotalInvalid);
       return false;
     }
     return true;
@@ -1255,9 +1231,7 @@ class _ProfilePageState extends State<ProfilePage> {
         final message = error is Phase2RepositoryException
             ? strings.phase2ErrorMessage(error.code)
             : strings.phase2ErrorMessage('subscription_load_failed');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        FitLogNotifications.error(context, message);
       }
     } finally {
       if (mounted) {
@@ -1334,8 +1308,9 @@ class _ProfilePageState extends State<ProfilePage> {
           if (!mounted) {
             return;
           }
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(context.stringsRead.redeemCodeSuccess)),
+          FitLogNotifications.success(
+            context,
+            context.stringsRead.redeemCodeSuccess,
           );
         },
       ),
@@ -1345,7 +1320,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _persistProfile(UserProfile profile) async {
     final services = context.read<AppServices>();
     final refreshNotifier = context.read<RefreshNotifier>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     final accountController = _maybeAccountController(listen: false);
@@ -1419,7 +1393,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _bodyProfileEditSnapshot = null;
       _draftChangesExpanded = false;
     });
-    messenger.showSnackBar(SnackBar(content: Text(strings.profileSaved)));
+    FitLogNotifications.success(context, strings.profileSaved);
   }
 
   void _completeNicknameDraft() {
@@ -1500,8 +1474,9 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.stringsRead.summaryError(error))),
+        FitLogNotifications.error(
+          context,
+          context.stringsRead.summaryError(error),
         );
       }
     } finally {
@@ -1582,7 +1557,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _exportXlsx() async {
     final service = context.read<AppServices>().xlsxExportService;
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     setState(() => _exportingXlsx = true);
@@ -1591,8 +1565,9 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.exportReady('XLSX', filePath))),
+      FitLogNotifications.success(
+        context,
+        strings.exportReady('XLSX', filePath),
       );
     } catch (e) {
       if (!mounted) {
@@ -1601,7 +1576,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final message = e is Phase2RepositoryException
           ? strings.phase2ErrorMessage(e.code)
           : strings.exportFailed('XLSX', e);
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      FitLogNotifications.error(context, message);
     } finally {
       if (mounted) {
         setState(() => _exportingXlsx = false);
@@ -1611,7 +1586,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _exportCsvZip() async {
     final service = context.read<AppServices>().csvExportService;
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     setState(() => _exportingCsv = true);
@@ -1620,8 +1594,9 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.exportReady('CSV', filePath))),
+      FitLogNotifications.success(
+        context,
+        strings.exportReady('CSV', filePath),
       );
     } catch (e) {
       if (!mounted) {
@@ -1630,7 +1605,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final message = e is Phase2RepositoryException
           ? strings.phase2ErrorMessage(e.code)
           : strings.exportFailed('CSV', e);
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      FitLogNotifications.error(context, message);
     } finally {
       if (mounted) {
         setState(() => _exportingCsv = false);
@@ -1641,7 +1616,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _clearAllData() async {
     final services = context.read<AppServices>();
     final refreshNotifier = context.read<RefreshNotifier>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     final confirmed =
@@ -1683,7 +1657,7 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    messenger.showSnackBar(SnackBar(content: Text(strings.allDataCleared)));
+    FitLogNotifications.success(context, strings.allDataCleared);
   }
 
   Future<void> _signOutAccount() async {
@@ -1692,7 +1666,6 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
     final strings = context.stringsRead;
-    final messenger = ScaffoldMessenger.of(context);
     final confirmed =
         await showDialog<bool>(
           context: context,
@@ -1723,7 +1696,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text(strings.signedOut)));
+      FitLogNotifications.success(context, strings.signedOut);
     } catch (error) {
       if (!mounted) {
         return;
@@ -1731,7 +1704,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final message = error is Phase2RepositoryException
           ? strings.phase2ErrorMessage(error.code)
           : strings.phase2ErrorMessage('auth_failed');
-      messenger.showSnackBar(SnackBar(content: Text(message)));
+      FitLogNotifications.error(context, message);
     }
   }
 
@@ -1742,7 +1715,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
     final now = DateTime.now().toIso8601String();
     final services = context.read<AppServices>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     setState(() => _handlingSelfCheckAction = true);
@@ -1759,7 +1731,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text(strings.profileSaved)));
+      FitLogNotifications.success(context, strings.profileSaved);
     } finally {
       if (mounted) {
         setState(() => _handlingSelfCheckAction = false);
@@ -1770,7 +1742,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _keepCurrentSelfCheckSetting() async {
     final now = DateTime.now().toIso8601String();
     final services = context.read<AppServices>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     setState(() => _handlingSelfCheckAction = true);
@@ -1786,7 +1757,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text(strings.profileSaved)));
+      FitLogNotifications.success(context, strings.profileSaved);
     } finally {
       if (mounted) {
         setState(() => _handlingSelfCheckAction = false);
@@ -1801,7 +1772,6 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
     final services = context.read<AppServices>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
     final reviewedAt = DateTime.now().toIso8601String();
 
@@ -1821,7 +1791,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text(strings.profileSaved)));
+      FitLogNotifications.success(context, strings.profileSaved);
     } finally {
       if (mounted) {
         setState(() => _handlingCarbTaperAction = false);
@@ -1835,7 +1805,6 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
     final services = context.read<AppServices>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
     final reviewedAt = DateTime.now().toIso8601String();
 
@@ -1855,7 +1824,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text(strings.profileSaved)));
+      FitLogNotifications.success(context, strings.profileSaved);
     } finally {
       if (mounted) {
         setState(() => _handlingCarbTaperAction = false);
@@ -3428,7 +3397,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     setState(() => _sendingRegistrationCode = true);
     try {
       await widget.accountController.sendRegistrationOtp(email);
-      _showMessage(strings.registrationCodeSent);
+      if (mounted) {
+        FitLogNotifications.success(context, strings.registrationCodeSent);
+      }
     } catch (error) {
       _showError(error);
     } finally {
@@ -3484,9 +3455,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    FitLogNotifications.error(context, message);
   }
 
   void _showError(Object error) {
@@ -3497,9 +3466,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     final message = error is Phase2RepositoryException
         ? strings.phase2ErrorMessage(error.code)
         : strings.phase2ErrorMessage('auth_failed');
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    FitLogNotifications.error(context, message);
   }
 }
 
@@ -4025,9 +3992,7 @@ class _CloudProfileSetupGateState extends State<_CloudProfileSetupGate> {
         final message = error is Phase2RepositoryException
             ? strings.phase2ErrorMessage(error.code)
             : strings.phase2ErrorMessage('profile_save_failed');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        FitLogNotifications.error(context, message);
       }
     } finally {
       if (mounted) {
@@ -4459,9 +4424,7 @@ class _SubscriptionRedeemSheetState extends State<_SubscriptionRedeemSheet> {
     final strings = context.stringsRead;
     final code = _codeController.text.trim();
     if (code.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(strings.redeemCodeRequired)));
+      FitLogNotifications.error(context, strings.redeemCodeRequired);
       return;
     }
     setState(() => _redeeming = true);
@@ -4477,9 +4440,7 @@ class _SubscriptionRedeemSheetState extends State<_SubscriptionRedeemSheet> {
         final message = error is Phase2RepositoryException
             ? strings.phase2ErrorMessage(error.code)
             : strings.phase2ErrorMessage('redeem_failed');
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        FitLogNotifications.error(context, message);
       }
     } finally {
       if (mounted) {

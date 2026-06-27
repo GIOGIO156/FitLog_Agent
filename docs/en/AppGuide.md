@@ -18,6 +18,15 @@ The AI tab sits in the center because it is the primary Agent entry. The bottom 
 
 Explanation guide sheets are temporary reading layers, not page content. Home strategy help and Profile current-plan method help must use the shared root modal guide sheet: the modal scrim covers and disables the bottom navigation, the guide content stops 12 px above the nav pill footprint, the top keeps at least 64 px of focus space, and long content scrolls inside the sheet body.
 
+## System Notifications
+
+Pages should use `FitLogNotifications` for app-level transient feedback.
+
+- Food and Workout success events, including save, delete, and copy completion, use top lightweight notices. Food/Workout validation and cloud/local write failures use bottom error notices that stay above navigation and the keyboard.
+- Profile success events, including body metric save, Profile save, export ready, sign-out, data clear, redeem success, and registration code sent, use top lightweight notices. Profile validation, auth, subscription, export, redeem, and Cloud Profile failures use bottom error notices with the readable mapped message or diagnostic detail.
+- AI uses info notices for neutral unavailable placeholders and error notices for failed preference saves.
+- Any future notification with an action, such as retry, undo, or open file, must use the shared action notification API so the button and callback remain visible.
+
 ## Home
 
 Home is the selected-day dashboard.
@@ -191,7 +200,7 @@ Agent V1 profile model:
 - Before login, there is no formal profile.
 - Before login, Profile should show a login/onboarding entry instead of the local profile editor.
 - The current signed-out screen uses a solid theme background, the no-star FitLog logo base asset with a saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right, a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, a top backend-configuration notice when needed, a static non-scrolling no-keyboard landing action, keyboard-aware compact scrolling while fields are focused, email-password sign-in, and a registration form with email code plus password confirmation. Registration does not ask for username; nickname is edited later in Cloud Profile.
-- Sign-in and registration errors keep the active form in place and use readable bottom snackbar messages instead of raw backend exception text.
+- Sign-in and registration errors keep the active form in place and use readable shared system notification messages instead of raw backend exception text.
 - A successful sign-in persists the Supabase session on the device; the user remains signed in after app restart until they explicitly sign out.
 - V1 uses one active device per account. A newer device login takes over the account. When an older device receives `device_replaced` during the next cloud read, save, subscription refresh, or AI request, it should show "account signed in on another device", clear local sign-in state, and return to sign-in/re-takeover flow instead of showing a generic upload failure.
 - After login, Cloud Profile is authoritative.

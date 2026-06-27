@@ -15,6 +15,7 @@ import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/number_utils.dart';
 import '../../core/widgets/exercise_thumbnail.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/workout_record_draft.dart';
@@ -984,10 +985,9 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       return;
     }
     final strings = context.stringsRead;
-    final messenger = ScaffoldMessenger.of(context);
     final validationMessage = _validateWorkoutRecord(strings);
     if (validationMessage != null) {
-      messenger.showSnackBar(SnackBar(content: Text(validationMessage)));
+      FitLogNotifications.error(context, validationMessage);
       return;
     }
 
@@ -1008,9 +1008,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       notes: notes,
     );
     if (sessions.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.noCompletedSetsToSave)),
-      );
+      FitLogNotifications.error(context, strings.noCompletedSetsToSave);
       return;
     }
 
@@ -1035,22 +1033,20 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
       await services.workoutDraftRepository.deleteActiveDraft();
       _draftCreatedAt = null;
-      if (mounted) {
-        context.refreshDailySummaryCacheForDates(
-          sessions.map((session) => session.date),
-        );
+      if (!mounted) {
+        return;
       }
+      context.refreshDailySummaryCacheForDates(
+        sessions.map((session) => session.date),
+      );
 
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(strings.workoutRecordSavedCount(sessions.length)),
-        ),
+      FitLogNotifications.success(
+        context,
+        strings.workoutRecordSavedCount(sessions.length),
       );
     } catch (error) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(strings.failedToLoadWorkout(error))),
-        );
+        FitLogNotifications.error(context, strings.failedToLoadWorkout(error));
       }
       return;
     } finally {
@@ -3202,8 +3198,9 @@ class _ExerciseLibraryPickerPageState
       if (!mounted) {
         return false;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_customExerciseDeleteFailedLabel(strings))),
+      FitLogNotifications.error(
+        context,
+        _customExerciseDeleteFailedLabel(strings),
       );
       return false;
     }
@@ -3220,9 +3217,7 @@ class _ExerciseLibraryPickerPageState
         _selectedBodyPartFilter = null;
       }
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_customExerciseDeletedLabel(strings))),
-    );
+    FitLogNotifications.success(context, _customExerciseDeletedLabel(strings));
     return true;
   }
 

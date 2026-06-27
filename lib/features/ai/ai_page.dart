@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/localization/localization_extensions.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../domain/models/ai_availability.dart';
 import '../../domain/models/subscription_status.dart';
 import '../account/account_controller.dart';
@@ -404,9 +405,7 @@ class _AiTopBar extends StatelessWidget {
             icon: Icons.manage_accounts_outlined,
             onPressed: () {
               if (accountController == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(strings.aiAccountComingSoon)),
-                );
+                FitLogNotifications.info(context, strings.aiAccountComingSoon);
                 return;
               }
               showModalBottomSheet<void>(
@@ -697,13 +696,10 @@ class _AiAccountStatusSheet extends StatelessWidget {
                         if (!context.mounted) {
                           return;
                         }
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              strings.phase2ErrorMessage(
-                                'local_context_save_failed',
-                              ),
-                            ),
+                        FitLogNotifications.error(
+                          context,
+                          strings.phase2ErrorMessage(
+                            'local_context_save_failed',
                           ),
                         );
                       }

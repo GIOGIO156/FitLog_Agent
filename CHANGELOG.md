@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-06-27 System Notifications Refactor
+
+### Added
+
+- Added `FitLogNotifications` as the shared app notification layer with semantic success, error, info, and action APIs.
+- Added widget coverage for lightweight success notices, bottom-navigation-safe error notices, and action callback preservation.
+
+### Changed
+
+- Replaced page-local SnackBar calls across Food, Workout, Profile, and AI with shared notifications: success feedback now appears as lightweight top notices, while validation and failure feedback stays visible above bottom navigation or the keyboard.
+- Preserved user-facing diagnostics for parse/save/export/auth/subscription failures and kept action notifications available through a dedicated API instead of passive toast behavior.
+- Updated README, Product, and AppGuide docs with the system notification UX principles and per-module notification behavior.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran targeted `flutter test test\fitlog_notifications_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Confirmed the required documentation tree exists and searched updated docs/code for stale snackbar usage, replacement characters, and date-appended stable-doc headings.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-27 Past Body Metrics Calendar Edit
 
 ### Added

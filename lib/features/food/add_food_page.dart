@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import 'manual_food_entry_page.dart';
@@ -24,9 +25,7 @@ class AddFoodPage extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(context.strings.promptCopied)));
+    FitLogNotifications.success(context, context.strings.promptCopied);
   }
 
   Future<void> _openPasteAi(BuildContext context) async {

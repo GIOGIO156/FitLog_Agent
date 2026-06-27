@@ -9,6 +9,7 @@ import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/workout_record_draft.dart';
@@ -331,7 +332,6 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
   ) async {
     final services = context.read<AppServices>();
     final refreshNotifier = context.read<RefreshNotifier>();
-    final messenger = ScaffoldMessenger.of(context);
     final strings = context.stringsRead;
 
     final confirmText = group.planId == null
@@ -382,9 +382,7 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
       if (!context.mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(content: Text(strings.failedToDeleteWorkout(error))),
-      );
+      FitLogNotifications.error(context, strings.failedToDeleteWorkout(error));
       return;
     }
 
@@ -396,7 +394,7 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
     context.refreshDailySummaryCacheForDates(
       group.sessions.map((session) => session.date),
     );
-    messenger.showSnackBar(SnackBar(content: Text(strings.workoutDeleted)));
+    FitLogNotifications.success(context, strings.workoutDeleted);
   }
 
   List<_WorkoutPlanGroup> _groupSessions(List<WorkoutSession> sessions) {

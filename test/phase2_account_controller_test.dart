@@ -530,7 +530,7 @@ void main() {
     expect(emailFinder, findsOneWidget);
   });
 
-  testWidgets('Profile login failure shows a readable snackbar in place', (
+  testWidgets('Profile login failure shows a readable notification in place', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});

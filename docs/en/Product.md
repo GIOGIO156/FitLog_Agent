@@ -30,6 +30,16 @@ Write official data only after the user confirms.
 - Treat `diet_plan_strategy` as a deterministic strategy setting, not an AI action.
 - Make the AI page the primary Agent entry.
 - Avoid silent writes: AI drafts, explains, and asks; users confirm.
+- Route app-level transient feedback through the shared system notification layer instead of page-local snackbars.
+
+## System Notifications
+
+System notifications are app-level transient feedback, not business logic.
+
+- Success messages such as saved, deleted, copied, exported, signed out, or code sent use lightweight top notices so they do not interrupt the task flow or cover bottom navigation, composers, or primary action buttons.
+- Error and validation messages remain more visible and keep readable diagnostic detail, but float above the bottom navigation or keyboard instead of covering the current input focus.
+- Notifications that need user action must keep their action button and callback through the shared action notification API; they must not be downgraded to passive notices.
+- Notification colors and text styles come from the active FitLog theme, so Green and Black Orange keep consistent surfaces, accents, and `NotoSansSC` typography.
 
 ## Product Modules
 
@@ -177,7 +187,7 @@ V1 profile rules:
 - Supabase auth sessions persist on the device and are recovered on startup until the user explicitly signs out or the session cannot be recovered.
 - A newer device login takes over the account; the older device should show "account signed in on another device" on its next cloud interaction and return to sign-in/re-takeover flow.
 - Profile page edits are local drafts until the user taps the bottom Save Changes bar; modified sections are visibly marked in the page, and saving uploads one complete Cloud Profile snapshot.
-- Auth failures keep the active sign-in or registration form visible and show readable snackbar feedback.
+- Auth failures keep the active sign-in or registration form visible and show readable shared system notification feedback.
 - Subscription-status loading failures do not replace a successfully loaded Cloud Profile editor with a Profile error screen; AI sending remains gated by subscription availability.
 - The Profile header uses a compact Subscription entry with an explicit active/inactive/loading/error status badge. It opens a small blurred overlay, keeping the current plan as the first main card.
 - The Profile page provides a bottom Account card for explicit sign-out. Signing out clears the auth session, runtime drafts, and local caches without deleting cloud official records.
