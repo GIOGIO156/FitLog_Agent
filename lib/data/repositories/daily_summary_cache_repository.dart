@@ -55,4 +55,16 @@ class DailySummaryCacheRepository {
       'updated_at': now,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  Future<int> pruneConfirmedBefore({
+    required String accountId,
+    required String beforeDate,
+  }) async {
+    final db = await _database.database;
+    return db.delete(
+      'daily_summary_cache',
+      where: 'account_id = ? AND date < ? AND cache_confirmed = 1',
+      whereArgs: <Object?>[accountId, beforeDate],
+    );
+  }
 }

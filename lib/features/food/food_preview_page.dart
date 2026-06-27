@@ -124,6 +124,7 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
       }
 
       context.read<RefreshNotifier>().markDataChanged();
+      context.refreshDailySummaryCacheForDate(_date);
       messenger.showSnackBar(SnackBar(content: Text(strings.foodRecordSaved)));
       Navigator.of(context).pop(true);
     } catch (error) {

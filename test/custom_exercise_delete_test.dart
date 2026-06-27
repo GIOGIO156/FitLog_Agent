@@ -3,6 +3,7 @@ import 'package:fitlog_local/core/constants/exercise_definition.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
 import 'package:fitlog_local/data/repositories/custom_exercise_repository.dart';
+import 'package:fitlog_local/data/repositories/daily_summary_cache_repository.dart';
 import 'package:fitlog_local/data/repositories/food_repository.dart';
 import 'package:fitlog_local/data/repositories/profile_repository.dart';
 import 'package:fitlog_local/data/repositories/workout_draft_repository.dart';
@@ -13,10 +14,12 @@ import 'package:fitlog_local/domain/models/user_profile.dart';
 import 'package:fitlog_local/domain/models/weight_log.dart';
 import 'package:fitlog_local/domain/models/workout_record_draft.dart';
 import 'package:fitlog_local/domain/models/workout_session.dart';
+import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/daily_summary_service.dart';
 import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
 import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
+import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
 import 'package:fitlog_local/export/csv_export_service.dart';
 import 'package:fitlog_local/export/xlsx_export_service.dart';
 import 'package:fitlog_local/features/workout/add_workout_page.dart';
@@ -107,6 +110,7 @@ Widget _buildAddWorkoutTestApp(
     trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
     dietPlanStrategyService: dietPlanStrategyService,
   );
+  final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
 
   return MultiProvider(
     providers: [
@@ -135,6 +139,13 @@ Widget _buildAddWorkoutTestApp(
           carbTaperReviewService: carbTaperReviewService,
           dietPlanStrategyService: dietPlanStrategyService,
           trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
+          warmCacheCoordinator: WarmCacheCoordinator(
+            dailySummaryService: dailySummaryService,
+          ),
+          cacheMaintenanceService: CacheMaintenanceService(
+            database: database,
+            dailySummaryCacheRepository: dailySummaryCacheRepository,
+          ),
           database: database,
         ),
       ),

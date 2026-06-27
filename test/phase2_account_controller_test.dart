@@ -6,6 +6,7 @@ import 'package:fitlog_local/data/repositories/active_device_repository.dart';
 import 'package:fitlog_local/data/repositories/auth_repository.dart';
 import 'package:fitlog_local/data/repositories/cloud_profile_repository.dart';
 import 'package:fitlog_local/data/repositories/custom_exercise_repository.dart';
+import 'package:fitlog_local/data/repositories/daily_summary_cache_repository.dart';
 import 'package:fitlog_local/data/repositories/food_repository.dart';
 import 'package:fitlog_local/data/repositories/phase2_repository_exception.dart';
 import 'package:fitlog_local/data/repositories/profile_repository.dart';
@@ -21,11 +22,13 @@ import 'package:fitlog_local/domain/models/subscription_status.dart';
 import 'package:fitlog_local/domain/models/user_profile.dart';
 import 'package:fitlog_local/domain/models/weight_log.dart';
 import 'package:fitlog_local/domain/models/workout_session.dart';
+import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/cloud_profile_mapper.dart';
 import 'package:fitlog_local/domain/services/daily_summary_service.dart';
 import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
 import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
+import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
 import 'package:fitlog_local/export/csv_export_service.dart';
 import 'package:fitlog_local/export/xlsx_export_service.dart';
 import 'package:fitlog_local/features/account/account_controller.dart';
@@ -1307,6 +1310,7 @@ Widget _buildProfileTestApp({
     trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
     dietPlanStrategyService: dietPlanStrategyService,
   );
+  final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
 
   return MultiProvider(
     providers: [
@@ -1335,6 +1339,13 @@ Widget _buildProfileTestApp({
           carbTaperReviewService: carbTaperReviewService,
           dietPlanStrategyService: dietPlanStrategyService,
           trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
+          warmCacheCoordinator: WarmCacheCoordinator(
+            dailySummaryService: dailySummaryService,
+          ),
+          cacheMaintenanceService: CacheMaintenanceService(
+            database: database,
+            dailySummaryCacheRepository: dailySummaryCacheRepository,
+          ),
           database: database,
         ),
       ),

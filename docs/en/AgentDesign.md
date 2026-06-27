@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic local food logging, workout logging, profile settings, diet algorithms, SQLite storage, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 Cloud Records Foundation connects signed-in body/food/workout official records to the cloud source of truth and adds Home selected-day summary cache with stale-while-revalidate; the daily-summary cloud upsert coordinator remains hardening work before AI Gateway, remote model calls, cloud chat history, and RAG. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 connects signed-in body/food/workout official records to the cloud source of truth, adds Home selected-day summary cache with stale-while-revalidate, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, and exports from cloud official records. AI Gateway, remote model calls, cloud chat history, Food Draft writeback, and RAG are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -15,7 +15,7 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission; Cloud Records, AI Gateway, and wrappers are not implemented yet.
+The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Phase 3 implements the Cloud Records source-of-truth path for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening. AI Gateway and wrappers are not implemented yet.
 
 Not implemented in the current code:
 

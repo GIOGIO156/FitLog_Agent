@@ -97,6 +97,7 @@ class _ManualFoodEntryPageState extends State<ManualFoodEntryPage> {
       }
 
       context.read<RefreshNotifier>().markDataChanged();
+      context.refreshDailySummaryCacheForDate(_date);
       messenger.showSnackBar(
         SnackBar(content: Text(strings.manualFoodRecordSaved)),
       );

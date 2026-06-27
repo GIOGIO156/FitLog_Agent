@@ -34,6 +34,7 @@ class _FoodLogPageState extends State<FoodLogPage> {
 
     if (saved == true && context.mounted) {
       context.read<RefreshNotifier>().markDataChanged();
+      context.refreshDailySummaryCacheForDate(initialDate);
     }
   }
 
@@ -100,6 +101,7 @@ class _FoodLogPageState extends State<FoodLogPage> {
     }
 
     refreshNotifier.markDataChanged();
+    context.refreshDailySummaryCacheForDate(record.date);
     messenger.showSnackBar(SnackBar(content: Text(strings.foodDeleted)));
   }
 
@@ -157,6 +159,7 @@ class _FoodLogPageState extends State<FoodLogPage> {
         return;
       }
       refreshNotifier.markDataChanged();
+      context.refreshDailySummaryCacheForDate(targetDate);
       messenger.showSnackBar(
         SnackBar(
           content: Text(strings.foodCopied(record.mealName, targetDate)),

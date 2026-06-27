@@ -393,6 +393,9 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
     }
 
     refreshNotifier.markDataChanged();
+    context.refreshDailySummaryCacheForDates(
+      group.sessions.map((session) => session.date),
+    );
     messenger.showSnackBar(SnackBar(content: Text(strings.workoutDeleted)));
   }
 

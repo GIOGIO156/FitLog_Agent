@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-06-27 Phase 3 Hardening Completion
+
+### Added
+
+- Added app-side cloud `daily_summaries` upsert/recovery so Home and later AI/export builders can use a rebuildable cloud projection instead of trusting complete local SQLite.
+- Added a low-priority 30-day summary warm-cache coordinator that runs after the signed-in shell renders, plus confirmed-cache eviction for old rebuildable local record/summary cache.
+- Added export hardening: CSV/XLSX export now refreshes cloud-backed food, workout, and body metric records before building tables, and includes a Body Metrics table.
+
+### Changed
+
+- Successful food, workout, and Profile writes now schedule affected-date summary cache/cloud projection refresh without blocking the foreground write result.
+- Updated bilingual design docs and roadmap to mark the Phase 3 main cloud/local hardening chain as landed, while keeping AI Gateway, chat history, RAG, and Food Draft writeback in later phases.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran `flutter analyze`.
+- Added `test/daily_summary_cloud_cache_test.dart` for summary cloud fallback/upsert behavior.
+
 ## 2026-06-27 Phase 3 Home Summary Cache Migration Repair
 
 ### Fixed

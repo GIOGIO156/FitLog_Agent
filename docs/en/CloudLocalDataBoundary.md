@@ -8,7 +8,7 @@ This document is the source of truth for how FitLog_Agent relates cloud data, lo
 
 ## Scope
 
-These rules apply to the Phase 3 Cloud Records Foundation and signed-in Agent builds after it. The current project has landed the root auth gate, active-device claim/assert, Cloud Records migration, body/food/workout cloud-first writes, local v15 confirmed-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, and Home selected-day daily-summary confirmed cache with stale-while-revalidate background rebuilds. The daily-summary cloud upsert coordinator, broader low-priority warm-cache scheduler, cache eviction coordinator, export completeness hardening, and fuller repair UI remain Phase 3 hardening work; do not describe those unfinished parts as implemented behavior.
+These rules apply to the Phase 3 Cloud Records Foundation and signed-in Agent builds after it. The current project has landed the root auth gate, active-device claim/assert, Cloud Records migration, body/food/workout cloud-first writes, local v15 confirmed-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, Home selected-day daily-summary confirmed cache with stale-while-revalidate background rebuilds, app-side `daily_summaries` cloud upsert/read recovery, bounded recent-summary warm cache, confirmed-cache eviction, and export completeness hardening through cloud official records. Fuller Body Trends partial-state polish and richer repair screens may continue later, but the Phase 3 main cloud/local hardening chain is no longer blocked by those items.
 
 Pre-login Local-style behavior remains local. Phase 3 does not implement offline official-write queues, complete two-way sync, automatic old-device-history migration, or complex cross-device merge UI.
 
@@ -209,7 +209,7 @@ Cloud source of truth does not mean continuous polling. Phase 3 uses a stale-whi
 
 - Pin the recent 30 days of records and summaries by default.
 - Keep detailed records for at most 180 older user-visited day buckets per account.
-- Keep at most 730 local `daily_summaries` rows per account.
+- Keep rebuildable local summary/record cache bounded; the current implementation prunes cloud-confirmed cache older than the recent 30-day window and relies on cloud records/builders for older history reconstruction.
 - Body calendar and Body Trends reuse the same cache policy; they do not require a separate larger cache in Phase 3.
 - The recent 30-day window is not the only cache that may exist. When a day falls outside the recent window, it may remain as an older visited day bucket until older-bucket capacity or eviction rules require removal.
 - Cache metadata should track account id, date/window, `cached_at`, source updated/version fields, pending/confirmed status, and last access when available.
@@ -349,10 +349,12 @@ These are the expected implementation locations when Phase 3 lands. Exact filena
 
 - Supabase migration: `supabase/migrations/202606260001_phase3_cloud_records.sql`.
 - Local SQLite schema: `lib/data/db/app_database.dart`.
-- Cloud cache/read model: currently carried by account-bound v15 metadata inside `FoodRepository`, `WorkoutRepository`, and `ProfileRepository`; a later shared cache repository must preserve this document's boundary.
+- Cloud cache/read model: account-bound v15 metadata is carried by `FoodRepository`, `WorkoutRepository`, and `ProfileRepository`; `CacheMaintenanceService` prunes only cloud-confirmed rebuildable cache.
 - Cloud record repositories: `CloudBackedFoodRepository`, `CloudBackedWorkoutRepository`, and `CloudBackedProfileRepository` live in `lib/data/repositories/food_repository.dart`, `workout_repository.dart`, and `profile_repository.dart`.
-- Daily summaries: `lib/domain/services/daily_summary_service.dart` builds on demand from cloud-backed repositories and can update the local selected-day confirmed cache through `lib/data/repositories/daily_summary_cache_repository.dart`; Home uses stale-while-revalidate for the selected date. The `daily_summaries` cloud table exists, while the cloud upsert coordinator and broader 30-day warm-cache scheduler remain Phase 3 hardening work.
-- Write/read-model coordination: cloud-backed repositories update the local confirmed cache after cloud success, and pages refresh through `RefreshNotifier`; a later `cloud_record_change_coordinator` may factor this out.
+- Daily summaries: `lib/domain/services/daily_summary_service.dart` builds on demand from cloud-backed repositories, reads/writes the cloud `daily_summaries` projection through `lib/data/repositories/daily_summary_cloud_repository.dart`, and updates local selected-day confirmed cache through `lib/data/repositories/daily_summary_cache_repository.dart`; Home uses stale-while-revalidate for the selected date.
+- Warm cache and eviction: `lib/domain/services/warm_cache_coordinator.dart` warms recent 30-day summaries after the five-tab shell renders; `lib/domain/services/cache_maintenance_service.dart` prunes old cloud-confirmed local cache without deleting cloud official records.
+- Write/read-model coordination: cloud-backed repositories update the local confirmed cache after cloud success, pages refresh through `RefreshNotifier`, and successful food/workout/Profile writes schedule affected-date summary cache/cloud projection refresh.
+- Export correctness: `lib/export/export_table_builder.dart` uses cloud-backed all-record loaders for food, workout, and body metric records before building CSV/XLSX tables, and includes a Body Metrics table.
 - Root auth gate and cache-backed pages: `lib/app.dart`, `profile_page.dart`, `home_page.dart`, `food_log_page.dart`, `workout_log_page.dart`.
 - Account state machine, Cloud Profile display cache, subscription display cache, background recovery, and refresh backoff: `lib/features/account/account_controller.dart`.
 - Active device claim / guard: Supabase RPCs `claim_active_device`, `assert_active_device`, and `release_active_device`; Flutter repository lives at `lib/data/repositories/active_device_repository.dart`, with runtime state in `lib/domain/models/cloud_runtime_context.dart`.
@@ -402,7 +404,7 @@ Required regression coverage:
 - With matching account Profile cache, Cloud Profile or subscription background refresh failure does not turn Profile into a full-page error or continuous auto-retry loop.
 - If subscription refresh fails while a previous confirmed active/inactive cache exists, Profile keeps the previous display state marked stale instead of flickering into loading/error.
 - Body Trends renders local confirmed records before cloud refresh and does not show final empty/insufficient states while the visible window is still `partial_cache`.
-- The implemented Home selected-day stale-while-revalidate cache can refresh after first render without forcing full-page loading or visible layout jumps; broader warm cache can later fill recent 30-day summaries and body metrics under the same rule.
+- The implemented Home selected-day stale-while-revalidate cache can refresh after first render without forcing full-page loading or visible layout jumps; the current warm cache fills recent 30-day summaries under the same rule.
 - A failed cloud write does not create or overwrite an official local record.
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.

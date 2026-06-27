@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_utils.dart';
 import '../../data/repositories/daily_summary_cache_repository.dart';
+import '../../data/repositories/daily_summary_cloud_repository.dart';
 import '../../data/repositories/food_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -25,6 +26,7 @@ class DailySummaryService {
     TrainingFrequencySelfCheckService? trainingFrequencySelfCheckService,
     required DietPlanStrategyService dietPlanStrategyService,
     DailySummaryCacheRepository? dailySummaryCacheRepository,
+    DailySummaryCloudRepository? dailySummaryCloudRepository,
   }) : _foodRepository = foodRepository,
        _workoutRepository = workoutRepository,
        _profileRepository = profileRepository,
@@ -32,6 +34,7 @@ class DailySummaryService {
            macroTargetCalculator ?? const MacroTargetCalculator(),
        _dietPlanStrategyService = dietPlanStrategyService,
        _dailySummaryCacheRepository = dailySummaryCacheRepository,
+       _dailySummaryCloudRepository = dailySummaryCloudRepository,
        _trainingFrequencySelfCheckService =
            trainingFrequencySelfCheckService ??
            TrainingFrequencySelfCheckService(
@@ -45,6 +48,7 @@ class DailySummaryService {
   final DietPlanStrategyService _dietPlanStrategyService;
   final TrainingFrequencySelfCheckService _trainingFrequencySelfCheckService;
   final DailySummaryCacheRepository? _dailySummaryCacheRepository;
+  final DailySummaryCloudRepository? _dailySummaryCloudRepository;
 
   static const double _minLifestyleFactor = 1.10;
   static const double _maxLifestyleFactor = 1.70;
@@ -207,13 +211,35 @@ class DailySummaryService {
     required String? accountId,
     required String day,
   }) async {
-    if ((accountId ?? '').isEmpty || _dailySummaryCacheRepository == null) {
+    if ((accountId ?? '').isEmpty) {
       return null;
     }
-    return _dailySummaryCacheRepository.getCachedSummary(
-      accountId: accountId!,
+    final effectiveAccountId = accountId!;
+    if (_dailySummaryCacheRepository != null) {
+      final local = await _dailySummaryCacheRepository.getCachedSummary(
+        accountId: effectiveAccountId,
+        date: day,
+      );
+      if (local != null) {
+        return local;
+      }
+    }
+
+    final cloud = await _dailySummaryCloudRepository?.fetchSummary(
+      accountId: effectiveAccountId,
       date: day,
     );
+    if (cloud != null && _dailySummaryCacheRepository != null) {
+      try {
+        await _dailySummaryCacheRepository.upsertConfirmedSummary(
+          accountId: effectiveAccountId,
+          summary: cloud,
+        );
+      } catch (_) {
+        // Local cache is an acceleration layer; cloud-confirmed reads still win.
+      }
+    }
+    return cloud;
   }
 
   Future<DailySummary> getSummaryForDateAndCache({
@@ -229,6 +255,16 @@ class DailySummaryService {
         );
       } catch (_) {
         // Summary cache accelerates Home reads; it must not block live summary.
+      }
+    }
+    if ((accountId ?? '').isNotEmpty && _dailySummaryCloudRepository != null) {
+      try {
+        await _dailySummaryCloudRepository.upsertSummary(
+          accountId: accountId!,
+          summary: summary,
+        );
+      } catch (_) {
+        // Daily summaries are rebuildable read models; record writes remain source.
       }
     }
     return summary;

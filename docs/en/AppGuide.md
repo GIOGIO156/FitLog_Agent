@@ -250,7 +250,7 @@ When writing UI copy or documentation, keep these states separate:
 
 - Implemented Local behavior: already present in the copied codebase.
 - Implemented Agent Phase 1-2 behavior: the centered AI tab, disabled AI page, editable composer, provider selector, account/subscription status sheet, Cloud Profile Profile gate, user-record summary permission, and floating five-tab bottom navigation.
-- Phase 3 has connected the Cloud Records Foundation core, including `body_metric_logs`, cloud official food/workout records, the `daily_summaries` table, local partial cache, and Home selected-day summary cache with stale-while-revalidate; the summary cloud upsert/API coordinator remains hardening work.
+- Phase 3 has connected the Cloud Records Foundation and its main hardening chain, including `body_metric_logs`, cloud official food/workout records, the `daily_summaries` table, app-side summary cloud upsert/recovery, local partial cache, Home selected-day summary cache with stale-while-revalidate, bounded recent-summary warm cache, confirmed-cache eviction, and cloud-backed export completeness.
 - Planned Agent V1 behavior: documented target, not necessarily shipped yet.
 
-Do not describe Cloud Records, AI Gateway, cloud chat history, RAG, or LLM calls as implemented until code exists. Account login, subscription status, and Cloud Profile are Phase 2 client/schema capabilities and require Supabase configuration to test against a real backend.
+Do not describe AI Gateway, cloud chat history, RAG, Food Draft writeback, or LLM calls as implemented until code exists. Account login, subscription status, Cloud Profile, and Cloud Records require Supabase configuration to test against a real backend.

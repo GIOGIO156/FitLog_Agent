@@ -32,7 +32,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - Phase 1 AI shell：居中 AI tab、不可用 AI 页面、可编辑输入框、ChatGPT/千问模型选择器占位和 history 入口占位。
 - Phase 2 账号/Profile 基础：Supabase 配置入口、邮箱密码与注册验证码 auth repository、订阅状态 repository、内部兑换码 entitlement RPC、Cloud Profile repository/mapper、Profile 登录 gate、Cloud Profile 自动初始化、Profile 订阅卡、AI 账号/订阅状态 sheet、用户记录摘要授权开关。
 - Phase 2 Supabase migration：`subscriptions`、`cloud_profiles`、`internal_subscription_codes` 和 `internal_subscription_redemptions` 表、既有 `cloud_profiles` 兼容补列、RLS、字段约束、内部兑换码 RPC 和开发 seed 说明。
-- Phase 3 Cloud Records Foundation 已落地核心基础：root auth gate、`account_active_devices`/active-device RPC、`body_metric_logs`、food/workout 云端表、`daily_summaries` 表、本地 v14 partial cache metadata、body/food/workout cloud-backed repository、正式写入 active-device guard、登录冷启动后台账号恢复，以及 Home 选中日期 `daily_summary_cache` + stale-while-revalidate；daily summary 云端 upsert coordinator、广义 warm-cache 调度和 repair UI 继续作为 Phase 3 hardening。
+- Phase 3 Cloud Records Foundation 和主要 hardening 链路已落地：root auth gate、`account_active_devices`/active-device RPC、`body_metric_logs`、food/workout 云端表、`daily_summaries` 表、本地 v15 partial cache metadata、body/food/workout cloud-backed repository、正式写入 active-device guard、登录冷启动后台账号恢复、Home 选中日期 `daily_summary_cache` + stale-while-revalidate、`daily_summaries` 云端 upsert/恢复、近期 summary warm-cache、confirmed cache eviction，以及基于云端正式 records 的导出完整性。
 - 浮动白色 bottom navigation pill，pill 外不绘制整行背景色。
 - SQLite 本地数据库。
 - 本地饮食记录、饮食 item、训练记录、训练 set、体重记录。
@@ -1206,14 +1206,15 @@ flutter build apk --debug
 - Body Trends 只读展示云端/缓存身体记录。
 - AI context wrapper contract 更新为云端 summary source。
 - Home 选中日期 summary 本地 confirmed cache 和 stale-while-revalidate 后台重算。
+- `daily_summaries` 云端 upsert/恢复 coordinator。
+- 最近 30 天 summary warm-cache 调度和 confirmed cache eviction coordinator。
+- 导出从云端 records/builders 读取的完整路径，包含 body metrics。
 
-继续作为 Phase 3 hardening：
+仍可后续继续 harden，但不阻塞 Phase 3 主链路：
 
-- `daily_summaries` 云端 upsert coordinator / summary API。
-- 最近 30 天 warm-cache 调度、freshness/backoff 和 cache pin/eviction 策略的独立 coordinator。
 - 更完整的 repair UI。
 - 记录版本冲突的显式 refresh/retry UX。
-- 导出从云端 records/summaries 分页读取的完整路径。
+- Body Trends 更细的 `partial_cache` / `confirmed_empty` 局部状态 polish。
 
 ### 本阶段不实现
 

@@ -18,6 +18,7 @@ import 'data/repositories/auth_repository.dart';
 import 'data/repositories/cloud_profile_repository.dart';
 import 'data/repositories/custom_exercise_repository.dart';
 import 'data/repositories/daily_summary_cache_repository.dart';
+import 'data/repositories/daily_summary_cloud_repository.dart';
 import 'data/repositories/food_repository.dart';
 import 'data/repositories/profile_repository.dart';
 import 'data/repositories/subscription_repository.dart';
@@ -25,10 +26,12 @@ import 'data/repositories/workout_draft_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'domain/models/auth_session.dart';
 import 'domain/models/cloud_runtime_context.dart';
+import 'domain/services/cache_maintenance_service.dart';
 import 'domain/services/daily_summary_service.dart';
 import 'domain/services/diet_plan_strategy_service.dart';
 import 'domain/services/carb_taper_review_service.dart';
 import 'domain/services/training_frequency_self_check_service.dart';
+import 'domain/services/warm_cache_coordinator.dart';
 import 'export/csv_export_service.dart';
 import 'export/xlsx_export_service.dart';
 import 'features/account/account_controller.dart';
@@ -144,6 +147,13 @@ class _FitLogAppState extends State<FitLogApp> {
       carbTaperReviewService: carbTaperReviewService,
     );
     final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
+    final dailySummaryCloudRepository = supabaseClient == null
+        ? const NoopDailySummaryCloudRepository()
+        : SupabaseDailySummaryCloudRepository(
+            client: supabaseClient,
+            runtimeContext: _cloudRuntimeContext,
+            activeDeviceRepository: activeDeviceRepository,
+          );
 
     final dailySummaryService = DailySummaryService(
       foodRepository: foodRepository,
@@ -151,6 +161,14 @@ class _FitLogAppState extends State<FitLogApp> {
       profileRepository: profileRepository,
       trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
       dietPlanStrategyService: dietPlanStrategyService,
+      dailySummaryCacheRepository: dailySummaryCacheRepository,
+      dailySummaryCloudRepository: dailySummaryCloudRepository,
+    );
+    final warmCacheCoordinator = WarmCacheCoordinator(
+      dailySummaryService: dailySummaryService,
+    );
+    final cacheMaintenanceService = CacheMaintenanceService(
+      database: database,
       dailySummaryCacheRepository: dailySummaryCacheRepository,
     );
 
@@ -178,6 +196,8 @@ class _FitLogAppState extends State<FitLogApp> {
       carbTaperReviewService: carbTaperReviewService,
       dietPlanStrategyService: dietPlanStrategyService,
       trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
+      warmCacheCoordinator: warmCacheCoordinator,
+      cacheMaintenanceService: cacheMaintenanceService,
       database: database,
     );
 
@@ -496,6 +516,22 @@ class _RootShellState extends State<_RootShell> {
     WorkoutLogPage(),
     ProfilePage(),
   ];
+  String? _lastBackgroundAccountId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final accountId = context.watch<AccountController>().authSession.accountId;
+    if ((accountId ?? '').isEmpty || accountId == _lastBackgroundAccountId) {
+      return;
+    }
+    _lastBackgroundAccountId = accountId;
+    final services = context.read<AppServices>();
+    unawaited(
+      services.warmCacheCoordinator.warmRecentWindow(accountId: accountId),
+    );
+    unawaited(services.cacheMaintenanceService.pruneForAccount(accountId));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -573,6 +609,24 @@ class RefreshNotifier extends ChangeNotifier {
   }
 }
 
+extension DailySummaryCacheRefresh on BuildContext {
+  void refreshDailySummaryCacheForDate(String day) {
+    final accountId = read<AccountController>().authSession.accountId;
+    read<AppServices>().refreshDailySummaryCacheForDates(
+      days: <String>[day],
+      accountId: accountId,
+    );
+  }
+
+  void refreshDailySummaryCacheForDates(Iterable<String> days) {
+    final accountId = read<AccountController>().authSession.accountId;
+    read<AppServices>().refreshDailySummaryCacheForDates(
+      days: days,
+      accountId: accountId,
+    );
+  }
+}
+
 class RootTabIndex {
   const RootTabIndex._();
 
@@ -624,6 +678,8 @@ class AppServices {
     required this.carbTaperReviewService,
     required this.dietPlanStrategyService,
     required this.trainingFrequencySelfCheckService,
+    required this.warmCacheCoordinator,
+    required this.cacheMaintenanceService,
     required this.database,
   });
 
@@ -638,5 +694,37 @@ class AppServices {
   final CarbTaperReviewService carbTaperReviewService;
   final DietPlanStrategyService dietPlanStrategyService;
   final TrainingFrequencySelfCheckService trainingFrequencySelfCheckService;
+  final WarmCacheCoordinator warmCacheCoordinator;
+  final CacheMaintenanceService cacheMaintenanceService;
   final AppDatabase database;
+
+  void refreshDailySummaryCacheForDates({
+    required Iterable<String> days,
+    required String? accountId,
+  }) {
+    if ((accountId ?? '').isEmpty) {
+      return;
+    }
+    final uniqueDays = days.where((day) => day.isNotEmpty).toSet().toList();
+    if (uniqueDays.isEmpty) {
+      return;
+    }
+    unawaited(_refreshDailySummaryCacheForDates(uniqueDays, accountId!));
+  }
+
+  Future<void> _refreshDailySummaryCacheForDates(
+    List<String> days,
+    String accountId,
+  ) async {
+    for (final day in days) {
+      try {
+        await dailySummaryService.getSummaryForDateAndCache(
+          day: day,
+          accountId: accountId,
+        );
+      } catch (_) {
+        // Summary cache refresh is a read-model repair path, not the write result.
+      }
+    }
+  }
 }

@@ -4,14 +4,14 @@
 
 This document defines FitLog_Agent V1 schema, migrations, tables, fields, and storage concepts. Cloud/local authority, cache-first reads, write-success rules, refresh, failures, conflicts, and repair rules are defined in `CloudLocalDataBoundary.md`.
 
-The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, and selected-day daily-summary local cache for Home stale-while-revalidate. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. Later AI Gateway, RAG, and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
+The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, selected-day daily-summary local cache for Home stale-while-revalidate, app-side `daily_summaries` cloud upsert/recovery, bounded recent-summary warm cache, and confirmed-cache eviction. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. Later AI Gateway, RAG, and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
 
 ## Storage Overview
 
 | Storage | Purpose | Current status |
 | --- | --- | --- |
 | SQLite / `sqflite` | Local profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, selected-day `daily_summary_cache`, and partial cache. | Implemented from Local baseline; Phase 3 schema v15 carries cloud/cache metadata and selected-day summary cache. |
-| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes are wired through cloud-backed repositories. |
+| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes plus daily-summary upsert/recovery are wired through cloud-backed repositories. |
 | SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, and Supabase registration-code PKCE verifier state. | Implemented from Local baseline and Phase 2 account work; auth verifier and theme key are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
 | Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, and later AI chats/request logs/final answers/debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; later AI tables remain planned. |
@@ -509,7 +509,7 @@ Fields should cover:
 
 Rules:
 
-- Phase 3 creates the cloud `daily_summaries` table. The current app-side `DailySummaryService` builds deterministic summaries on demand from cloud-backed record repositories and can persist selected-day confirmed summaries into local `daily_summary_cache` for Home stale-while-revalidate. The summary cloud upsert/builder coordinator remains a Cloud Records hardening point, and AI/export must not depend on complete local SQLite.
+- Phase 3 creates the cloud `daily_summaries` table. The current app-side `DailySummaryService` builds deterministic summaries on demand from cloud-backed record repositories, recovers missing local summary cache from cloud `daily_summaries`, upserts rebuilt summaries to cloud, and persists selected-day confirmed summaries into local `daily_summary_cache` for Home stale-while-revalidate. AI/export must not depend on complete local SQLite.
 - AI wrappers should prefer summaries or summary builders over scanning full raw records.
 
 ### `ai_chat_sessions`
@@ -672,7 +672,7 @@ Export should continue to cover:
 - self-check fields
 - diet adjustment review history
 
-After Phase 3, export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
+After Phase 3 hardening, export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. The current export builder fetches cloud-backed food, workout, and body metric records before building XLSX/CSV tables and includes a Body Metrics table. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
 
 ## Not Implemented In Current Source
 

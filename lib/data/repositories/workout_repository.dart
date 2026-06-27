@@ -659,6 +659,42 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
   }
 
   @override
+  Future<List<WorkoutSession>> getAllWorkoutSessions() async {
+    final accountId = runtimeContext.accountId;
+    if ((accountId ?? '').isEmpty) {
+      return super.getAllWorkoutSessions();
+    }
+    setActiveAccountId(accountId);
+    try {
+      await activeDeviceRepository.assertActive();
+      final rows = await _fetchAllCloudWorkoutSessions();
+      for (final row in rows) {
+        await cacheConfirmedWorkoutSession(
+          _workoutSessionFromCloudRow(row),
+          accountId: accountId!,
+          cloudId: row['id'].toString(),
+          recordVersion: _recordVersion(row),
+          cloudUpdatedAt: _updatedAt(row),
+        );
+      }
+      return super.getAllWorkoutSessions();
+    } on Phase2RepositoryException {
+      rethrow;
+    } catch (error) {
+      throw _cloudRecordExceptionFor('workout_export_failed', error);
+    }
+  }
+
+  @override
+  Future<List<String>> getDistinctDates() {
+    final accountId = runtimeContext.accountId;
+    if ((accountId ?? '').isNotEmpty) {
+      setActiveAccountId(accountId);
+    }
+    return super.getDistinctDates();
+  }
+
+  @override
   Future<WorkoutSession?> getWorkoutSessionById(int id) {
     final accountId = runtimeContext.accountId;
     if ((accountId ?? '').isNotEmpty) {
@@ -745,6 +781,29 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
     return rows
         .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
         .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllCloudWorkoutSessions() async {
+    const pageSize = 500;
+    final result = <Map<String, dynamic>>[];
+    var offset = 0;
+    while (true) {
+      final rows = await client
+          .from('workout_sessions')
+          .select('*, workout_sets(*)')
+          .filter('deleted_at', 'is', null)
+          .order('date', ascending: false)
+          .order('created_at', ascending: false)
+          .range(offset, offset + pageSize - 1);
+      result.addAll(
+        rows.map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row)),
+      );
+      if (rows.length < pageSize) {
+        break;
+      }
+      offset += pageSize;
+    }
+    return result;
   }
 
   Future<void> _replaceCloudWorkoutSets(

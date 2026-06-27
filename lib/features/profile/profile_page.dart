@@ -1199,6 +1199,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     refreshNotifier.markDataChanged();
+    context.refreshDailySummaryCacheForDate(DateUtilsX.todayKey());
     final updatedAccountController = _maybeAccountController(listen: false);
     setState(() {
       _loadedProfile = profile;
@@ -1390,6 +1391,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _exportXlsx() async {
     final service = context.read<AppServices>().xlsxExportService;
     final messenger = ScaffoldMessenger.of(context);
+    final strings = context.stringsRead;
 
     setState(() => _exportingXlsx = true);
     try {
@@ -1397,12 +1399,17 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text('XLSX: $filePath')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.exportReady('XLSX', filePath))),
+      );
     } catch (e) {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text('XLSX error: $e')));
+      final message = e is Phase2RepositoryException
+          ? strings.phase2ErrorMessage(e.code)
+          : strings.exportFailed('XLSX', e);
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() => _exportingXlsx = false);
@@ -1413,6 +1420,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _exportCsvZip() async {
     final service = context.read<AppServices>().csvExportService;
     final messenger = ScaffoldMessenger.of(context);
+    final strings = context.stringsRead;
 
     setState(() => _exportingCsv = true);
     try {
@@ -1420,12 +1428,17 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text('CSV: $filePath')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.exportReady('CSV', filePath))),
+      );
     } catch (e) {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(SnackBar(content: Text('CSV error: $e')));
+      final message = e is Phase2RepositoryException
+          ? strings.phase2ErrorMessage(e.code)
+          : strings.exportFailed('CSV', e);
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() => _exportingCsv = false);

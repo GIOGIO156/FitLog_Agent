@@ -288,6 +288,23 @@ class ProfileRepository {
     return rows.map(WeightLog.fromMap).toList();
   }
 
+  Future<List<WeightLog>> getAllWeightLogs({String? accountId}) async {
+    final db = await _database.database;
+    final effectiveAccountId = accountId ?? _activeAccountId;
+    final where = effectiveAccountId == null
+        ? 'account_id IS NULL AND deleted_at IS NULL'
+        : 'account_id = ? AND deleted_at IS NULL';
+    final rows = await db.query(
+      'user_weight_logs',
+      where: where,
+      whereArgs: effectiveAccountId == null
+          ? null
+          : <Object?>[effectiveAccountId],
+      orderBy: 'date DESC, updated_at DESC',
+    );
+    return rows.map(WeightLog.fromMap).toList();
+  }
+
   Future<CalorieCalibrationState?> getCalorieCalibrationState() async {
     final db = await _database.database;
     final rows = await db.query(
@@ -413,17 +430,9 @@ class CloudBackedProfileRepository extends ProfileRepository {
           .filter('deleted_at', 'is', null)
           .order('date', ascending: true);
       for (final rawRow in rows) {
-        final row = Map<String, dynamic>.from(rawRow);
-        await _upsertLocalWeightLog(
+        await _cacheCloudWeightLogRow(
           accountId: effectiveAccountId!,
-          date: row['date']?.toString() ?? '',
-          weightKg: _toDouble(row['weight_kg']),
-          bodyFatPercent: _toNullableDouble(row['body_fat_percent']),
-          waistCm: _toNullableDouble(row['waist_cm']),
-          source: row['source']?.toString() ?? 'cloud',
-          cloudId: row['id']?.toString(),
-          recordVersion: _recordVersion(row),
-          cloudUpdatedAt: _updatedAt(row),
+          row: Map<String, dynamic>.from(rawRow),
         );
       }
       return super.getWeightLogsBetween(
@@ -434,6 +443,66 @@ class CloudBackedProfileRepository extends ProfileRepository {
     } catch (_) {
       return cached;
     }
+  }
+
+  @override
+  Future<List<WeightLog>> getAllWeightLogs({String? accountId}) async {
+    final effectiveAccountId = accountId ?? runtimeContext.accountId;
+    if ((effectiveAccountId ?? '').isEmpty) {
+      return super.getAllWeightLogs(accountId: accountId);
+    }
+    setActiveAccountId(effectiveAccountId);
+    try {
+      await activeDeviceRepository.assertActive();
+      final rows = await _fetchAllCloudWeightLogs();
+      for (final row in rows) {
+        await _cacheCloudWeightLogRow(accountId: effectiveAccountId!, row: row);
+      }
+      return super.getAllWeightLogs(accountId: effectiveAccountId);
+    } on Phase2RepositoryException {
+      rethrow;
+    } catch (error) {
+      throw _cloudRecordExceptionFor('body_metric_export_failed', error);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAllCloudWeightLogs() async {
+    const pageSize = 500;
+    final result = <Map<String, dynamic>>[];
+    var offset = 0;
+    while (true) {
+      final rows = await client
+          .from('body_metric_logs')
+          .select()
+          .filter('deleted_at', 'is', null)
+          .order('date', ascending: false)
+          .range(offset, offset + pageSize - 1);
+      result.addAll(
+        rows.map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row)),
+      );
+      if (rows.length < pageSize) {
+        break;
+      }
+      offset += pageSize;
+    }
+    return result;
+  }
+
+  Future<void> _cacheCloudWeightLogRow({
+    required String accountId,
+    required Map<String, dynamic> row,
+  }) async {
+    await _upsertLocalWeightLog(
+      accountId: accountId,
+      date: row['date']?.toString() ?? '',
+      weightKg: _toDouble(row['weight_kg']),
+      bodyFatPercent: _toNullableDouble(row['body_fat_percent']),
+      waistCm: _toNullableDouble(row['waist_cm']),
+      source: row['source']?.toString() ?? 'cloud',
+      cloudId: row['id']?.toString(),
+      recordVersion: _recordVersion(row),
+      cloudUpdatedAt: _updatedAt(row),
+    );
   }
 
   String _requireAccountId() {

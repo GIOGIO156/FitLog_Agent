@@ -250,7 +250,7 @@ UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
 - 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关，以及五 tab 浮动底部导航。
-- Phase 3 已接入 Cloud Records Foundation 核心，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、本地 partial cache，以及 Home 选中日期 summary cache 和 stale-while-revalidate；summary 云端 upsert/API coordinator 仍是 hardening。
+- Phase 3 已接入 Cloud Records Foundation 和主要 hardening 链路，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、App 侧 summary 云端 upsert/恢复、本地 partial cache、Home 选中日期 summary cache 与 stale-while-revalidate、受控的近期 summary warm cache、confirmed cache 淘汰，以及 cloud-backed 导出完整性。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
-在代码实现前，不要把 Cloud Records、AI Gateway、云端 chat history、RAG 或 LLM 调用写成已实现。账号登录、订阅状态和 Cloud Profile 是 Phase 2 客户端/schema 能力，需要配置 Supabase 后才能连接真实后端测试。
+在代码实现前，不要把 AI Gateway、云端 chat history、RAG、Food Draft 写回或 LLM 调用写成已实现。账号登录、订阅状态、Cloud Profile 和 Cloud Records 都需要配置 Supabase 后才能连接真实后端测试。

@@ -1035,6 +1035,11 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
       await services.workoutDraftRepository.deleteActiveDraft();
       _draftCreatedAt = null;
+      if (mounted) {
+        context.refreshDailySummaryCacheForDates(
+          sessions.map((session) => session.date),
+        );
+      }
 
       messenger.showSnackBar(
         SnackBar(

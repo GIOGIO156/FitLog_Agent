@@ -8,7 +8,7 @@
 
 ## 适用范围
 
-这些规则适用于 Phase 3 Cloud Records Foundation 及其后的登录态 Agent 构建。当前工程已落地 root auth gate、active-device claim/assert、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 confirmed cache 元数据、cloud-backed repository、登录冷启动后台账号恢复，以及 Home 选中日期 daily summary confirmed cache 和 stale-while-revalidate 后台重算。daily summary 云端 upsert coordinator、更完整的低优先级 warm-cache 调度、cache eviction coordinator、导出完整性 hardening 和更完整的 repair UI 仍需作为 Phase 3 hardening 继续完善；未落地部分不能写成已实现行为。
+这些规则适用于 Phase 3 Cloud Records Foundation 及其后的登录态 Agent 构建。当前工程已落地 root auth gate、active-device claim/assert、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 confirmed cache 元数据、cloud-backed repository、登录冷启动后台账号恢复、Home 选中日期 daily summary confirmed cache 和 stale-while-revalidate 后台重算、App 侧 `daily_summaries` 云端 upsert/读取恢复、受控的近期 summary warm cache、confirmed cache 淘汰，以及基于云端正式 records 的导出完整性 hardening。更精细的 Body Trends partial-state polish 和完整 repair 面板可以后续继续做，但 Phase 3 主 cloud/local hardening 链路不再被这些事项阻塞。
 
 未登录前的 Local 风格行为仍以本地为主。Phase 3 不实现离线正式写入队列、完整双向同步、旧本机历史自动迁移，也不实现复杂跨设备合并 UI。
 
@@ -209,7 +209,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 
 - 默认 pin 最近 30 天 records 和 summaries。
 - 30 天外详细 records 每账号最多保留 180 个用户访问过的日期 bucket。
-- 每账号最多保留 730 条本地 `daily_summaries`。
+- 本地可重建 summary/records cache 必须受限；当前实现会淘汰最近 30 天窗口外的 cloud-confirmed 本地 cache，并用云端 records/builders 恢复更早历史。
 - Body calendar 和 Body Trends 复用同一 cache 策略；Phase 3 不需要单独扩大容量。
 - 最近 30 天不是唯一允许存在的 cache。某一天离开最近窗口后，可以作为旧历史访问日 bucket 继续保留，直到旧 bucket 容量或淘汰规则要求移除。
 - cache metadata 应尽量记录账号、日期/窗口、`cached_at`、source updated/version 字段、pending/confirmed 状态和 last access。
@@ -349,10 +349,12 @@ AI：
 
 - Supabase migration：`supabase/migrations/202606260001_phase3_cloud_records.sql`。
 - 本地 SQLite schema：`lib/data/db/app_database.dart`。
-- Cloud cache/read model：当前由 `FoodRepository`、`WorkoutRepository`、`ProfileRepository` 的账号绑定 v15 元数据承载；若后续抽象出共享 cache repository，仍不得改变本文件边界。
+- Cloud cache/read model：当前由 `FoodRepository`、`WorkoutRepository`、`ProfileRepository` 的账号绑定 v15 元数据承载；`CacheMaintenanceService` 只淘汰云端已确认、可重建的本地 cache。
 - Cloud records repositories：`CloudBackedFoodRepository`、`CloudBackedWorkoutRepository`、`CloudBackedProfileRepository` 分别位于 `lib/data/repositories/food_repository.dart`、`workout_repository.dart`、`profile_repository.dart`。
-- Daily summaries：`lib/domain/services/daily_summary_service.dart` 当前按需从 cloud-backed repositories 构建，并可通过 `lib/data/repositories/daily_summary_cache_repository.dart` 更新本地选中日期 confirmed summary cache；Home 对选中日期使用 stale-while-revalidate。`daily_summaries` 云表已建，云端 upsert coordinator 和更完整的 30 天 warm-cache 调度仍是 Phase 3 hardening 点。
-- 写入/read-model 协调：当前写入成功后由 cloud-backed repository 更新本地 confirmed cache，页面通过 `RefreshNotifier` 刷新；后续可抽象 `cloud_record_change_coordinator`。
+- Daily summaries：`lib/domain/services/daily_summary_service.dart` 按需从 cloud-backed repositories 构建，通过 `lib/data/repositories/daily_summary_cloud_repository.dart` 读写云端 `daily_summaries` projection，并通过 `lib/data/repositories/daily_summary_cache_repository.dart` 更新本地选中日期 confirmed summary cache；Home 对选中日期使用 stale-while-revalidate。
+- Warm cache 与淘汰：`lib/domain/services/warm_cache_coordinator.dart` 在五栏 shell 稳定渲染后预热最近 30 天 summaries；`lib/domain/services/cache_maintenance_service.dart` 淘汰旧的 cloud-confirmed 本地 cache，不删除云端正式 records。
+- 写入/read-model 协调：当前写入成功后由 cloud-backed repository 更新本地 confirmed cache，页面通过 `RefreshNotifier` 刷新，food/workout/Profile 成功写入后会调度受影响日期 summary cache 和云端 projection 刷新。
+- 导出正确性：`lib/export/export_table_builder.dart` 在生成 CSV/XLSX 前通过 cloud-backed all-record loaders 补齐 food、workout 和 body metric 正式记录，并包含 Body Metrics 表。
 - Root auth gate 和 cache-backed 页面：`lib/app.dart`、`profile_page.dart`、`home_page.dart`、`food_log_page.dart`、`workout_log_page.dart`。
 - 账号状态机、Cloud Profile 展示 cache、订阅展示 cache、后台恢复和刷新退避：`lib/features/account/account_controller.dart`。
 - Active device claim / guard：Supabase RPC `claim_active_device`、`assert_active_device`、`release_active_device`，Flutter repository 在 `lib/data/repositories/active_device_repository.dart`，运行时状态在 `lib/domain/models/cloud_runtime_context.dart`。
@@ -402,7 +404,7 @@ AI：
 - 有匹配账号 Profile cache 时，Cloud Profile 或订阅后台刷新失败不会把 Profile 变成整页错误或持续自动重试循环。
 - 订阅刷新失败但存在上一份已确认 active/inactive cache 时，Profile 订阅状态保留上一份展示并标记 stale，不闪烁为 loading/error。
 - Body Trends 在云端 refresh 前先展示本地已确认记录，并且在可见窗口仍是 `partial_cache` 时不显示最终空态/记录不足态。
-- 已落地的 Home 选中日期 stale-while-revalidate cache 可以在首屏后后台刷新，且不能造成整页 loading 或可见布局跳动；后续更完整的 warm cache 也必须遵守同一规则，再补齐最近 30 天 summaries 和身体指标。
+- 已落地的 Home 选中日期 stale-while-revalidate cache 可以在首屏后后台刷新，且不能造成整页 loading 或可见布局跳动；当前 warm cache 已按同一规则预热最近 30 天 summaries。
 - 云端写入失败不会创建或覆盖正式本地记录。
 - 前台新增、编辑、删除失败时有可读错误和重试/恢复路径，不出现点击无反应。
 - 旧设备不能在 `device_replaced` 后继续新增、编辑、删除或发送 AI；该错误不能被展示成普通 upload failure。

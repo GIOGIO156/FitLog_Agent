@@ -697,4 +697,58 @@ class AppDatabase {
       await txn.delete('daily_summary_cache');
     });
   }
+
+  Future<void> pruneConfirmedCloudCacheForAccount({
+    required String accountId,
+    required String beforeDate,
+  }) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete(
+        'food_items',
+        where: '''
+          food_record_id IN (
+            SELECT id FROM food_records
+            WHERE account_id = ?
+              AND date < ?
+              AND cache_confirmed = 1
+              AND cloud_id IS NOT NULL
+          )
+        ''',
+        whereArgs: <Object?>[accountId, beforeDate],
+      );
+      await txn.delete(
+        'food_records',
+        where:
+            'account_id = ? AND date < ? AND cache_confirmed = 1 AND cloud_id IS NOT NULL',
+        whereArgs: <Object?>[accountId, beforeDate],
+      );
+
+      await txn.delete(
+        'workout_sets',
+        where: '''
+          workout_session_id IN (
+            SELECT id FROM workout_sessions
+            WHERE account_id = ?
+              AND date < ?
+              AND cache_confirmed = 1
+              AND cloud_id IS NOT NULL
+          )
+        ''',
+        whereArgs: <Object?>[accountId, beforeDate],
+      );
+      await txn.delete(
+        'workout_sessions',
+        where:
+            'account_id = ? AND date < ? AND cache_confirmed = 1 AND cloud_id IS NOT NULL',
+        whereArgs: <Object?>[accountId, beforeDate],
+      );
+      await txn.delete(
+        'user_weight_logs',
+        where:
+            'account_id = ? AND date < ? AND cache_confirmed = 1 AND cloud_id IS NOT NULL',
+        whereArgs: <Object?>[accountId, beforeDate],
+      );
+    });
+  }
 }

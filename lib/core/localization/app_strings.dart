@@ -720,6 +720,10 @@ class AppStrings {
   String get exportData => _t('Export & Data', '导出与数据');
   String get exportXlsx => _t('Export XLSX', '导出 XLSX');
   String get exportCsv => _t('Export CSV', '导出 CSV');
+  String exportReady(String type, String filePath) =>
+      _t('$type export ready: $filePath', '$type 已导出：$filePath');
+  String exportFailed(String type, Object error) =>
+      _t('$type export failed: $error', '$type 导出失败：$error');
   String get clearAllData => _t('Clear All Local Data', '清空本地数据');
   String get accountActionsTitle => _t('Account', '账号');
   String get signOutAccount => _t('Sign out', '退出账号');

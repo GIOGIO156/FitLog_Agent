@@ -4,6 +4,7 @@ import '../data/repositories/profile_repository.dart';
 import '../data/repositories/workout_repository.dart';
 import '../domain/models/diet_adjustment_review.dart';
 import '../domain/models/user_profile.dart';
+import '../domain/models/weight_log.dart';
 import '../domain/services/daily_summary_service.dart';
 
 class ExportTableBuilder {
@@ -28,6 +29,7 @@ class ExportTableBuilder {
   Future<List<ExportTable>> build() async {
     final foodRecords = await _foodRepository.getAllFoodRecords();
     final workoutSessions = await _workoutRepository.getAllWorkoutSessions();
+    final weightLogs = await _profileRepository.getAllWeightLogs();
     final customExercises = await _customExerciseRepository.getAllDefinitions();
     final profile =
         await _profileRepository.getProfile() ?? UserProfile.defaults;
@@ -190,6 +192,11 @@ class ExportTableBuilder {
         ],
       ),
       ExportTable(
+        sheetName: 'Body Metrics',
+        fileName: 'body_metrics.csv',
+        rows: _buildBodyMetricRows(weightLogs),
+      ),
+      ExportTable(
         sheetName: 'Custom Exercises',
         fileName: 'custom_exercises.csv',
         rows: <List<dynamic>>[
@@ -228,7 +235,7 @@ class ExportTableBuilder {
       ExportTable(
         sheetName: 'Daily Summary',
         fileName: 'daily_summary.csv',
-        rows: await _buildSummaryRows(),
+        rows: await _buildSummaryRows(weightLogs: weightLogs),
       ),
       ExportTable(
         sheetName: 'User Profile',
@@ -304,10 +311,13 @@ class ExportTableBuilder {
     return tables;
   }
 
-  Future<List<List<dynamic>>> _buildSummaryRows() async {
+  Future<List<List<dynamic>>> _buildSummaryRows({
+    required List<WeightLog> weightLogs,
+  }) async {
     final uniqueDates = <String>{
       ...await _foodRepository.getDistinctDates(),
       ...await _workoutRepository.getDistinctDates(),
+      ...weightLogs.map((log) => log.date),
     }.toList()..sort();
 
     final rows = <List<dynamic>>[
@@ -418,6 +428,21 @@ class ExportTableBuilder {
     }
 
     return rows;
+  }
+
+  List<List<dynamic>> _buildBodyMetricRows(List<WeightLog> logs) {
+    return <List<dynamic>>[
+      <dynamic>['date', 'weight_kg', 'body_fat_percent', 'waist_cm', 'source'],
+      ...logs.map(
+        (log) => <dynamic>[
+          log.date,
+          log.weightKg,
+          log.bodyFatPercent ?? '',
+          log.waistCm ?? '',
+          log.source,
+        ],
+      ),
+    ];
   }
 
   List<List<dynamic>> _buildDietAdjustmentReviewRows(

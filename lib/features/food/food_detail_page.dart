@@ -30,6 +30,7 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
   final _notesController = TextEditingController();
 
   String _date = DateUtilsX.todayKey();
+  String _originalDate = DateUtilsX.todayKey();
   String _source = '';
   List<EditableFoodItemDraft> _items = <EditableFoodItemDraft>[];
   bool _loading = true;
@@ -75,6 +76,7 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
 
     setState(() {
       _date = record.date;
+      _originalDate = record.date;
       _source = record.source;
       _mealNameController.text = record.mealName;
       _weightController.text = record.totalWeightG.toStringAsFixed(1);
@@ -138,6 +140,7 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
       }
 
       context.read<RefreshNotifier>().markDataChanged();
+      context.refreshDailySummaryCacheForDates(<String>{_originalDate, _date});
       messenger.showSnackBar(
         SnackBar(content: Text(strings.foodRecordUpdated)),
       );

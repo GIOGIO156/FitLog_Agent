@@ -35,13 +35,13 @@ Write official data only after the user confirms.
 
 | Module | V1 role | Implemented baseline | V1 planned additions |
 | --- | --- | --- | --- |
-| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, and refreshes Home with stale-while-revalidate; cloud daily-summary upsert remains Phase 3 hardening. |
+| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, refreshes Home with stale-while-revalidate, and upserts rebuildable `daily_summaries` to the cloud. |
 | Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | After sign-in, official records write cloud-first; receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
 | Add Food | Food creation workflow. | Manual entry, prompt copy, JSON paste, Photo AI placeholder. | Photo recognition shortcut may call AI Gateway and create Food Draft. |
 | AI | Primary Agent entry. | Phase 2 implements the centered tab, disabled AI shell, editable composer, provider selector, account/subscription status sheet, subscription/Profile availability gating, and user-record summary permission. Sending is disabled until AI Gateway is added. | AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
 | Workout | Official workout-record management. | Workout records, custom exercises, draft editor, calorie heuristics. | After sign-in, official records write cloud-first; V1 AI may explain or review workout context but should not silently modify records. |
 | Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; Phase 2 shows sign-in before login and saves formal profile changes through Cloud Profile when signed in. | Account deletion, production subscription management, and later AI personalization flows. |
-| Export | User-controlled data export. | XLSX and CSV ZIP export. | No default cloud backup/export replacement in V1. |
+| Export | User-controlled data export. | XLSX and CSV ZIP export. | After Phase 3 hardening, export loads cloud official food, workout, and body metric records before building files; local cache may accelerate but is not required for completeness. |
 
 ## AI Chat Experience
 
