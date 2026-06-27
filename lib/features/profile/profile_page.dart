@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../app.dart';
@@ -71,6 +73,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _scrollController = ScrollController();
   final _settingsSectionKey = GlobalKey();
   final _selfCheckSectionKey = GlobalKey();
+  final _bodyMetricEditorKey = GlobalKey();
 
   final _nicknameController = TextEditingController();
   final _ageController = TextEditingController();
@@ -78,6 +81,9 @@ class _ProfilePageState extends State<ProfilePage> {
   final _weightController = TextEditingController();
   final _bodyFatController = TextEditingController();
   final _waistController = TextEditingController();
+  final _bodyMetricWeightController = TextEditingController();
+  final _bodyMetricBodyFatController = TextEditingController();
+  final _bodyMetricWaistController = TextEditingController();
   final _goalKcalController = TextEditingController();
   final _proteinRatioController = TextEditingController();
   final _carbsRatioController = TextEditingController();
@@ -109,6 +115,9 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _editingNickname = false;
   _BodyProfileField? _editingBodyField;
   UserProfile? _bodyProfileEditSnapshot;
+  String? _editingBodyMetricDate;
+  bool _savingBodyMetricRecord = false;
+  RootInteractionLockController? _rootInteractionLockController;
   bool _exportingXlsx = false;
   bool _exportingCsv = false;
   bool _refreshingSubscription = false;
@@ -140,7 +149,19 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    try {
+      _rootInteractionLockController =
+          Provider.of<RootInteractionLockController>(context, listen: false);
+    } catch (_) {
+      _rootInteractionLockController = null;
+    }
+  }
+
+  @override
   void dispose() {
+    _rootInteractionLockController?.setNavigationLocked(false);
     _ageController.removeListener(_onAgeChanged);
     _scrollController.dispose();
     _nicknameController.dispose();
@@ -149,6 +170,9 @@ class _ProfilePageState extends State<ProfilePage> {
     _weightController.dispose();
     _bodyFatController.dispose();
     _waistController.dispose();
+    _bodyMetricWeightController.dispose();
+    _bodyMetricBodyFatController.dispose();
+    _bodyMetricWaistController.dispose();
     _goalKcalController.dispose();
     _proteinRatioController.dispose();
     _carbsRatioController.dispose();
@@ -271,6 +295,219 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<WeightLog?> _loadBodyMetricLogForDate(String date) async {
+    final logs = await context
+        .read<AppServices>()
+        .profileRepository
+        .getWeightLogsBetween(startDate: date, endDate: date);
+    for (final log in logs) {
+      if (log.date == date) {
+        return log;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _pickBodyMetricDate() async {
+    if (_savingBodyMetricRecord) {
+      return;
+    }
+    final draftChanges = _buildProfileDraftChanges(context.stringsRead);
+    if (draftChanges.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.stringsRead.bodyMetricDraftBlocked)),
+      );
+      return;
+    }
+
+    final today = DateUtilsX.parseDay(DateUtilsX.todayKey());
+    final yesterday = today.subtract(const Duration(days: 1));
+    final currentDate = _editingBodyMetricDate == null
+        ? yesterday
+        : DateUtilsX.parseDay(_editingBodyMetricDate!);
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: currentDate.isAfter(yesterday) ? yesterday : currentDate,
+      firstDate: DateTime(2020),
+      lastDate: yesterday,
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    await _beginBodyMetricEdit(DateUtilsX.formatDate(selected));
+  }
+
+  Future<void> _beginBodyMetricEdit(String date) async {
+    if (!_isPastBodyMetricDate(date)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.stringsRead.bodyMetricPastDateRequired)),
+      );
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final profile = _buildDraftProfile();
+    final existingLog = await _loadBodyMetricLogForDate(date);
+    if (!mounted) {
+      return;
+    }
+    final weight = existingLog?.weightKg ?? profile.weightKg;
+    final bodyFat = existingLog?.bodyFatPercent ?? profile.bodyFatPercent;
+    final waist = existingLog?.waistCm ?? profile.waistCm;
+    setState(() {
+      _editingNickname = false;
+      _editingBodyField = null;
+      _bodyProfileEditSnapshot = null;
+      _editingBodyMetricDate = date;
+      _bodyMetricWeightController.text = weight.toStringAsFixed(1);
+      _bodyMetricBodyFatController.text = bodyFat == null
+          ? ''
+          : bodyFat.toStringAsFixed(1);
+      _bodyMetricWaistController.text = waist == null
+          ? ''
+          : waist.toStringAsFixed(1);
+    });
+    _rootInteractionLockController?.setNavigationLocked(true);
+    _revealBodyMetricEditor();
+  }
+
+  void _revealBodyMetricEditor() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isEditingBodyMetricRecord) {
+        return;
+      }
+      final editorContext = _bodyMetricEditorKey.currentContext;
+      if (editorContext == null) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        editorContext,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        alignment: 0.04,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
+  }
+
+  void _cancelBodyMetricEdit() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _editingBodyMetricDate = null;
+      _savingBodyMetricRecord = false;
+      _bodyMetricWeightController.clear();
+      _bodyMetricBodyFatController.clear();
+      _bodyMetricWaistController.clear();
+    });
+    _rootInteractionLockController?.setNavigationLocked(false);
+  }
+
+  bool _isPastBodyMetricDate(String date) {
+    final selected = DateUtilsX.parseDay(date);
+    final today = DateUtilsX.parseDay(DateUtilsX.todayKey());
+    return selected.isBefore(today);
+  }
+
+  bool _validateBodyMetricRecord() {
+    final strings = context.stringsRead;
+    final date = _editingBodyMetricDate;
+    if (date == null || !_isPastBodyMetricDate(date)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.bodyMetricPastDateRequired)),
+      );
+      return false;
+    }
+    if (_bodyMetricWeightKg <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.enterValidWeight)));
+      return false;
+    }
+    final bodyFat = _bodyMetricBodyFatPercent;
+    if (bodyFat != null && (bodyFat <= 0 || bodyFat > 100)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.enterValidBodyFat)));
+      return false;
+    }
+    final waist = _bodyMetricWaistCm;
+    if (waist != null && waist <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.enterValidWaist)));
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _saveBodyMetricRecord() async {
+    if (_savingBodyMetricRecord || !_validateBodyMetricRecord()) {
+      return;
+    }
+    final date = _editingBodyMetricDate!;
+    final services = context.read<AppServices>();
+    final accountController = _maybeAccountController(listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final strings = context.stringsRead;
+    setState(() => _savingBodyMetricRecord = true);
+    try {
+      await services.profileRepository.upsertWeightLog(
+        accountId: accountController?.authSession.accountId,
+        date: date,
+        weightKg: _bodyMetricWeightKg,
+        bodyFatPercent: _bodyMetricBodyFatPercent,
+        waistCm: _bodyMetricWaistCm,
+        source: 'manual',
+      );
+      final bodyMetricLogs = await _loadBodyMetricLogs();
+      if (!mounted) {
+        return;
+      }
+      context.read<RefreshNotifier>().markDataChanged();
+      services.refreshDailySummaryCacheForDates(
+        days: _summaryRefreshDaysAfterBodyMetricEdit(date),
+        accountId: accountController?.authSession.accountId,
+      );
+      setState(() {
+        _bodyMetricLogs = bodyMetricLogs;
+        _selectedBodyTrendDate = null;
+        _editingBodyMetricDate = null;
+        _savingBodyMetricRecord = false;
+        _bodyMetricWeightController.clear();
+        _bodyMetricBodyFatController.clear();
+        _bodyMetricWaistController.clear();
+      });
+      _rootInteractionLockController?.setNavigationLocked(false);
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.bodyMetricRecordSaved)),
+      );
+    } catch (error) {
+      if (mounted) {
+        final message = error is Phase2RepositoryException
+            ? strings.phase2ErrorMessage(error.code)
+            : strings.summaryError(error);
+        messenger.showSnackBar(SnackBar(content: Text(message)));
+      }
+    } finally {
+      if (mounted && _savingBodyMetricRecord) {
+        setState(() => _savingBodyMetricRecord = false);
+      }
+    }
+  }
+
+  List<String> _summaryRefreshDaysAfterBodyMetricEdit(String date) {
+    final start = DateUtilsX.parseDay(date);
+    final today = DateUtilsX.parseDay(DateUtilsX.todayKey());
+    final endCandidate = start.add(const Duration(days: 27));
+    final end = endCandidate.isAfter(today) ? today : endCandidate;
+    final days = <String>[];
+    var cursor = start;
+    while (!cursor.isAfter(end)) {
+      days.add(DateUtilsX.formatDate(cursor));
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    return days;
+  }
+
   AccountController? _maybeAccountController({required bool listen}) {
     try {
       return Provider.of<AccountController>(context, listen: listen);
@@ -291,6 +528,15 @@ class _ProfilePageState extends State<ProfilePage> {
       _nullableProfileDouble(_bodyFatController.text);
 
   double? get _waistCm => _nullableProfileDouble(_waistController.text);
+
+  double get _bodyMetricWeightKg =>
+      NumberUtils.toDouble(_bodyMetricWeightController.text, fallback: 0);
+
+  double? get _bodyMetricBodyFatPercent =>
+      _nullableProfileDouble(_bodyMetricBodyFatController.text);
+
+  double? get _bodyMetricWaistCm =>
+      _nullableProfileDouble(_bodyMetricWaistController.text);
 
   double get _goalKcal =>
       NumberUtils.toDouble(_goalKcalController.text, fallback: 0);
@@ -320,6 +566,8 @@ class _ProfilePageState extends State<ProfilePage> {
   bool get _hasNicknameDraft =>
       _nicknameController.text.trim() !=
       (_loadedProfile?.nickname ?? '').trim();
+
+  bool get _isEditingBodyMetricRecord => _editingBodyMetricDate != null;
 
   bool get _hasBodyProfileDraft {
     final profile = _loadedProfile;
@@ -487,6 +735,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _openNicknameEditor() {
+    if (_isEditingBodyMetricRecord) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       if (_editingBodyField != null && !_hasBodyProfileDraft) {
@@ -497,6 +748,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _activateBodyProfileField(_BodyProfileField field) {
+    if (_isEditingBodyMetricRecord) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       if (_editingNickname && !_hasNicknameDraft) {
@@ -910,6 +1164,15 @@ class _ProfilePageState extends State<ProfilePage> {
     return value == null ? '--' : value.toStringAsFixed(1);
   }
 
+  String _formatBodyMetricEditDate(String date) {
+    final value = DateUtilsX.parseDay(date);
+    if (context.stringsRead.isChinese) {
+      final shortYear = (value.year % 100).toString().padLeft(2, '0');
+      return '$shortYear年${value.month}月${value.day}日';
+    }
+    return DateFormat('MMM d, yyyy').format(value);
+  }
+
   bool _validateBodyProfile() {
     final strings = context.stringsRead;
     if (_age <= 0) {
@@ -1201,6 +1464,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _saveProfileDraft() async {
     if (_savingProfileDraft) {
+      return;
+    }
+    if (_isEditingBodyMetricRecord) {
       return;
     }
     if (_editingBodyField != null && !_validateBodyProfile()) {
@@ -1664,6 +1930,16 @@ class _ProfilePageState extends State<ProfilePage> {
     final draftChanges = _buildProfileDraftChanges(strings);
     final draftHasChanges = draftChanges.isNotEmpty;
     final draftSections = draftChanges.map((group) => group.section).toSet();
+    final isEditingBodyMetricRecord = _isEditingBodyMetricRecord;
+    final bodyProfileEditing = _editingBodyField != null;
+    final editingBodyMetricDate = _editingBodyMetricDate;
+    Widget lockWhenBodyMetricEditing(Widget child) {
+      return _BodyMetricEditLockedScope(
+        locked: isEditingBodyMetricRecord,
+        child: child,
+      );
+    }
+
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final navReservedHeight = FitLogBottomNavBar.reservedHeightFor(context);
     final draftBarBottomOffset =
@@ -1691,875 +1967,1034 @@ class _ProfilePageState extends State<ProfilePage> {
                         onPressed: _openSubscriptionSheet,
                       ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Row(
-                  children: <Widget>[
-                    Text(
-                      strings.nicknameLabel,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: fitTheme.mutedText,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (draftSections.contains(_ProfileDraftSection.identity))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: _ModifiedBadge(label: strings.modified),
-                      ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _editingNickname
-                          ? TextField(
-                              controller: _nicknameController,
-                              autofocus: true,
-                              onChanged: (_) => setState(() {}),
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: fitTheme.textPrimary,
-                                    height: 1.0,
-                                  ),
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: strings.nicknameHint,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            )
-                          : InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: _openNicknameEditor,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                child: Text(
-                                  displayNickname,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w900,
-                                        color: fitTheme.textPrimary,
-                                        height: 1.0,
-                                      ),
-                                ),
-                              ),
-                            ),
-                    ),
-                    if (_editingNickname) ...<Widget>[
-                      const SizedBox(width: 8),
-                      _InlineCompactSaveButton(
-                        saving: false,
-                        label: strings.done,
-                        onPressed: _completeNicknameDraft,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              _ProfilePlanHeroCard(
-                strings: strings,
-                phaseLabel: strings.phaseLabel(_dietGoalPhase),
-                modeLabel: _dietModeLabel(context),
-                trainingSummary: _trainingSummaryLabel(context),
-                strategyLabel: _strategyLabel(context),
-                macros: displayedMacroTargets,
-                onInfoTap: _openPlanMethodGuide,
-              ),
-              _ProfileSummarySectionCard(
-                title: strings.isChinese ? '身体资料' : 'Body Profile',
-                icon: Icons.person_outline_rounded,
-                modified: draftSections.contains(_ProfileDraftSection.body),
-                child: Column(
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: strings.ageLabel,
-                            icon: Icons.accessibility_new_rounded,
-                            value: _ageController.text,
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.age,
-                            ),
-                            editor: _BorderlessProfileTextField(
-                              controller: _ageController,
-                              autofocus:
-                                  _editingBodyField == _BodyProfileField.age,
-                              keyboardType: TextInputType.number,
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
+              lockWhenBodyMetricEditing(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
+                    children: <Widget>[
+                      Text(
+                        strings.nicknameLabel,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: fitTheme.mutedText,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: _labelWithoutUnit(strings.heightCmLabel),
-                            icon: Icons.straighten_rounded,
-                            value: _heightCm.toStringAsFixed(1),
-                            unit: 'cm',
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.height,
-                            ),
-                            editor: _InlineUnitEditor(
-                              controller: _heightController,
-                              autofocus:
-                                  _editingBodyField == _BodyProfileField.height,
-                              unit: 'cm',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
+                      ),
+                      if (draftSections.contains(_ProfileDraftSection.identity))
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: _ModifiedBadge(label: strings.modified),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: _labelWithoutUnit(strings.weightKgLabel),
-                            icon: Icons.monitor_weight_outlined,
-                            value: _weightKg.toStringAsFixed(1),
-                            unit: 'kg',
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.weight,
-                            ),
-                            editor: _InlineUnitEditor(
-                              controller: _weightController,
-                              autofocus:
-                                  _editingBodyField == _BodyProfileField.weight,
-                              unit: 'kg',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: strings.sexForFormulaLabel,
-                            icon: Icons.person_2_outlined,
-                            value: strings.sexOptionLabel(_sexForFormula),
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.sex,
-                            ),
-                            editor: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _sexForFormula,
-                                isExpanded: true,
-                                icon: const Icon(Icons.expand_more_rounded),
-                                style: Theme.of(context).textTheme.titleLarge
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _editingNickname
+                            ? TextField(
+                                controller: _nicknameController,
+                                autofocus: true,
+                                onChanged: (_) => setState(() {}),
+                                style: Theme.of(context).textTheme.headlineSmall
                                     ?.copyWith(
-                                      fontWeight: FontWeight.w800,
+                                      fontWeight: FontWeight.w900,
                                       color: fitTheme.textPrimary,
+                                      height: 1.0,
                                     ),
-                                items: AppConstants.sexOptions.map((value) {
-                                  return DropdownMenuItem<String>(
-                                    value: value,
-                                    child: Text(strings.sexOptionLabel(value)),
-                                  );
-                                }).toList(),
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() => _sexForFormula = value);
-                                  }
-                                },
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: strings.nicknameHint,
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              )
+                            : InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: _openNicknameEditor,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    displayNickname,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: fitTheme.textPrimary,
+                                          height: 1.0,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                      if (_editingNickname) ...<Widget>[
+                        const SizedBox(width: 8),
+                        _InlineCompactSaveButton(
+                          saving: false,
+                          label: strings.done,
+                          onPressed: _completeNicknameDraft,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              lockWhenBodyMetricEditing(
+                _ProfilePlanHeroCard(
+                  strings: strings,
+                  phaseLabel: strings.phaseLabel(_dietGoalPhase),
+                  modeLabel: _dietModeLabel(context),
+                  trainingSummary: _trainingSummaryLabel(context),
+                  strategyLabel: _strategyLabel(context),
+                  macros: displayedMacroTargets,
+                  onInfoTap: _openPlanMethodGuide,
+                ),
+              ),
+              KeyedSubtree(
+                key: _bodyMetricEditorKey,
+                child: _ProfileSummarySectionCard(
+                  title: strings.isChinese ? '身体资料' : 'Body Profile',
+                  icon: Icons.person_outline_rounded,
+                  modified: draftSections.contains(_ProfileDraftSection.body),
+                  trailing: FitLogActionIconButton(
+                    key: const ValueKey<String>(
+                      'profile_body_metric_calendar_button',
+                    ),
+                    icon: Icons.calendar_today_outlined,
+                    tooltip: strings.date,
+                    onPressed: _savingBodyMetricRecord
+                        ? null
+                        : _pickBodyMetricDate,
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      if (editingBodyMetricDate != null) ...<Widget>[
+                        Row(
+                          children: <Widget>[
+                            const Spacer(),
+                            _BodyMetricEditDateBadge(
+                              label: _formatBodyMetricEditDate(
+                                editingBodyMetricDate,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: strings.ageLabel,
+                              icon: Icons.accessibility_new_rounded,
+                              value: _ageController.text,
+                              editing:
+                                  bodyProfileEditing &&
+                                  !isEditingBodyMetricRecord,
+                              disabled: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.age,
+                              ),
+                              editor: _BorderlessProfileTextField(
+                                controller: _ageController,
+                                autofocus:
+                                    _editingBodyField == _BodyProfileField.age,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setState(() {}),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: _labelWithoutUnit(
-                              strings.bodyFatPercentLabel,
-                            ),
-                            icon: Icons.percent_rounded,
-                            value: _formatOptionalMetric(_bodyFatPercent),
-                            unit: '%',
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.bodyFat,
-                            ),
-                            editor: _InlineUnitEditor(
-                              controller: _bodyFatController,
-                              autofocus:
-                                  _editingBodyField ==
-                                  _BodyProfileField.bodyFat,
-                              unit: '%',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _BodyProfileTile(
-                            label: _labelWithoutUnit(strings.waistCmLabel),
-                            icon: Icons.vertical_align_center_rounded,
-                            value: _formatOptionalMetric(_waistCm),
-                            unit: 'cm',
-                            editing: _editingBodyField != null,
-                            onTap: () => _activateBodyProfileField(
-                              _BodyProfileField.waist,
-                            ),
-                            editor: _InlineUnitEditor(
-                              controller: _waistController,
-                              autofocus:
-                                  _editingBodyField == _BodyProfileField.waist,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: _labelWithoutUnit(strings.heightCmLabel),
+                              icon: Icons.straighten_rounded,
+                              value: _heightCm.toStringAsFixed(1),
                               unit: 'cm',
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
+                              editing:
+                                  bodyProfileEditing &&
+                                  !isEditingBodyMetricRecord,
+                              disabled: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.height,
+                              ),
+                              editor: _InlineUnitEditor(
+                                controller: _heightController,
+                                autofocus:
+                                    _editingBodyField ==
+                                    _BodyProfileField.height,
+                                unit: 'cm',
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    if (_editingBodyField != null) ...<Widget>[
-                      const SizedBox(height: 14),
-                      _InlineSaveActions(
-                        saving: false,
-                        saveLabel: strings.done,
-                        onCancel: _cancelBodyProfileEdit,
-                        onSave: _completeBodyProfileDraft,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              _BodyTrendCard(
-                logs: _bodyMetricLogs,
-                metric: _bodyTrendMetric,
-                rangeDays: _bodyTrendRangeDays,
-                selectedDate: _selectedBodyTrendDate,
-                onMetricChanged: (metric) {
-                  setState(() {
-                    _bodyTrendMetric = metric;
-                    _selectedBodyTrendDate = null;
-                  });
-                },
-                onRangeChanged: (rangeDays) {
-                  setState(() {
-                    _bodyTrendRangeDays = rangeDays;
-                    _selectedBodyTrendDate = null;
-                  });
-                },
-                onPointSelected: (date) {
-                  setState(() => _selectedBodyTrendDate = date);
-                },
-              ),
-              _ProfileSummarySectionCard(
-                title: strings.isChinese ? '计划矩阵' : 'Plan Matrix',
-                icon: Icons.grid_view_rounded,
-                modified: draftSections.contains(_ProfileDraftSection.plan),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    _ProfileChipRow(
-                      label: strings.goalPhaseLabel,
-                      children: AppConstants.dietGoalPhases.map((phase) {
-                        return _SelectablePill(
-                          key: ValueKey<String>('profile_phase_$phase'),
-                          label: strings.phaseLabel(phase),
-                          selected: _dietGoalPhase == phase,
-                          compact: true,
-                          onTap: () {
-                            _updatePlanMatrixDraft(phase: phase);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 14),
-                    _ProfileChipRow(
-                      label: strings.dietCalculationModeLabel,
-                      children: AppConstants.dietCalculationModes.map((mode) {
-                        return _SelectablePill(
-                          label:
-                              mode == AppConstants.dietCalculationModeGramPerKg
-                              ? strings.gramPerKgModeLabel
-                              : strings.energyRatioModeLabel,
-                          selected: _dietCalculationMode == mode,
-                          compact: true,
-                          onTap: () {
-                            _updatePlanMatrixDraft(mode: mode);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 14),
-                    _ProfileChipRow(
-                      label: strings.dietPlanStrategyLabel,
-                      children: AppConstants.dietPlanStrategies.map((strategy) {
-                        final disabled =
-                            strategy != AppConstants.dietPlanStrategyNone &&
-                            !_canUseCuttingStrategy;
-                        return _SelectablePill(
-                          label: strings.strategyLabel(strategy),
-                          selected: _dietPlanStrategy == strategy,
-                          disabled: disabled,
-                          compact: true,
-                          onTap: disabled
-                              ? null
-                              : () {
-                                  _updatePlanMatrixDraft(strategy: strategy);
-                                },
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              if (_isGramPerKgMode)
-                _ProfileSummarySectionCard(
-                  /*
-                    ? '训练频率与自检'
-                */
-                  title: strings.macroSelfCheckTitle,
-                  icon: Icons.fitness_center_rounded,
-                  modified: draftSections.contains(
-                    _ProfileDraftSection.macroSettings,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      _EvenPillRow(
-                        label: strings.trainingFrequencyPerWeekLabel,
-                        children: AppConstants.trainingFrequencyPerWeekOptions
-                            .map((value) {
-                              return _SelectablePill(
-                                label: '$value',
-                                selected: _trainingFrequencyPerWeek == value,
-                                compact: true,
-                                expand: true,
-                                onTap: () {
-                                  _updateMacroSettingsDraft(
-                                    trainingFrequencyPerWeek: value,
-                                  );
-                                },
-                              );
-                            })
-                            .toList(),
-                      ),
-                      const SizedBox(height: 14),
-                      _EvenPillRow(
-                        label: strings.macroSelfCheckPeriodLabel,
-                        children: AppConstants.macroSelfCheckPeriodDayOptions
-                            .map((value) {
-                              return _SelectablePill(
-                                label: strings.macroSelfCheckPeriodOptionLabel(
-                                  value,
-                                ),
-                                selected: _macroSelfCheckPeriodDays == value,
-                                compact: true,
-                                expand: true,
-                                onTap: () {
-                                  _updateMacroSettingsDraft(
-                                    selfCheckPeriodDays: value,
-                                  );
-                                },
-                              );
-                            })
-                            .toList(),
-                      ),
-                      const SizedBox(height: 14),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: _macroSelfCheckEnabled,
-                        title: Text(strings.macroSelfCheckEnabledLabel),
-                        onChanged: (value) {
-                          _updateMacroSettingsDraft(selfCheckEnabled: value);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              if (!_isGramPerKgMode)
-                _ProfileSummarySectionCard(
-                  title: strings.isChinese ? '热量比例设置' : 'Energy Ratio Setup',
-                  icon: Icons.pie_chart_outline_rounded,
-                  modified: draftSections.contains(
-                    _ProfileDraftSection.energyRatio,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      ProfileNumericField(
-                        controller: _goalKcalController,
-                        labelText: strings.dailyGoalKcalLabelForPhase(
-                          _dietGoalPhase,
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        onChanged: (_) => setState(() {}),
+                        ],
                       ),
                       const SizedBox(height: 12),
-                      if (_isBulkingPhase)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            strings.bulkingMacroRatioSuggestion,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      ProfileNumericField(
-                        controller: _proteinRatioController,
-                        labelText: strings.proteinRatioPercentLabel,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        validator: (value) {
-                          final ratio = NumberUtils.toDouble(
-                            value,
-                            fallback: -1,
-                          );
-                          if (ratio < 0 || ratio > 100) {
-                            return strings.enterValidMacroRatio;
-                          }
-                          return null;
-                        },
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 10),
-                      ProfileNumericField(
-                        controller: _carbsRatioController,
-                        labelText: strings.carbsRatioPercentLabel,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        validator: (value) {
-                          final ratio = NumberUtils.toDouble(
-                            value,
-                            fallback: -1,
-                          );
-                          if (ratio < 0 || ratio > 100) {
-                            return strings.enterValidMacroRatio;
-                          }
-                          return null;
-                        },
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 10),
-                      ProfileNumericField(
-                        controller: _fatRatioController,
-                        labelText: strings.fatRatioPercentLabel,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        validator: (value) {
-                          final ratio = NumberUtils.toDouble(
-                            value,
-                            fallback: -1,
-                          );
-                          if (ratio < 0 || ratio > 100) {
-                            return strings.enterValidMacroRatio;
-                          }
-                          return null;
-                        },
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${strings.macroRatioHint} (${_macroRatioTotal.toStringAsFixed(1)}%)',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      if ((_macroRatioTotal - 100).abs() > 0.01)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            strings.macroRatioTotalInvalid,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: _labelWithoutUnit(strings.weightKgLabel),
+                              icon: Icons.monitor_weight_outlined,
+                              value: isEditingBodyMetricRecord
+                                  ? _bodyMetricWeightKg.toStringAsFixed(1)
+                                  : _weightKg.toStringAsFixed(1),
+                              unit: 'kg',
+                              editing:
+                                  isEditingBodyMetricRecord ||
+                                  bodyProfileEditing,
+                              emphasized: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.weight,
+                              ),
+                              editor: _InlineUnitEditor(
+                                controller: isEditingBodyMetricRecord
+                                    ? _bodyMetricWeightController
+                                    : _weightController,
+                                fieldKey: isEditingBodyMetricRecord
+                                    ? const ValueKey<String>(
+                                        'profile_body_metric_weight_field',
+                                      )
+                                    : null,
+                                autofocus:
+                                    isEditingBodyMetricRecord ||
+                                    _editingBodyField ==
+                                        _BodyProfileField.weight,
+                                unit: 'kg',
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
                           ),
-                        ),
-                      if (_dailyGoalType == 'deficit' && _goalKcal > 700)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Text(
-                            strings.aggressiveGoalWarning,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              if (!_isGramPerKgMode)
-                _ProfileSummarySectionCard(
-                  title: strings.macroSelfCheckTitle,
-                  icon: Icons.fitness_center_rounded,
-                  modified: draftSections.contains(
-                    _ProfileDraftSection.macroSettings,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      _EvenPillRow(
-                        label: strings.trainingFrequencyPerWeekLabel,
-                        children: AppConstants.trainingFrequencyPerWeekOptions
-                            .map((value) {
-                              return _SelectablePill(
-                                label: '$value',
-                                selected: _trainingFrequencyPerWeek == value,
-                                compact: true,
-                                expand: true,
-                                onTap: () {
-                                  _updateMacroSettingsDraft(
-                                    trainingFrequencyPerWeek: value,
-                                  );
-                                },
-                              );
-                            })
-                            .toList(),
-                      ),
-                      const SizedBox(height: 14),
-                      _EvenPillRow(
-                        label: strings.macroSelfCheckPeriodLabel,
-                        children: AppConstants.macroSelfCheckPeriodDayOptions
-                            .map((value) {
-                              return _SelectablePill(
-                                label: strings.macroSelfCheckPeriodOptionLabel(
-                                  value,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: strings.sexForFormulaLabel,
+                              icon: Icons.person_2_outlined,
+                              value: strings.sexOptionLabel(_sexForFormula),
+                              editing:
+                                  bodyProfileEditing &&
+                                  !isEditingBodyMetricRecord,
+                              disabled: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.sex,
+                              ),
+                              editor: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _sexForFormula,
+                                  isExpanded: true,
+                                  isDense: true,
+                                  icon: const Icon(Icons.expand_more_rounded),
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        color: fitTheme.textPrimary,
+                                      ),
+                                  items: AppConstants.sexOptions.map((value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(
+                                        strings.sexOptionLabel(value),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setState(() => _sexForFormula = value);
+                                    }
+                                  },
                                 ),
-                                selected: _macroSelfCheckPeriodDays == value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: _labelWithoutUnit(
+                                strings.bodyFatPercentLabel,
+                              ),
+                              icon: Icons.percent_rounded,
+                              value: isEditingBodyMetricRecord
+                                  ? _formatOptionalMetric(
+                                      _bodyMetricBodyFatPercent,
+                                    )
+                                  : _formatOptionalMetric(_bodyFatPercent),
+                              unit: '%',
+                              editing:
+                                  isEditingBodyMetricRecord ||
+                                  bodyProfileEditing,
+                              emphasized: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.bodyFat,
+                              ),
+                              editor: _InlineUnitEditor(
+                                controller: isEditingBodyMetricRecord
+                                    ? _bodyMetricBodyFatController
+                                    : _bodyFatController,
+                                fieldKey: isEditingBodyMetricRecord
+                                    ? const ValueKey<String>(
+                                        'profile_body_metric_body_fat_field',
+                                      )
+                                    : null,
+                                autofocus:
+                                    !isEditingBodyMetricRecord &&
+                                    _editingBodyField ==
+                                        _BodyProfileField.bodyFat,
+                                unit: '%',
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _BodyProfileTile(
+                              label: _labelWithoutUnit(strings.waistCmLabel),
+                              icon: Icons.vertical_align_center_rounded,
+                              value: isEditingBodyMetricRecord
+                                  ? _formatOptionalMetric(_bodyMetricWaistCm)
+                                  : _formatOptionalMetric(_waistCm),
+                              unit: 'cm',
+                              editing:
+                                  isEditingBodyMetricRecord ||
+                                  bodyProfileEditing,
+                              emphasized: isEditingBodyMetricRecord,
+                              onTap: () => _activateBodyProfileField(
+                                _BodyProfileField.waist,
+                              ),
+                              editor: _InlineUnitEditor(
+                                controller: isEditingBodyMetricRecord
+                                    ? _bodyMetricWaistController
+                                    : _waistController,
+                                fieldKey: isEditingBodyMetricRecord
+                                    ? const ValueKey<String>(
+                                        'profile_body_metric_waist_field',
+                                      )
+                                    : null,
+                                autofocus:
+                                    !isEditingBodyMetricRecord &&
+                                    _editingBodyField ==
+                                        _BodyProfileField.waist,
+                                unit: 'cm',
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_editingBodyField != null ||
+                          isEditingBodyMetricRecord) ...<Widget>[
+                        const SizedBox(height: 14),
+                        _InlineSaveActions(
+                          saving: _savingBodyMetricRecord,
+                          saveLabel: isEditingBodyMetricRecord
+                              ? strings.save
+                              : strings.done,
+                          cancelButtonKey: isEditingBodyMetricRecord
+                              ? const ValueKey<String>(
+                                  'profile_body_metric_cancel_button',
+                                )
+                              : null,
+                          saveButtonKey: isEditingBodyMetricRecord
+                              ? const ValueKey<String>(
+                                  'profile_body_metric_save_button',
+                                )
+                              : null,
+                          onCancel: isEditingBodyMetricRecord
+                              ? _cancelBodyMetricEdit
+                              : _cancelBodyProfileEdit,
+                          onSave: isEditingBodyMetricRecord
+                              ? _saveBodyMetricRecord
+                              : _completeBodyProfileDraft,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              lockWhenBodyMetricEditing(
+                Column(
+                  children: <Widget>[
+                    _BodyTrendCard(
+                      logs: _bodyMetricLogs,
+                      metric: _bodyTrendMetric,
+                      rangeDays: _bodyTrendRangeDays,
+                      selectedDate: _selectedBodyTrendDate,
+                      onMetricChanged: (metric) {
+                        setState(() {
+                          _bodyTrendMetric = metric;
+                          _selectedBodyTrendDate = null;
+                        });
+                      },
+                      onRangeChanged: (rangeDays) {
+                        setState(() {
+                          _bodyTrendRangeDays = rangeDays;
+                          _selectedBodyTrendDate = null;
+                        });
+                      },
+                      onPointSelected: (date) {
+                        setState(() => _selectedBodyTrendDate = date);
+                      },
+                    ),
+                    _ProfileSummarySectionCard(
+                      title: strings.isChinese ? '计划矩阵' : 'Plan Matrix',
+                      icon: Icons.grid_view_rounded,
+                      modified: draftSections.contains(
+                        _ProfileDraftSection.plan,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          _ProfileChipRow(
+                            label: strings.goalPhaseLabel,
+                            children: AppConstants.dietGoalPhases.map((phase) {
+                              return _SelectablePill(
+                                key: ValueKey<String>('profile_phase_$phase'),
+                                label: strings.phaseLabel(phase),
+                                selected: _dietGoalPhase == phase,
                                 compact: true,
-                                expand: true,
                                 onTap: () {
-                                  _updateMacroSettingsDraft(
-                                    selfCheckPeriodDays: value,
-                                  );
+                                  _updatePlanMatrixDraft(phase: phase);
                                 },
                               );
-                            })
-                            .toList(),
-                      ),
-                      const SizedBox(height: 14),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: _macroSelfCheckEnabled,
-                        title: Text(strings.macroSelfCheckEnabledLabel),
-                        onChanged: (value) {
-                          _updateMacroSettingsDraft(selfCheckEnabled: value);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              if (_dietPlanStrategy != AppConstants.dietPlanStrategyNone)
-                _ProfileSummarySectionCard(
-                  title: strings.isChinese ? '策略细节' : 'Strategy Details',
-                  icon: Icons.shield_outlined,
-                  modified: draftSections.contains(
-                    _ProfileDraftSection.strategyDetails,
-                  ),
-                  child: DietPlanStrategySection(
-                    strings: strings,
-                    showStrategyPicker: false,
-                    canUseCuttingStrategy: _canUseCuttingStrategy,
-                    isBulkingPhase: _isBulkingPhase,
-                    dietPlanStrategy: _dietPlanStrategy,
-                    carbCyclePattern: _carbCyclePattern,
-                    carbCyclePreview: carbCyclePreview,
-                    carbTaperReviewPeriodDays: _carbTaperReviewPeriodDays,
-                    carbTaperTargetLossPctPerWeek:
-                        _carbTaperTargetLossPctPerWeek,
-                    carbTaperStepG: _carbTaperStepG,
-                    carbTaperCurrentDeltaG: _carbTaperCurrentDeltaG,
-                    carbTaperReviewResult: _carbTaperReviewResult,
-                    hasPendingDietAdjustmentReview:
-                        _pendingDietAdjustmentReview != null,
-                    handlingCarbTaperAction: _handlingCarbTaperAction,
-                    onStrategyChanged: null,
-                    onCarbCycleDayTypeChanged: (key, value) {
-                      _updateStrategyDetailsDraft(
-                        carbCyclePattern: <String, String>{
-                          ..._carbCyclePattern,
-                          key: value,
-                        },
-                      );
-                    },
-                    onCarbTaperReviewPeriodChanged: (value) {
-                      if (value != null) {
-                        _updateStrategyDetailsDraft(
-                          carbTaperReviewPeriodDays: value,
-                        );
-                      }
-                    },
-                    onCarbTaperTargetLossChanged: (value) {
-                      if (value != null) {
-                        _updateStrategyDetailsDraft(
-                          carbTaperTargetLossPctPerWeek: value,
-                        );
-                      }
-                    },
-                    onCarbTaperStepChanged: (value) {
-                      if (value != null) {
-                        _updateStrategyDetailsDraft(carbTaperStepG: value);
-                      }
-                    },
-                    onApplyCarbTaperSuggestion:
-                        _pendingDietAdjustmentReview != null &&
-                            _carbTaperReviewResult?.suggestedAction ==
-                                AppConstants.dietAdjustmentActionDecreaseCarbs
-                        ? _applyCarbTaperSuggestion
-                        : null,
-                    onDismissCarbTaperSuggestion:
-                        _pendingDietAdjustmentReview != null
-                        ? _dismissCarbTaperSuggestion
-                        : null,
-                  ),
-                ),
-              if (_trainingSelfCheckResult != null)
-                _ProfileSummarySectionCard(
-                  title: strings.macroSelfCheckTitle,
-                  icon: Icons.checklist_rounded,
-                  key: _selfCheckSectionKey,
-                  child: _TrainingSelfCheckSummary(
-                    strings: strings,
-                    result: _trainingSelfCheckResult!,
-                    handlingAction: _handlingSelfCheckAction,
-                    onApply: _applySelfCheckSuggestion,
-                    onKeep: _keepCurrentSelfCheckSetting,
-                  ),
-                ),
-              _ProfileSummarySectionCard(
-                title: strings.themeSettings,
-                icon: Icons.palette_outlined,
-                child: Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: <Widget>[
-                    SizedBox(
-                      width: 132,
-                      child: _SelectablePill(
-                        label: strings.greenTheme,
-                        selected: themeController.theme == FitLogThemeKey.green,
-                        expand: true,
-                        onTap: () {
-                          themeController.setTheme(FitLogThemeKey.green);
-                        },
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileChipRow(
+                            label: strings.dietCalculationModeLabel,
+                            children: AppConstants.dietCalculationModes.map((
+                              mode,
+                            ) {
+                              return _SelectablePill(
+                                label:
+                                    mode ==
+                                        AppConstants
+                                            .dietCalculationModeGramPerKg
+                                    ? strings.gramPerKgModeLabel
+                                    : strings.energyRatioModeLabel,
+                                selected: _dietCalculationMode == mode,
+                                compact: true,
+                                onTap: () {
+                                  _updatePlanMatrixDraft(mode: mode);
+                                },
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+                          _ProfileChipRow(
+                            label: strings.dietPlanStrategyLabel,
+                            children: AppConstants.dietPlanStrategies.map((
+                              strategy,
+                            ) {
+                              final disabled =
+                                  strategy !=
+                                      AppConstants.dietPlanStrategyNone &&
+                                  !_canUseCuttingStrategy;
+                              return _SelectablePill(
+                                label: strings.strategyLabel(strategy),
+                                selected: _dietPlanStrategy == strategy,
+                                disabled: disabled,
+                                compact: true,
+                                onTap: disabled
+                                    ? null
+                                    : () {
+                                        _updatePlanMatrixDraft(
+                                          strategy: strategy,
+                                        );
+                                      },
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
                     ),
-                    SizedBox(
-                      width: 132,
-                      child: _SelectablePill(
-                        label: strings.blackTheme,
-                        selected:
-                            themeController.theme == FitLogThemeKey.blackOrange,
-                        expand: true,
-                        onTap: () {
-                          themeController.setTheme(FitLogThemeKey.blackOrange);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _ProfileSummarySectionCard(
-                title: strings.languageSettings,
-                icon: Icons.translate_rounded,
-                key: _settingsSectionKey,
-                child: SegmentedButton<AppLanguage>(
-                  segments: <ButtonSegment<AppLanguage>>[
-                    ButtonSegment<AppLanguage>(
-                      value: AppLanguage.english,
-                      label: Text(strings.english),
-                    ),
-                    ButtonSegment<AppLanguage>(
-                      value: AppLanguage.chinese,
-                      label: Text(strings.chinese),
-                    ),
-                  ],
-                  selected: <AppLanguage>{languageController.language},
-                  onSelectionChanged: (selection) {
-                    languageController.setLanguage(selection.first);
-                  },
-                ),
-              ),
-              _ProfileSummarySectionCard(
-                title: strings.calculatedReference,
-                icon: Icons.calculate_outlined,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    _Line(label: 'BMR', value: bmr.toStringAsFixed(0)),
-                    _Line(
-                      label: strings.lifestyleFactorLabel,
-                      value: lifestyleFactor.toStringAsFixed(3),
-                    ),
-                    _Line(
-                      label: strings.tdeeReferenceLabel,
-                      value: tdeeReference.toStringAsFixed(0),
-                    ),
-                    if (_calibrationState != null)
-                      _Line(
-                        label: strings.calibrationConfidenceLabel,
-                        value:
-                            '${(_calibrationState!.confidence * 100).toStringAsFixed(0)}%',
-                      ),
-                    if (_calibrationState != null &&
-                        _calibrationState!.windowDays > 0)
-                      _Line(
-                        label: strings.calibrationWindowLabel,
-                        value:
-                            '${_calibrationState!.windowDays} d (${_calibrationState!.validDays} valid)',
-                      ),
-                    _Line(
-                      label: strings.goalPhaseLabel,
-                      value: strings.phaseLabel(_dietGoalPhase),
-                    ),
-                    _Line(
-                      label: strings.trainingFrequencyPerWeekLabel,
-                      value: strings.trainingFrequencyOptionLabel(
-                        _trainingFrequencyPerWeek,
-                      ),
-                    ),
-                    _Line(
-                      label: strings.todayExerciseCaloriesLabel,
-                      value: _todayExerciseCalories.toStringAsFixed(0),
-                    ),
-                    if (!_isGramPerKgMode) ...<Widget>[
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          strings.energyRatioPhaseNotice(_dietGoalPhase),
-                          style: Theme.of(context).textTheme.bodySmall,
+                    if (_isGramPerKgMode)
+                      _ProfileSummarySectionCard(
+                        /*
+                    ? '训练频率与自检'
+                */
+                        title: strings.macroSelfCheckTitle,
+                        icon: Icons.fitness_center_rounded,
+                        modified: draftSections.contains(
+                          _ProfileDraftSection.macroSettings,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            _EvenPillRow(
+                              label: strings.trainingFrequencyPerWeekLabel,
+                              children: AppConstants
+                                  .trainingFrequencyPerWeekOptions
+                                  .map((value) {
+                                    return _SelectablePill(
+                                      label: '$value',
+                                      selected:
+                                          _trainingFrequencyPerWeek == value,
+                                      compact: true,
+                                      expand: true,
+                                      onTap: () {
+                                        _updateMacroSettingsDraft(
+                                          trainingFrequencyPerWeek: value,
+                                        );
+                                      },
+                                    );
+                                  })
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 14),
+                            _EvenPillRow(
+                              label: strings.macroSelfCheckPeriodLabel,
+                              children: AppConstants
+                                  .macroSelfCheckPeriodDayOptions
+                                  .map((value) {
+                                    return _SelectablePill(
+                                      label: strings
+                                          .macroSelfCheckPeriodOptionLabel(
+                                            value,
+                                          ),
+                                      selected:
+                                          _macroSelfCheckPeriodDays == value,
+                                      compact: true,
+                                      expand: true,
+                                      onTap: () {
+                                        _updateMacroSettingsDraft(
+                                          selfCheckPeriodDays: value,
+                                        );
+                                      },
+                                    );
+                                  })
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 14),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _macroSelfCheckEnabled,
+                              title: Text(strings.macroSelfCheckEnabledLabel),
+                              onChanged: (value) {
+                                _updateMacroSettingsDraft(
+                                  selfCheckEnabled: value,
+                                );
+                              },
+                            ),
+                          ],
                         ),
                       ),
-                      _Line(
-                        label: strings.targetIntakeTodayLabel,
-                        value: targetIntake.toStringAsFixed(0),
-                      ),
-                      _Line(
-                        label: strings.remainingTodayLabel,
-                        value: remaining.toStringAsFixed(0),
-                      ),
-                    ],
-                    if (_isGramPerKgMode) ...<Widget>[
-                      const SizedBox(height: 8),
-                      _Line(
-                        label: '${strings.proteinLabel} (g)',
-                        value: displayedMacroTargets.proteinTargetG
-                            .toStringAsFixed(1),
-                      ),
-                      _Line(
-                        label: '${strings.carbsLabel} (g)',
-                        value: displayedMacroTargets.carbsTargetG
-                            .toStringAsFixed(1),
-                      ),
-                      _Line(
-                        label: '${strings.fatLabel} (g)',
-                        value: displayedMacroTargets.fatTargetG.toStringAsFixed(
-                          1,
+                    if (!_isGramPerKgMode)
+                      _ProfileSummarySectionCard(
+                        title: strings.isChinese
+                            ? '热量比例设置'
+                            : 'Energy Ratio Setup',
+                        icon: Icons.pie_chart_outline_rounded,
+                        modified: draftSections.contains(
+                          _ProfileDraftSection.energyRatio,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            ProfileNumericField(
+                              controller: _goalKcalController,
+                              labelText: strings.dailyGoalKcalLabelForPhase(
+                                _dietGoalPhase,
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 12),
+                            if (_isBulkingPhase)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  strings.bulkingMacroRatioSuggestion,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            ProfileNumericField(
+                              controller: _proteinRatioController,
+                              labelText: strings.proteinRatioPercentLabel,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              validator: (value) {
+                                final ratio = NumberUtils.toDouble(
+                                  value,
+                                  fallback: -1,
+                                );
+                                if (ratio < 0 || ratio > 100) {
+                                  return strings.enterValidMacroRatio;
+                                }
+                                return null;
+                              },
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 10),
+                            ProfileNumericField(
+                              controller: _carbsRatioController,
+                              labelText: strings.carbsRatioPercentLabel,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              validator: (value) {
+                                final ratio = NumberUtils.toDouble(
+                                  value,
+                                  fallback: -1,
+                                );
+                                if (ratio < 0 || ratio > 100) {
+                                  return strings.enterValidMacroRatio;
+                                }
+                                return null;
+                              },
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 10),
+                            ProfileNumericField(
+                              controller: _fatRatioController,
+                              labelText: strings.fatRatioPercentLabel,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              validator: (value) {
+                                final ratio = NumberUtils.toDouble(
+                                  value,
+                                  fallback: -1,
+                                );
+                                if (ratio < 0 || ratio > 100) {
+                                  return strings.enterValidMacroRatio;
+                                }
+                                return null;
+                              },
+                              onChanged: (_) => setState(() {}),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${strings.macroRatioHint} (${_macroRatioTotal.toStringAsFixed(1)}%)',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            if ((_macroRatioTotal - 100).abs() > 0.01)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  strings.macroRatioTotalInvalid,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            if (_dailyGoalType == 'deficit' && _goalKcal > 700)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 10),
+                                child: Text(
+                                  strings.aggressiveGoalWarning,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                      _Line(
-                        label: strings.macroEquivalentEnergyLabel,
-                        value:
-                            '${displayedMacroTargets.macroEnergyEquivalentKcal.toStringAsFixed(0)} kcal',
+                    if (!_isGramPerKgMode)
+                      _ProfileSummarySectionCard(
+                        title: strings.macroSelfCheckTitle,
+                        icon: Icons.fitness_center_rounded,
+                        modified: draftSections.contains(
+                          _ProfileDraftSection.macroSettings,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            _EvenPillRow(
+                              label: strings.trainingFrequencyPerWeekLabel,
+                              children: AppConstants
+                                  .trainingFrequencyPerWeekOptions
+                                  .map((value) {
+                                    return _SelectablePill(
+                                      label: '$value',
+                                      selected:
+                                          _trainingFrequencyPerWeek == value,
+                                      compact: true,
+                                      expand: true,
+                                      onTap: () {
+                                        _updateMacroSettingsDraft(
+                                          trainingFrequencyPerWeek: value,
+                                        );
+                                      },
+                                    );
+                                  })
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 14),
+                            _EvenPillRow(
+                              label: strings.macroSelfCheckPeriodLabel,
+                              children: AppConstants
+                                  .macroSelfCheckPeriodDayOptions
+                                  .map((value) {
+                                    return _SelectablePill(
+                                      label: strings
+                                          .macroSelfCheckPeriodOptionLabel(
+                                            value,
+                                          ),
+                                      selected:
+                                          _macroSelfCheckPeriodDays == value,
+                                      compact: true,
+                                      expand: true,
+                                      onTap: () {
+                                        _updateMacroSettingsDraft(
+                                          selfCheckPeriodDays: value,
+                                        );
+                                      },
+                                    );
+                                  })
+                                  .toList(),
+                            ),
+                            const SizedBox(height: 14),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _macroSelfCheckEnabled,
+                              title: Text(strings.macroSelfCheckEnabledLabel),
+                              onChanged: (value) {
+                                _updateMacroSettingsDraft(
+                                  selfCheckEnabled: value,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
+                    if (_dietPlanStrategy != AppConstants.dietPlanStrategyNone)
+                      _ProfileSummarySectionCard(
+                        title: strings.isChinese ? '策略细节' : 'Strategy Details',
+                        icon: Icons.shield_outlined,
+                        modified: draftSections.contains(
+                          _ProfileDraftSection.strategyDetails,
+                        ),
+                        child: DietPlanStrategySection(
+                          strings: strings,
+                          showStrategyPicker: false,
+                          canUseCuttingStrategy: _canUseCuttingStrategy,
+                          isBulkingPhase: _isBulkingPhase,
+                          dietPlanStrategy: _dietPlanStrategy,
+                          carbCyclePattern: _carbCyclePattern,
+                          carbCyclePreview: carbCyclePreview,
+                          carbTaperReviewPeriodDays: _carbTaperReviewPeriodDays,
+                          carbTaperTargetLossPctPerWeek:
+                              _carbTaperTargetLossPctPerWeek,
+                          carbTaperStepG: _carbTaperStepG,
+                          carbTaperCurrentDeltaG: _carbTaperCurrentDeltaG,
+                          carbTaperReviewResult: _carbTaperReviewResult,
+                          hasPendingDietAdjustmentReview:
+                              _pendingDietAdjustmentReview != null,
+                          handlingCarbTaperAction: _handlingCarbTaperAction,
+                          onStrategyChanged: null,
+                          onCarbCycleDayTypeChanged: (key, value) {
+                            _updateStrategyDetailsDraft(
+                              carbCyclePattern: <String, String>{
+                                ..._carbCyclePattern,
+                                key: value,
+                              },
+                            );
+                          },
+                          onCarbTaperReviewPeriodChanged: (value) {
+                            if (value != null) {
+                              _updateStrategyDetailsDraft(
+                                carbTaperReviewPeriodDays: value,
+                              );
+                            }
+                          },
+                          onCarbTaperTargetLossChanged: (value) {
+                            if (value != null) {
+                              _updateStrategyDetailsDraft(
+                                carbTaperTargetLossPctPerWeek: value,
+                              );
+                            }
+                          },
+                          onCarbTaperStepChanged: (value) {
+                            if (value != null) {
+                              _updateStrategyDetailsDraft(
+                                carbTaperStepG: value,
+                              );
+                            }
+                          },
+                          onApplyCarbTaperSuggestion:
+                              _pendingDietAdjustmentReview != null &&
+                                  _carbTaperReviewResult?.suggestedAction ==
+                                      AppConstants
+                                          .dietAdjustmentActionDecreaseCarbs
+                              ? _applyCarbTaperSuggestion
+                              : null,
+                          onDismissCarbTaperSuggestion:
+                              _pendingDietAdjustmentReview != null
+                              ? _dismissCarbTaperSuggestion
+                              : null,
+                        ),
+                      ),
+                    if (_trainingSelfCheckResult != null)
+                      _ProfileSummarySectionCard(
+                        title: strings.macroSelfCheckTitle,
+                        icon: Icons.checklist_rounded,
+                        key: _selfCheckSectionKey,
+                        child: _TrainingSelfCheckSummary(
+                          strings: strings,
+                          result: _trainingSelfCheckResult!,
+                          handlingAction: _handlingSelfCheckAction,
+                          onApply: _applySelfCheckSuggestion,
+                          onKeep: _keepCurrentSelfCheckSetting,
+                        ),
+                      ),
+                    _ProfileSummarySectionCard(
+                      title: strings.themeSettings,
+                      icon: Icons.palette_outlined,
+                      child: Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: <Widget>[
+                          SizedBox(
+                            width: 132,
+                            child: _SelectablePill(
+                              label: strings.greenTheme,
+                              selected:
+                                  themeController.theme == FitLogThemeKey.green,
+                              expand: true,
+                              onTap: () {
+                                themeController.setTheme(FitLogThemeKey.green);
+                              },
+                            ),
+                          ),
+                          SizedBox(
+                            width: 132,
+                            child: _SelectablePill(
+                              label: strings.blackTheme,
+                              selected:
+                                  themeController.theme ==
+                                  FitLogThemeKey.blackOrange,
+                              expand: true,
+                              onTap: () {
+                                themeController.setTheme(
+                                  FitLogThemeKey.blackOrange,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _ProfileSummarySectionCard(
+                      title: strings.languageSettings,
+                      icon: Icons.translate_rounded,
+                      key: _settingsSectionKey,
+                      child: SegmentedButton<AppLanguage>(
+                        segments: <ButtonSegment<AppLanguage>>[
+                          ButtonSegment<AppLanguage>(
+                            value: AppLanguage.english,
+                            label: Text(strings.english),
+                          ),
+                          ButtonSegment<AppLanguage>(
+                            value: AppLanguage.chinese,
+                            label: Text(strings.chinese),
+                          ),
+                        ],
+                        selected: <AppLanguage>{languageController.language},
+                        onSelectionChanged: (selection) {
+                          languageController.setLanguage(selection.first);
+                        },
+                      ),
+                    ),
+                    _ProfileSummarySectionCard(
+                      title: strings.calculatedReference,
+                      icon: Icons.calculate_outlined,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          _Line(label: 'BMR', value: bmr.toStringAsFixed(0)),
+                          _Line(
+                            label: strings.lifestyleFactorLabel,
+                            value: lifestyleFactor.toStringAsFixed(3),
+                          ),
+                          _Line(
+                            label: strings.tdeeReferenceLabel,
+                            value: tdeeReference.toStringAsFixed(0),
+                          ),
+                          if (_calibrationState != null)
+                            _Line(
+                              label: strings.calibrationConfidenceLabel,
+                              value:
+                                  '${(_calibrationState!.confidence * 100).toStringAsFixed(0)}%',
+                            ),
+                          if (_calibrationState != null &&
+                              _calibrationState!.windowDays > 0)
+                            _Line(
+                              label: strings.calibrationWindowLabel,
+                              value:
+                                  '${_calibrationState!.windowDays} d (${_calibrationState!.validDays} valid)',
+                            ),
+                          _Line(
+                            label: strings.goalPhaseLabel,
+                            value: strings.phaseLabel(_dietGoalPhase),
+                          ),
+                          _Line(
+                            label: strings.trainingFrequencyPerWeekLabel,
+                            value: strings.trainingFrequencyOptionLabel(
+                              _trainingFrequencyPerWeek,
+                            ),
+                          ),
+                          _Line(
+                            label: strings.todayExerciseCaloriesLabel,
+                            value: _todayExerciseCalories.toStringAsFixed(0),
+                          ),
+                          if (!_isGramPerKgMode) ...<Widget>[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(
+                                strings.energyRatioPhaseNotice(_dietGoalPhase),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                            _Line(
+                              label: strings.targetIntakeTodayLabel,
+                              value: targetIntake.toStringAsFixed(0),
+                            ),
+                            _Line(
+                              label: strings.remainingTodayLabel,
+                              value: remaining.toStringAsFixed(0),
+                            ),
+                          ],
+                          if (_isGramPerKgMode) ...<Widget>[
+                            const SizedBox(height: 8),
+                            _Line(
+                              label: '${strings.proteinLabel} (g)',
+                              value: displayedMacroTargets.proteinTargetG
+                                  .toStringAsFixed(1),
+                            ),
+                            _Line(
+                              label: '${strings.carbsLabel} (g)',
+                              value: displayedMacroTargets.carbsTargetG
+                                  .toStringAsFixed(1),
+                            ),
+                            _Line(
+                              label: '${strings.fatLabel} (g)',
+                              value: displayedMacroTargets.fatTargetG
+                                  .toStringAsFixed(1),
+                            ),
+                            _Line(
+                              label: strings.macroEquivalentEnergyLabel,
+                              value:
+                                  '${displayedMacroTargets.macroEnergyEquivalentKcal.toStringAsFixed(0)} kcal',
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    _ProfileSummarySectionCard(
+                      title: strings.exportData,
+                      icon: Icons.storage_rounded,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          OutlinedButton.icon(
+                            onPressed: _exportingXlsx ? null : _exportXlsx,
+                            icon: _exportingXlsx
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.grid_on_outlined),
+                            label: Text(
+                              _exportingXlsx
+                                  ? strings.saving
+                                  : strings.exportXlsx,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _exportingCsv ? null : _exportCsvZip,
+                            icon: _exportingCsv
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.folder_zip_outlined),
+                            label: Text(
+                              _exportingCsv
+                                  ? strings.saving
+                                  : strings.exportCsv,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _clearAllData,
+                            icon: const Icon(Icons.delete_forever_outlined),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF9A3F32),
+                              side: const BorderSide(color: Color(0xFFE9C9C3)),
+                            ),
+                            label: Text(strings.clearAllData),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (accountController != null)
+                      _ProfileSummarySectionCard(
+                        title: strings.accountActionsTitle,
+                        icon: Icons.logout_rounded,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            OutlinedButton.icon(
+                              key: const ValueKey<String>(
+                                'profile_sign_out_button',
+                              ),
+                              onPressed: _signOutAccount,
+                              icon: const Icon(Icons.logout_rounded),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor:
+                                    context.fitLogTheme.primaryDeep,
+                                side: BorderSide(
+                                  color: context.fitLogTheme.outline,
+                                ),
+                              ),
+                              label: Text(strings.signOutAccount),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
-              _ProfileSummarySectionCard(
-                title: strings.exportData,
-                icon: Icons.storage_rounded,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    OutlinedButton.icon(
-                      onPressed: _exportingXlsx ? null : _exportXlsx,
-                      icon: _exportingXlsx
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.grid_on_outlined),
-                      label: Text(
-                        _exportingXlsx ? strings.saving : strings.exportXlsx,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _exportingCsv ? null : _exportCsvZip,
-                      icon: _exportingCsv
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.folder_zip_outlined),
-                      label: Text(
-                        _exportingCsv ? strings.saving : strings.exportCsv,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _clearAllData,
-                      icon: const Icon(Icons.delete_forever_outlined),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF9A3F32),
-                        side: const BorderSide(color: Color(0xFFE9C9C3)),
-                      ),
-                      label: Text(strings.clearAllData),
-                    ),
-                  ],
-                ),
-              ),
-              if (accountController != null)
-                _ProfileSummarySectionCard(
-                  title: strings.accountActionsTitle,
-                  icon: Icons.logout_rounded,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      OutlinedButton.icon(
-                        key: const ValueKey<String>('profile_sign_out_button'),
-                        onPressed: _signOutAccount,
-                        icon: const Icon(Icons.logout_rounded),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: context.fitLogTheme.primaryDeep,
-                          side: BorderSide(color: context.fitLogTheme.outline),
-                        ),
-                        label: Text(strings.signOutAccount),
-                      ),
-                    ],
-                  ),
-                ),
             ],
           ),
-          if (draftHasChanges)
+          if (draftHasChanges && !isEditingBodyMetricRecord)
             Positioned(
               left: 14,
               right: 14,
@@ -3105,47 +3540,50 @@ class _ProfileSignInField extends StatelessWidget {
       borderRadius: BorderRadius.circular(29),
       borderSide: BorderSide(color: fitTheme.outline),
     );
-    return SizedBox(
-      height: 58,
-      child: TextField(
-        key: fieldKey,
-        controller: controller,
-        keyboardType: keyboardType,
-        textInputAction: textInputAction,
-        autofillHints: autofillHints,
-        onSubmitted: onSubmitted,
-        obscureText: obscureText,
-        enableSuggestions: !obscureText,
-        autocorrect: !obscureText,
-        scrollPadding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 80,
-        ),
-        style: fieldTextStyle,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: fieldTextStyle?.copyWith(color: fitTheme.mutedText),
-          filled: true,
-          fillColor: fitTheme.surface,
-          prefixIcon: Icon(icon, color: fitTheme.mutedText),
-          suffixIcon: suffix == null
-              ? null
-              : Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: suffix,
-                ),
-          suffixIconConstraints: const BoxConstraints(
-            minHeight: 40,
-            minWidth: 96,
+    return _KeyboardFocusRevealer(
+      alignment: 0.42,
+      child: SizedBox(
+        height: 58,
+        child: TextField(
+          key: fieldKey,
+          controller: controller,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          autofillHints: autofillHints,
+          onSubmitted: onSubmitted,
+          obscureText: obscureText,
+          enableSuggestions: !obscureText,
+          autocorrect: !obscureText,
+          scrollPadding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
           ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 16,
-          ),
-          floatingLabelBehavior: FloatingLabelBehavior.never,
-          border: border,
-          enabledBorder: border,
-          focusedBorder: border.copyWith(
-            borderSide: BorderSide(color: fitTheme.primaryBright, width: 1.4),
+          style: fieldTextStyle,
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: fieldTextStyle?.copyWith(color: fitTheme.mutedText),
+            filled: true,
+            fillColor: fitTheme.surface,
+            prefixIcon: Icon(icon, color: fitTheme.mutedText),
+            suffixIcon: suffix == null
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: suffix,
+                  ),
+            suffixIconConstraints: const BoxConstraints(
+              minHeight: 40,
+              minWidth: 96,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
+            floatingLabelBehavior: FloatingLabelBehavior.never,
+            border: border,
+            enabledBorder: border,
+            focusedBorder: border.copyWith(
+              borderSide: BorderSide(color: fitTheme.primaryBright, width: 1.4),
+            ),
           ),
         ),
       ),
@@ -3898,12 +4336,14 @@ class _ProfileSummarySectionCard extends StatelessWidget {
     required this.icon,
     required this.child,
     this.modified = false,
+    this.trailing,
   });
 
   final String title;
   final IconData icon;
   final Widget child;
   final bool modified;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -3928,12 +4368,64 @@ class _ProfileSummarySectionCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (modified) _ModifiedBadge(label: context.strings.modified),
+              if (modified) ...<Widget>[
+                _ModifiedBadge(label: context.strings.modified),
+                if (trailing != null) const SizedBox(width: 8),
+              ],
+              ?trailing,
             ],
           ),
           const SizedBox(height: 14),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _BodyMetricEditLockedScope extends StatelessWidget {
+  const _BodyMetricEditLockedScope({required this.locked, required this.child});
+
+  final bool locked;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: locked,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: locked ? 0.30 : 1,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _BodyMetricEditDateBadge extends StatelessWidget {
+  const _BodyMetricEditDateBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
+    return Container(
+      key: const ValueKey<String>('profile_body_metric_date_label'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: fitTheme.primarySoftSelected,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: fitTheme.primaryBright),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: fitTheme.primaryDeep,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -5110,6 +5602,8 @@ class _BodyProfileTile extends StatelessWidget {
     required this.editor,
     required this.onTap,
     this.unit,
+    this.disabled = false,
+    this.emphasized = false,
   });
 
   final String label;
@@ -5119,6 +5613,8 @@ class _BodyProfileTile extends StatelessWidget {
   final bool editing;
   final Widget editor;
   final VoidCallback onTap;
+  final bool disabled;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
@@ -5127,22 +5623,36 @@ class _BodyProfileTile extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: fitTheme.surfaceVariant,
+        color: emphasized
+            ? fitTheme.primarySoftSelected
+            : fitTheme.surfaceVariant,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: fitTheme.outline),
+        border: Border.all(
+          color: emphasized
+              ? fitTheme.primaryBright
+              : disabled
+              ? fitTheme.outlineSubtle
+              : fitTheme.outline,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(icon, color: fitTheme.primaryDeep, size: 20),
+              Icon(
+                icon,
+                color: disabled ? fitTheme.disabledText : fitTheme.primaryDeep,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: fitTheme.mutedText,
+                    color: disabled
+                        ? fitTheme.disabledText
+                        : fitTheme.mutedText,
                     fontWeight: FontWeight.w700,
                   ),
                   maxLines: 2,
@@ -5151,35 +5661,55 @@ class _BodyProfileTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          editing ? editor : _ProfileTileValue(value: value, unit: unit),
+          SizedBox(
+            width: double.infinity,
+            height: _bodyProfileValueSlotHeight,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: editing
+                  ? editor
+                  : _ProfileTileValue(
+                      value: value,
+                      unit: unit,
+                      disabled: disabled,
+                    ),
+            ),
+          ),
         ],
       ),
     );
 
     return InkWell(
       borderRadius: BorderRadius.circular(22),
-      onTap: editing ? null : onTap,
+      onTap: editing || disabled ? null : onTap,
       child: tile,
     );
   }
 }
 
+const double _bodyProfileValueSlotHeight = 42;
+
 class _ProfileTileValue extends StatelessWidget {
-  const _ProfileTileValue({required this.value, this.unit});
+  const _ProfileTileValue({
+    required this.value,
+    this.unit,
+    this.disabled = false,
+  });
 
   final String value;
   final String? unit;
+  final bool disabled;
 
   @override
   Widget build(BuildContext context) {
     final fitTheme = context.fitLogTheme;
     final valueStyle = Theme.of(context).textTheme.headlineSmall?.copyWith(
       fontWeight: FontWeight.w800,
-      color: fitTheme.textPrimary,
+      color: disabled ? fitTheme.disabledText : fitTheme.textPrimary,
     );
     final unitStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
       fontWeight: FontWeight.w700,
-      color: fitTheme.textSecondary,
+      color: disabled ? fitTheme.disabledText : fitTheme.textSecondary,
     );
 
     return Align(
@@ -5203,6 +5733,70 @@ class _ProfileTileValue extends StatelessWidget {
   }
 }
 
+class _KeyboardFocusRevealer extends StatefulWidget {
+  const _KeyboardFocusRevealer({required this.child, this.alignment = 0.38});
+
+  final Widget child;
+  final double alignment;
+
+  @override
+  State<_KeyboardFocusRevealer> createState() => _KeyboardFocusRevealerState();
+}
+
+class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
+  Timer? _timer;
+  bool _focused = false;
+  double? _lastKeyboardInset;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (_focused && _lastKeyboardInset != keyboardInset) {
+      _scheduleReveal(const Duration(milliseconds: 90));
+    }
+    _lastKeyboardInset = keyboardInset;
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _handleFocusChange(bool focused) {
+    _focused = focused;
+    if (!focused) {
+      _timer?.cancel();
+      return;
+    }
+    _scheduleReveal(Duration.zero);
+  }
+
+  void _scheduleReveal(Duration delay) {
+    _timer?.cancel();
+    _timer = Timer(delay, () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focused || Scrollable.maybeOf(context) == null) {
+          return;
+        }
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: widget.alignment,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        );
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(onFocusChange: _handleFocusChange, child: widget.child);
+  }
+}
+
 class _BorderlessProfileTextField extends StatelessWidget {
   const _BorderlessProfileTextField({
     required this.controller,
@@ -5219,21 +5813,31 @@ class _BorderlessProfileTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fitTheme = context.fitLogTheme;
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      autofocus: autofocus,
-      onChanged: onChanged,
-      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w800,
-        color: fitTheme.textPrimary,
-      ),
-      decoration: const InputDecoration(
-        isDense: true,
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        contentPadding: EdgeInsets.zero,
+    return _KeyboardFocusRevealer(
+      alignment: 0.34,
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        autofocus: autofocus,
+        maxLines: 1,
+        textAlignVertical: TextAlignVertical.center,
+        onChanged: onChanged,
+        scrollPadding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
+        ),
+        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: fitTheme.textPrimary,
+        ),
+        decoration: const InputDecoration(
+          isDense: true,
+          isCollapsed: true,
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
       ),
     );
   }
@@ -5246,6 +5850,7 @@ class _InlineUnitEditor extends StatelessWidget {
     required this.unit,
     required this.keyboardType,
     required this.onChanged,
+    this.fieldKey,
   });
 
   final TextEditingController controller;
@@ -5253,6 +5858,7 @@ class _InlineUnitEditor extends StatelessWidget {
   final String unit;
   final TextInputType keyboardType;
   final ValueChanged<String> onChanged;
+  final Key? fieldKey;
 
   @override
   Widget build(BuildContext context) {
@@ -5261,21 +5867,32 @@ class _InlineUnitEditor extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         Expanded(
-          child: TextField(
-            controller: controller,
-            autofocus: autofocus,
-            keyboardType: keyboardType,
-            onChanged: onChanged,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: fitTheme.textPrimary,
-            ),
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+          child: _KeyboardFocusRevealer(
+            alignment: 0.34,
+            child: TextField(
+              key: fieldKey,
+              controller: controller,
+              autofocus: autofocus,
+              keyboardType: keyboardType,
+              maxLines: 1,
+              textAlignVertical: TextAlignVertical.center,
+              onChanged: onChanged,
+              scrollPadding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
+              ),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: fitTheme.textPrimary,
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                isCollapsed: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
         ),
@@ -5301,12 +5918,16 @@ class _InlineSaveActions extends StatelessWidget {
     required this.saveLabel,
     required this.onCancel,
     required this.onSave,
+    this.cancelButtonKey,
+    this.saveButtonKey,
   });
 
   final bool saving;
   final String saveLabel;
   final VoidCallback onCancel;
   final VoidCallback onSave;
+  final Key? cancelButtonKey;
+  final Key? saveButtonKey;
 
   @override
   Widget build(BuildContext context) {
@@ -5314,12 +5935,14 @@ class _InlineSaveActions extends StatelessWidget {
     return Row(
       children: <Widget>[
         TextButton(
+          key: cancelButtonKey,
           onPressed: saving ? null : onCancel,
           child: Text(context.strings.cancel),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: FilledButton.icon(
+            key: saveButtonKey,
             onPressed: saving ? null : onSave,
             icon: saving
                 ? const SizedBox(

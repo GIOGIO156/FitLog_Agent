@@ -453,6 +453,13 @@ class AppStrings {
       _t('Add 2 records to show a trend', '记录满 2 次后显示趋势');
   String get bodyTrendNotEnoughRecords =>
       _t('Not enough records in this range', '当前周期记录不足');
+  String get bodyMetricDraftBlocked => _t(
+    'Save or discard current Profile changes before editing past body records.',
+    '请先保存或放弃当前资料修改，再编辑过往身体记录。',
+  );
+  String get bodyMetricPastDateRequired =>
+      _t('Select a past date.', '请选择过去日期。');
+  String get bodyMetricRecordSaved => _t('Body record saved.', '身体记录已保存。');
   String get activityLevelLabel => _t('Activity Level', '活动水平');
   String get goalPhaseLabel => _t('Goal phase', '目标阶段');
   String get cuttingLabel => _t('Cutting', '减脂期');

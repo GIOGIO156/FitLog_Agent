@@ -14,6 +14,7 @@ import 'package:fitlog_local/data/repositories/subscription_repository.dart';
 import 'package:fitlog_local/data/repositories/workout_draft_repository.dart';
 import 'package:fitlog_local/data/repositories/workout_repository.dart';
 import 'package:fitlog_local/core/constants/app_constants.dart';
+import 'package:fitlog_local/core/utils/date_utils.dart';
 import 'package:fitlog_local/domain/models/calorie_calibration_state.dart';
 import 'package:fitlog_local/domain/models/auth_session.dart';
 import 'package:fitlog_local/domain/models/cloud_profile.dart';
@@ -1043,10 +1044,10 @@ void main() {
       findsNothing,
     );
 
-    final bulkingPill = find.byKey(
-      const ValueKey<String>('profile_phase_bulking'),
-    );
-    await tester.scrollUntilVisible(bulkingPill, 500);
+    final bulkingPill = find
+        .byKey(const ValueKey<String>('profile_phase_bulking'))
+        .first;
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
     await tester.pumpAndSettle();
     await tester.tap(bulkingPill);
     await tester.pump();
@@ -1074,6 +1075,172 @@ void main() {
       find.byKey(const ValueKey<String>('profile_draft_save_bar')),
       findsNothing,
     );
+  });
+
+  testWidgets('Past body metric edit saves only a body metric log', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(
+      database,
+      initialProfile: UserProfile.defaults.copyWith(
+        weightKg: 65,
+        bodyFatPercent: 18,
+        waistCm: 75,
+      ),
+    );
+    final cloudProfileRepository = _FakeCloudProfileRepository(
+      const CloudProfileMapper().defaultForAccount('acct_1'),
+    );
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: cloudProfileRepository,
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+    final rootTabController = RootTabController()
+      ..setIndex(RootTabIndex.profile);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+        withRootNavOverlay: true,
+        rootTabController: rootTabController,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_metric_calendar_button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+
+    final expectedDate = DateUtilsX.formatDate(
+      DateUtilsX.parseDay(
+        DateUtilsX.todayKey(),
+      ).subtract(const Duration(days: 1)),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
+      findsOneWidget,
+    );
+    expect(find.text(DateUtilsX.formatReadable(expectedDate)), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_weight_field')),
+      findsOneWidget,
+    );
+    for (final fieldKey in <String>[
+      'profile_body_metric_weight_field',
+      'profile_body_metric_body_fat_field',
+      'profile_body_metric_waist_field',
+    ]) {
+      final field = tester.widget<TextField>(
+        find.byKey(ValueKey<String>(fieldKey)),
+      );
+      expect(field.decoration?.filled, isFalse);
+      expect(field.decoration?.isCollapsed, isTrue);
+    }
+
+    await tester.tapAt(tester.getCenter(find.text('Home')));
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(rootTabController.index, RootTabIndex.profile);
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profile_body_metric_weight_field')),
+      '66.4',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profile_body_metric_body_fat_field')),
+      '17.2',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('profile_body_metric_waist_field')),
+      '74.8',
+    );
+    await tester.ensureVisible(
+      find.byKey(const ValueKey<String>('profile_body_metric_save_button')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_metric_save_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(cloudProfileRepository.saveCount, 0);
+    expect(profileRepository.weightLogSaveCount, 1);
+    expect(profileRepository.savedWeightLog?.accountId, 'acct_1');
+    expect(profileRepository.savedWeightLog?.date, expectedDate);
+    expect(profileRepository.savedWeightLog?.weightKg, 66.4);
+    expect(profileRepository.savedWeightLog?.bodyFatPercent, 17.2);
+    expect(profileRepository.savedWeightLog?.waistCm, 74.8);
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Past body metric edit is blocked while Profile draft exists', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final bulkingPill = find
+        .byKey(const ValueKey<String>('profile_phase_bulking'))
+        .first;
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.tap(bulkingPill);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 500));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_metric_calendar_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Select date'), findsNothing);
+    expect(
+      find.text(
+        'Save or discard current Profile changes before editing past body records.',
+      ),
+      findsOneWidget,
+    );
+    expect(profileRepository.weightLogSaveCount, 0);
   });
 }
 
@@ -1287,6 +1454,8 @@ class _FakeProfileRepository extends ProfileRepository {
 
   UserProfile _profile;
   UserProfile? savedProfile;
+  _SavedWeightLog? savedWeightLog;
+  int weightLogSaveCount = 0;
   bool clearedProfile = false;
 
   @override
@@ -1318,9 +1487,47 @@ class _FakeProfileRepository extends ProfileRepository {
   }
 
   @override
+  Future<void> upsertWeightLog({
+    String? accountId,
+    required String date,
+    required double weightKg,
+    double? bodyFatPercent,
+    double? waistCm,
+    String source = 'manual',
+  }) async {
+    weightLogSaveCount += 1;
+    savedWeightLog = _SavedWeightLog(
+      accountId: accountId,
+      date: date,
+      weightKg: weightKg,
+      bodyFatPercent: bodyFatPercent,
+      waistCm: waistCm,
+      source: source,
+    );
+  }
+
+  @override
   Future<void> clearProfile() async {
     clearedProfile = true;
   }
+}
+
+class _SavedWeightLog {
+  const _SavedWeightLog({
+    required this.accountId,
+    required this.date,
+    required this.weightKg,
+    required this.bodyFatPercent,
+    required this.waistCm,
+    required this.source,
+  });
+
+  final String? accountId;
+  final String date;
+  final double weightKg;
+  final double? bodyFatPercent;
+  final double? waistCm;
+  final String source;
 }
 
 class _FailingCacheProfileRepository extends _FakeProfileRepository {
@@ -1362,6 +1569,7 @@ Widget _buildProfileTestApp({
   RootTabController? rootTabController,
 }) {
   final effectiveRootTabController = rootTabController ?? RootTabController();
+  final rootInteractionLockController = RootInteractionLockController();
   final foodRepository = _FakeFoodRepository(database);
   final workoutRepository = _FakeWorkoutRepository(database);
   final trainingFrequencySelfCheckService = TrainingFrequencySelfCheckService(
@@ -1425,6 +1633,9 @@ Widget _buildProfileTestApp({
       ChangeNotifierProvider<RootTabController>.value(
         value: effectiveRootTabController,
       ),
+      ChangeNotifierProvider<RootInteractionLockController>.value(
+        value: rootInteractionLockController,
+      ),
       ChangeNotifierProvider<RefreshNotifier>(create: (_) => RefreshNotifier()),
       ChangeNotifierProvider<LanguageController>(
         create: (_) => LanguageController(),
@@ -1446,12 +1657,26 @@ Widget _buildProfileTestApp({
                     right: 0,
                     bottom: 0,
                     child: AnimatedBuilder(
-                      animation: effectiveRootTabController,
+                      animation: Listenable.merge(<Listenable>[
+                        effectiveRootTabController,
+                        rootInteractionLockController,
+                      ]),
                       builder: (context, _) {
-                        return FitLogBottomNavBar(
-                          items: _profileGuideTestNavItems,
-                          currentIndex: effectiveRootTabController.index,
-                          onTap: effectiveRootTabController.setIndex,
+                        return IgnorePointer(
+                          ignoring:
+                              rootInteractionLockController.navigationLocked,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 180),
+                            opacity:
+                                rootInteractionLockController.navigationLocked
+                                ? 0.42
+                                : 1,
+                            child: FitLogBottomNavBar(
+                              items: _profileGuideTestNavItems,
+                              currentIndex: effectiveRootTabController.index,
+                              onTap: effectiveRootTabController.setIndex,
+                            ),
+                          ),
                         );
                       },
                     ),

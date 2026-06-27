@@ -1429,12 +1429,20 @@ class _StrategyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fitTheme = context.fitLogTheme;
-    final strategyText =
+    final strategyLabel =
         summary.dietPlanStrategy == AppConstants.dietPlanStrategyCarbCycling
-        ? '${strings.carbCyclingLabel} - ${strings.carbDayTypeFullLabel(summary.carbDayType ?? AppConstants.carbDayMedium)}'
+        ? strings.carbCyclingLabel
         : summary.dietPlanStrategy == AppConstants.dietPlanStrategyCarbTapering
-        ? '${strings.carbTaperingLabel} - ${strings.currentTaperLabel} ${summary.carbTaperCurrentDeltaG.toStringAsFixed(0)} g'
+        ? strings.carbTaperingLabel
         : strings.strategyNoneLabel;
+    final strategyDetail =
+        summary.dietPlanStrategy == AppConstants.dietPlanStrategyCarbCycling
+        ? strings.carbDayTypeFullLabel(
+            summary.carbDayType ?? AppConstants.carbDayMedium,
+          )
+        : summary.dietPlanStrategy == AppConstants.dietPlanStrategyCarbTapering
+        ? '${strings.currentTaperLabel} ${summary.carbTaperCurrentDeltaG.toStringAsFixed(0)} g'
+        : null;
     final modeText =
         summary.dietCalculationMode == AppConstants.dietCalculationModeGramPerKg
         ? strings.gramPerKgModeLabel
@@ -1471,11 +1479,10 @@ class _StrategyCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      strategyText,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                    _StrategyTitle(
+                      label: strategyLabel,
+                      detail: strategyDetail,
+                      strings: strings,
                     ),
                   ],
                 ),
@@ -1492,6 +1499,40 @@ class _StrategyCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StrategyTitle extends StatelessWidget {
+  const _StrategyTitle({
+    required this.label,
+    required this.detail,
+    required this.strings,
+  });
+
+  final String label;
+  final String? detail;
+  final AppStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(
+      context,
+    ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800);
+    final detailText = detail;
+    if (detailText == null) {
+      return Text(label, style: style);
+    }
+    if (strings.isChinese) {
+      return Text('$label - $detailText', style: style);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(label, style: style),
+        const SizedBox(height: 2),
+        Text('- $detailText', style: style),
+      ],
     );
   }
 }

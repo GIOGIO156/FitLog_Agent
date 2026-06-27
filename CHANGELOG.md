@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-06-27 Past Body Metrics Calendar Edit
+
+### Added
+
+- Added an in-page Profile body-record edit state for past dates: the Body Profile calendar only allows past dates, highlights weight/body-fat/waist for editing, and dims/disables the rest of the Profile page plus root bottom navigation while the edit is active.
+- Added focused widget coverage confirming past body edits write only `body_metric_logs` through `upsertWeightLog`, do not save Cloud Profile, are blocked while an unsaved Profile draft exists, show full-year English dates, and keep English strategy-card details on a hyphen-prefixed second line.
+
+### Changed
+
+- Kept historical body metric saves separate from the full Cloud Profile save path so backfilled records do not silently change current body data.
+- Changed the English historical body-record date badge from a shortened year to a full four-digit year.
+- Updated bilingual README, Product, AppGuide, and AgentDesign docs to replace the old body-record sheet design with the in-page edit state and document the stronger soft-fade lock state plus keyboard-aware focus behavior.
+- Added stable same-surface body-profile editor details to the bilingual README, Product, and AppGuide docs.
+
+### Fixed
+
+- Strengthened locked Profile areas and root bottom navigation with soft opacity dimming, avoiding block scrims or visible rectangular seams while making non-editable content read as disabled.
+- Added focus-aware keyboard reveal for Profile auth fields and inline body editors so active inputs are scrolled above the keyboard without compressing the cards.
+- Kept Body Profile inline editors visually merged with their metric tiles and gave the value area a stable height so focusing a field no longer paints a separate input block or changes tile size.
+- Split English Home strategy-card titles into a strategy line and a hyphen-prefixed detail line to avoid awkward narrow-screen wrapping.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran targeted `flutter test test\home_page_test.dart`.
+- Ran targeted `flutter test test\phase2_account_controller_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Confirmed the required documentation tree exists and searched docs for stale body-record sheet wording, replacement characters, stale local-doc links, and date-appended stable-doc headings.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-27 Guide Sheet Navigation Fix
 
 ### Fixed

@@ -254,6 +254,9 @@ class _FitLogAppState extends State<FitLogApp> {
         ChangeNotifierProvider<RootTabController>(
           create: (_) => RootTabController(),
         ),
+        ChangeNotifierProvider<RootInteractionLockController>(
+          create: (_) => RootInteractionLockController(),
+        ),
         ChangeNotifierProvider<SelectedDateNotifier>(
           create: (_) => SelectedDateNotifier(),
         ),
@@ -537,6 +540,7 @@ class _RootShellState extends State<_RootShell> {
   Widget build(BuildContext context) {
     final strings = context.strings;
     final navController = context.watch<RootTabController>();
+    final interactionLock = context.watch<RootInteractionLockController>();
     final items = <FitLogNavItem>[
       FitLogNavItem(
         label: strings.navHome,
@@ -582,18 +586,43 @@ class _RootShellState extends State<_RootShell> {
               left: 0,
               right: 0,
               bottom: 0,
-              child: FitLogBottomNavBar(
-                items: items,
-                currentIndex: navController.index,
-                onTap: navController.setIndex,
-                surface: navController.index == RootTabIndex.ai
-                    ? FitLogBottomNavSurface.glass
-                    : FitLogBottomNavSurface.solid,
+              child: IgnorePointer(
+                ignoring: interactionLock.navigationLocked,
+                child: _RootLockedNavigationSurface(
+                  locked: interactionLock.navigationLocked,
+                  child: FitLogBottomNavBar(
+                    items: items,
+                    currentIndex: navController.index,
+                    onTap: navController.setIndex,
+                    surface: navController.index == RootTabIndex.ai
+                        ? FitLogBottomNavSurface.glass
+                        : FitLogBottomNavSurface.solid,
+                  ),
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RootLockedNavigationSurface extends StatelessWidget {
+  const _RootLockedNavigationSurface({
+    required this.locked,
+    required this.child,
+  });
+
+  final bool locked;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 180),
+      opacity: locked ? 0.34 : 1,
+      child: child,
     );
   }
 }
@@ -647,6 +676,20 @@ class RootTabController extends ChangeNotifier {
       return;
     }
     _index = index;
+    notifyListeners();
+  }
+}
+
+class RootInteractionLockController extends ChangeNotifier {
+  bool _navigationLocked = false;
+
+  bool get navigationLocked => _navigationLocked;
+
+  void setNavigationLocked(bool locked) {
+    if (_navigationLocked == locked) {
+      return;
+    }
+    _navigationLocked = locked;
     notifyListeners();
   }
 }

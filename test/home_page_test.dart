@@ -254,6 +254,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('home strategy title keeps English detail on its own line', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    Future<void> pumpStrategy(String strategy) async {
+      await tester.pumpWidget(
+        _buildHomeTestApp(
+          profile: UserProfile.defaults.copyWith(
+            nickname: 'Chris',
+            dietCalculationMode: AppConstants.dietCalculationModeGramPerKg,
+            dietPlanStrategy: strategy,
+          ),
+          foodRecords: const <FoodRecord>[],
+          workoutSessions: const <WorkoutSession>[],
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+
+    await pumpStrategy(AppConstants.dietPlanStrategyCarbCycling);
+    expect(find.text('Carb cycle'), findsOneWidget);
+    expect(find.text('- Medium carb day'), findsOneWidget);
+    expect(find.textContaining('Carb cycle -'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await pumpStrategy(AppConstants.dietPlanStrategyCarbTapering);
+    expect(find.text('Carb Taper'), findsOneWidget);
+    expect(find.text('- Current taper 0 g'), findsOneWidget);
+    expect(find.textContaining('Carb Taper -'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('home strategy guide opens in the shared guide sheet', (
     tester,
   ) async {
