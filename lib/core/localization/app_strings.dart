@@ -186,6 +186,11 @@ class AppStrings {
           'This local cache row is not linked to a cloud record. Refresh from cloud and try again.',
           '这条本地缓存没有关联云端记录，请从云端刷新后再试。',
         );
+      case 'body_metric_delete_failed':
+        return _t(
+          'Body record could not be deleted. Please try again.',
+          '身体记录删除失败，请重试。',
+        );
       case 'subscription_load_failed':
         return _t(
           'Subscription status could not be loaded. Retry after checking Supabase.',
@@ -460,6 +465,20 @@ class AppStrings {
   String get bodyMetricPastDateRequired =>
       _t('Select a past date.', '请选择过去日期。');
   String get bodyMetricRecordSaved => _t('Body record saved.', '身体记录已保存。');
+  String get bodyMetricRecordDeleted => _t('Body record deleted.', '身体记录已删除。');
+  String bodyMetricDeleteConfirmTitle(String date) =>
+      _t('Delete body record for $date?', '删除 $date 的身体记录？');
+  String get bodyMetricDeleteConfirmBody => _t(
+    'This removes the historical weight, body-fat, and waist record for that date. Body Trends, calibration, and reviews that use weight history may change after refresh.',
+    '这会删除该日期的历史体重、体脂和腰围记录。刷新后，身体趋势、校准和使用体重历史的 review 结果可能变化。',
+  );
+  String get bodyMetricDiscardTitle =>
+      _t('Discard body record edits?', '放弃身体记录修改？');
+  String get bodyMetricDiscardMessage => _t(
+    'Switching dates will remove the unsaved body record edits.',
+    '切换日期会放弃当前未保存的身体记录修改。',
+  );
+  String get bodyMetricDiscardAction => _t('Discard Edits', '放弃修改');
   String get activityLevelLabel => _t('Activity Level', '活动水平');
   String get goalPhaseLabel => _t('Goal phase', '目标阶段');
   String get cuttingLabel => _t('Cutting', '减脂期');

@@ -1222,6 +1222,51 @@ void main() {
     );
   });
 
+  testWidgets('Body metric calendar defaults to today', (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_metric_calendar_button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_weight_field')),
+      findsNothing,
+    );
+  });
+
   testWidgets('Past body metric edit saves only a body metric log', (
     tester,
   ) async {
@@ -1264,18 +1309,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('profile_body_metric_calendar_button')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('OK').last);
-    await tester.pumpAndSettle();
-
-    final expectedDate = DateUtilsX.formatDate(
-      DateUtilsX.parseDay(
-        DateUtilsX.todayKey(),
-      ).subtract(const Duration(days: 1)),
-    );
+    final expectedDate = await _selectYesterdayInBodyMetricCalendar(tester);
     expect(
       find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
       findsOneWidget,
@@ -1334,6 +1368,94 @@ void main() {
     );
   });
 
+  testWidgets('Past body metric edit can delete an existing record', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final existingDate = DateUtilsX.formatDate(
+      DateUtilsX.parseDay(
+        DateUtilsX.todayKey(),
+      ).subtract(const Duration(days: 1)),
+    );
+    final profileRepository = _FakeProfileRepository(
+      database,
+      initialWeightLogs: <WeightLog>[
+        WeightLog(
+          accountId: 'acct_1',
+          date: existingDate,
+          weightKg: 66.4,
+          bodyFatPercent: 17.2,
+          waistCm: 74.8,
+          source: 'manual',
+        ),
+      ],
+    );
+    final cloudProfileRepository = _FakeCloudProfileRepository(
+      const CloudProfileMapper().defaultForAccount('acct_1'),
+    );
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: cloudProfileRepository,
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _selectYesterdayInBodyMetricCalendar(tester);
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_delete_button')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_metric_delete_button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Body Trends, calibration'), findsOneWidget);
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+
+    expect(cloudProfileRepository.saveCount, 0);
+    expect(profileRepository.weightLogDeleteCount, 1);
+    expect(profileRepository.deletedWeightLogDate, existingDate);
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
+      findsNothing,
+    );
+    expect(find.text('No records yet'), findsOneWidget);
+
+    await _selectYesterdayInBodyMetricCalendar(tester);
+    expect(
+      find.byKey(const ValueKey<String>('profile_body_metric_delete_button')),
+      findsNothing,
+    );
+    for (final fieldKey in <String>[
+      'profile_body_metric_weight_field',
+      'profile_body_metric_body_fat_field',
+      'profile_body_metric_waist_field',
+    ]) {
+      final field = tester.widget<TextField>(
+        find.byKey(ValueKey<String>(fieldKey)),
+      );
+      expect(field.controller?.text, isEmpty);
+    }
+  });
+
   testWidgets('Past body metric edit is blocked while Profile draft exists', (
     tester,
   ) async {
@@ -1387,6 +1509,25 @@ void main() {
     );
     expect(profileRepository.weightLogSaveCount, 0);
   });
+}
+
+Future<String> _selectYesterdayInBodyMetricCalendar(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(const ValueKey<String>('profile_body_metric_calendar_button')),
+  );
+  await tester.pumpAndSettle();
+
+  final today = DateUtilsX.parseDay(DateUtilsX.todayKey());
+  final yesterday = today.subtract(const Duration(days: 1));
+  if (today.month != yesterday.month || today.year != yesterday.year) {
+    await tester.tap(find.byTooltip('Previous month'));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text('${yesterday.day}').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('OK').last);
+  await tester.pumpAndSettle();
+  return DateUtilsX.formatDate(yesterday);
 }
 
 Future<void> _initializeController(AccountController controller) async {
@@ -1594,13 +1735,20 @@ class _FakeCloudProfileRepository implements CloudProfileRepository {
 }
 
 class _FakeProfileRepository extends ProfileRepository {
-  _FakeProfileRepository(super.database, {UserProfile? initialProfile})
-    : _profile = initialProfile ?? UserProfile.defaults;
+  _FakeProfileRepository(
+    super.database, {
+    UserProfile? initialProfile,
+    List<WeightLog> initialWeightLogs = const <WeightLog>[],
+  }) : _profile = initialProfile ?? UserProfile.defaults,
+       _weightLogs = List<WeightLog>.of(initialWeightLogs);
 
   UserProfile _profile;
+  final List<WeightLog> _weightLogs;
   UserProfile? savedProfile;
   _SavedWeightLog? savedWeightLog;
   int weightLogSaveCount = 0;
+  String? deletedWeightLogDate;
+  int weightLogDeleteCount = 0;
   bool clearedProfile = false;
 
   @override
@@ -1615,7 +1763,13 @@ class _FakeProfileRepository extends ProfileRepository {
     required String startDate,
     required String endDate,
   }) async {
-    return const <WeightLog>[];
+    return _weightLogs.where((log) {
+      final accountMatches =
+          accountId == null || accountId.isEmpty || log.accountId == accountId;
+      return accountMatches &&
+          log.date.compareTo(startDate) >= 0 &&
+          log.date.compareTo(endDate) <= 0;
+    }).toList();
   }
 
   @override
@@ -1649,6 +1803,35 @@ class _FakeProfileRepository extends ProfileRepository {
       waistCm: waistCm,
       source: source,
     );
+    _weightLogs.removeWhere((log) {
+      final accountMatches =
+          accountId == null || accountId.isEmpty || log.accountId == accountId;
+      return accountMatches && log.date == date;
+    });
+    _weightLogs.add(
+      WeightLog(
+        accountId: accountId,
+        date: date,
+        weightKg: weightKg,
+        bodyFatPercent: bodyFatPercent,
+        waistCm: waistCm,
+        source: source,
+      ),
+    );
+  }
+
+  @override
+  Future<void> deleteWeightLog({
+    String? accountId,
+    required String date,
+  }) async {
+    weightLogDeleteCount += 1;
+    deletedWeightLogDate = date;
+    _weightLogs.removeWhere((log) {
+      final accountMatches =
+          accountId == null || accountId.isEmpty || log.accountId == accountId;
+      return accountMatches && log.date == date;
+    });
   }
 
   @override

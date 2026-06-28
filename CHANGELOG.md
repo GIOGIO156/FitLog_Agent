@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-06-28 Body Metric Calendar Today And Delete
+
+### Added
+
+- Added a confirmed delete action for existing past body metric records from the Body Profile historical edit state.
+- Added widget coverage for the body metric calendar defaulting to today and for deleting an existing past body metric record without saving Cloud Profile or refilling the deleted date from current Profile values.
+
+### Changed
+
+- Changed the Body Profile calendar to open on today and allow selecting today as the way back to the current body profile view; only past dates enter historical edit mode and show a date badge.
+- Changed the historical body metric delete confirmation to use a red destructive action instead of a green filled confirmation button.
+- Changed past body metric dates without an existing record to open with empty weight, body-fat, and waist fields instead of copying current Profile values.
+- Synchronized historical body metric deletion across cloud `body_metric_logs` and the local `user_weight_logs` cache mirror through existing `deleted_at` soft-delete fields, avoiding any SQL or SQLite schema change.
+- Updated README, Product, AppGuide, and Database docs with the today-return calendar behavior, delete confirmation, Body Trends refresh, and calibration/review cache implications.
+
+### Validation
+
+- Ran `dart format lib\features\profile\profile_page.dart lib\data\repositories\profile_repository.dart lib\core\localization\app_strings.dart test\phase2_account_controller_test.dart`.
+- Ran targeted `flutter test test\phase2_account_controller_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Confirmed the required documentation tree exists and searched updated docs for stale body-record sheet wording, past-date-only calendar wording, replacement characters, and date-appended stable-doc headings.
+- Ran `git diff --check` with only line-ending warnings.
+- Ran `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
 ## 2026-06-27 Profile Draft Save Consolidation
 
 ### Added

@@ -117,6 +117,11 @@ class _ProfilePageState extends State<ProfilePage> {
   _BodyProfileField? _editingBodyField;
   String? _editingBodyMetricDate;
   bool _savingBodyMetricRecord = false;
+  bool _deletingBodyMetricRecord = false;
+  bool _editingBodyMetricRecordExists = false;
+  String? _bodyMetricInitialWeightText;
+  String? _bodyMetricInitialBodyFatText;
+  String? _bodyMetricInitialWaistText;
   RootInteractionLockController? _rootInteractionLockController;
   bool _exportingXlsx = false;
   bool _exportingCsv = false;
@@ -321,20 +326,32 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     final today = DateUtilsX.parseDay(DateUtilsX.todayKey());
-    final yesterday = today.subtract(const Duration(days: 1));
-    final currentDate = _editingBodyMetricDate == null
-        ? yesterday
-        : DateUtilsX.parseDay(_editingBodyMetricDate!);
     final selected = await showDatePicker(
       context: context,
-      initialDate: currentDate.isAfter(yesterday) ? yesterday : currentDate,
+      initialDate: today,
       firstDate: DateTime(2020),
-      lastDate: yesterday,
+      lastDate: today,
     );
     if (selected == null || !mounted) {
       return;
     }
-    await _beginBodyMetricEdit(DateUtilsX.formatDate(selected));
+    final selectedDate = DateUtilsX.formatDate(selected);
+    if (!_isPastBodyMetricDate(selectedDate)) {
+      await _returnToCurrentBodyMetricView();
+      return;
+    }
+    if (_editingBodyMetricDate == selectedDate) {
+      return;
+    }
+    if (_editingBodyMetricDate != null &&
+        _hasBodyMetricDraft &&
+        !await _confirmDiscardBodyMetricDraft()) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await _beginBodyMetricEdit(selectedDate);
   }
 
   Future<void> _beginBodyMetricEdit(String date) async {
@@ -346,25 +363,28 @@ class _ProfilePageState extends State<ProfilePage> {
       return;
     }
     FocusScope.of(context).unfocus();
-    final profile = _buildDraftProfile();
     final existingLog = await _loadBodyMetricLogForDate(date);
     if (!mounted) {
       return;
     }
-    final weight = existingLog?.weightKg ?? profile.weightKg;
-    final bodyFat = existingLog?.bodyFatPercent ?? profile.bodyFatPercent;
-    final waist = existingLog?.waistCm ?? profile.waistCm;
+    final bodyFat = existingLog?.bodyFatPercent;
+    final waist = existingLog?.waistCm;
+    final weightText = existingLog == null
+        ? ''
+        : existingLog.weightKg.toStringAsFixed(1);
+    final bodyFatText = bodyFat == null ? '' : bodyFat.toStringAsFixed(1);
+    final waistText = waist == null ? '' : waist.toStringAsFixed(1);
     setState(() {
       _editingNickname = false;
       _editingBodyField = null;
       _editingBodyMetricDate = date;
-      _bodyMetricWeightController.text = weight.toStringAsFixed(1);
-      _bodyMetricBodyFatController.text = bodyFat == null
-          ? ''
-          : bodyFat.toStringAsFixed(1);
-      _bodyMetricWaistController.text = waist == null
-          ? ''
-          : waist.toStringAsFixed(1);
+      _editingBodyMetricRecordExists = existingLog != null;
+      _bodyMetricInitialWeightText = weightText;
+      _bodyMetricInitialBodyFatText = bodyFatText;
+      _bodyMetricInitialWaistText = waistText;
+      _bodyMetricWeightController.text = weightText;
+      _bodyMetricBodyFatController.text = bodyFatText;
+      _bodyMetricWaistController.text = waistText;
     });
     _rootInteractionLockController?.setNavigationLocked(true);
     _revealBodyMetricEditor();
@@ -392,13 +412,74 @@ class _ProfilePageState extends State<ProfilePage> {
   void _cancelBodyMetricEdit() {
     FocusScope.of(context).unfocus();
     setState(() {
-      _editingBodyMetricDate = null;
-      _savingBodyMetricRecord = false;
-      _bodyMetricWeightController.clear();
-      _bodyMetricBodyFatController.clear();
-      _bodyMetricWaistController.clear();
+      _clearBodyMetricEditState();
     });
     _rootInteractionLockController?.setNavigationLocked(false);
+  }
+
+  Future<bool> _returnToCurrentBodyMetricView() async {
+    if (_editingBodyMetricDate == null) {
+      return true;
+    }
+    if (_hasBodyMetricDraft && !await _confirmDiscardBodyMetricDraft()) {
+      return false;
+    }
+    if (!mounted) {
+      return false;
+    }
+    _cancelBodyMetricEdit();
+    return true;
+  }
+
+  bool get _hasBodyMetricDraft {
+    if (_editingBodyMetricDate == null) {
+      return false;
+    }
+    return _bodyMetricWeightController.text.trim() !=
+            (_bodyMetricInitialWeightText ?? '') ||
+        _bodyMetricBodyFatController.text.trim() !=
+            (_bodyMetricInitialBodyFatText ?? '') ||
+        _bodyMetricWaistController.text.trim() !=
+            (_bodyMetricInitialWaistText ?? '');
+  }
+
+  Future<bool> _confirmDiscardBodyMetricDraft() async {
+    final strings = context.stringsRead;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: Text(strings.bodyMetricDiscardTitle),
+              content: Text(strings.bodyMetricDiscardMessage),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(strings.cancel),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(strings.bodyMetricDiscardAction),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    return confirmed;
+  }
+
+  void _clearBodyMetricEditState() {
+    _editingBodyMetricDate = null;
+    _savingBodyMetricRecord = false;
+    _deletingBodyMetricRecord = false;
+    _editingBodyMetricRecordExists = false;
+    _bodyMetricInitialWeightText = null;
+    _bodyMetricInitialBodyFatText = null;
+    _bodyMetricInitialWaistText = null;
+    _bodyMetricWeightController.clear();
+    _bodyMetricBodyFatController.clear();
+    _bodyMetricWaistController.clear();
   }
 
   bool _isPastBodyMetricDate(String date) {
@@ -432,7 +513,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _saveBodyMetricRecord() async {
-    if (_savingBodyMetricRecord || !_validateBodyMetricRecord()) {
+    if (_savingBodyMetricRecord ||
+        _deletingBodyMetricRecord ||
+        !_validateBodyMetricRecord()) {
       return;
     }
     final date = _editingBodyMetricDate!;
@@ -461,11 +544,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _bodyMetricLogs = bodyMetricLogs;
         _selectedBodyTrendDate = null;
-        _editingBodyMetricDate = null;
-        _savingBodyMetricRecord = false;
-        _bodyMetricWeightController.clear();
-        _bodyMetricBodyFatController.clear();
-        _bodyMetricWaistController.clear();
+        _clearBodyMetricEditState();
       });
       _rootInteractionLockController?.setNavigationLocked(false);
       FitLogNotifications.success(context, strings.bodyMetricRecordSaved);
@@ -479,6 +558,87 @@ class _ProfilePageState extends State<ProfilePage> {
     } finally {
       if (mounted && _savingBodyMetricRecord) {
         setState(() => _savingBodyMetricRecord = false);
+      }
+    }
+  }
+
+  Future<void> _deleteBodyMetricRecord() async {
+    final date = _editingBodyMetricDate;
+    if (_savingBodyMetricRecord ||
+        _deletingBodyMetricRecord ||
+        date == null ||
+        !_editingBodyMetricRecordExists) {
+      return;
+    }
+    final strings = context.stringsRead;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) {
+            final colorScheme = Theme.of(context).colorScheme;
+            return AlertDialog(
+              title: Text(
+                strings.bodyMetricDeleteConfirmTitle(
+                  _formatBodyMetricEditDate(date),
+                ),
+              ),
+              content: Text(strings.bodyMetricDeleteConfirmBody),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(strings.cancel),
+                ),
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: colorScheme.error,
+                  ),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: Text(strings.delete),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    final services = context.read<AppServices>();
+    final accountController = _maybeAccountController(listen: false);
+    setState(() => _deletingBodyMetricRecord = true);
+    try {
+      await services.profileRepository.deleteWeightLog(
+        accountId: accountController?.authSession.accountId,
+        date: date,
+      );
+      final bodyMetricLogs = await _loadBodyMetricLogs();
+      if (!mounted) {
+        return;
+      }
+      context.read<RefreshNotifier>().markDataChanged();
+      services.refreshDailySummaryCacheForDates(
+        days: _summaryRefreshDaysAfterBodyMetricEdit(date),
+        accountId: accountController?.authSession.accountId,
+      );
+      setState(() {
+        _bodyMetricLogs = bodyMetricLogs;
+        _selectedBodyTrendDate = null;
+        _clearBodyMetricEditState();
+      });
+      _rootInteractionLockController?.setNavigationLocked(false);
+      FitLogNotifications.success(context, strings.bodyMetricRecordDeleted);
+    } catch (error) {
+      if (mounted) {
+        final message = error is Phase2RepositoryException
+            ? strings.phase2ErrorMessage(error.code)
+            : strings.summaryError(error);
+        FitLogNotifications.error(context, message);
+      }
+    } finally {
+      if (mounted && _deletingBodyMetricRecord) {
+        setState(() => _deletingBodyMetricRecord = false);
       }
     }
   }
@@ -1982,7 +2142,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     icon: Icons.calendar_today_outlined,
                     tooltip: strings.date,
-                    onPressed: _savingBodyMetricRecord
+                    onPressed:
+                        _savingBodyMetricRecord || _deletingBodyMetricRecord
                         ? null
                         : _pickBodyMetricDate,
                   ),
@@ -1991,6 +2152,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (editingBodyMetricDate != null) ...<Widget>[
                         Row(
                           children: <Widget>[
+                            if (_editingBodyMetricRecordExists)
+                              _BodyMetricDeleteButton(
+                                deleting: _deletingBodyMetricRecord,
+                                tooltip: strings.deleteRecord,
+                                onPressed: _deleteBodyMetricRecord,
+                              ),
                             const Spacer(),
                             _BodyMetricEditDateBadge(
                               label: _formatBodyMetricEditDate(
@@ -2233,7 +2400,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (isEditingBodyMetricRecord) ...<Widget>[
                         const SizedBox(height: 14),
                         _InlineSaveActions(
-                          saving: _savingBodyMetricRecord,
+                          saving:
+                              _savingBodyMetricRecord ||
+                              _deletingBodyMetricRecord,
                           saveLabel: strings.save,
                           cancelButtonKey: const ValueKey<String>(
                             'profile_body_metric_cancel_button',
@@ -4337,6 +4506,49 @@ class _BodyMetricEditDateBadge extends StatelessWidget {
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: fitTheme.primaryDeep,
           fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _BodyMetricDeleteButton extends StatelessWidget {
+  const _BodyMetricDeleteButton({
+    required this.deleting,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool deleting;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final fitTheme = context.fitLogTheme;
+    final color = deleting ? fitTheme.disabledText : colorScheme.error;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        key: const ValueKey<String>('profile_body_metric_delete_button'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: deleting ? null : onPressed,
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          decoration: BoxDecoration(
+            color: colorScheme.error.withValues(
+              alpha: fitTheme.isDark ? 0.18 : 0.08,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: colorScheme.error.withValues(
+                alpha: fitTheme.isDark ? 0.46 : 0.34,
+              ),
+            ),
+          ),
+          child: Icon(Icons.delete_outline_rounded, size: 20, color: color),
         ),
       ),
     );

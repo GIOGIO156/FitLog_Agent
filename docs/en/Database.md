@@ -253,6 +253,7 @@ Fields:
 - `body_fat_percent`
 - `waist_cm`
 - `source`
+- `deleted_at`
 - `created_at`
 - `updated_at`
 
@@ -261,6 +262,8 @@ Used by:
 - dynamic calorie calibration
 - carb-taper review
 - weekly review summaries when available
+
+Soft-deleted rows are excluded from normal reads. When a cloud `body_metric_logs` row is deleted, the matching `user_weight_logs` cache mirror is soft-deleted too so calibration and review services no longer consume that historical weight row.
 
 ### `calorie_calibration_state`
 
@@ -470,6 +473,7 @@ Rules:
 - Records include only weight, body-fat percentage, and waist circumference; they do not include age, height, or sex.
 - Backfilling a past date must not silently update the current Cloud Profile.
 - The Body Profile card provides the record entry; Body Trends is read-only.
+- Deletes are soft deletes through `deleted_at`; normal app reads, Body Trends, summaries, calibration, and reviews exclude deleted rows.
 
 ### `food_records` / `food_items`
 

@@ -192,6 +192,13 @@ class ProfileRepository {
     );
   }
 
+  Future<void> deleteWeightLog({
+    String? accountId,
+    required String date,
+  }) async {
+    await _deleteLocalWeightLog(accountId: accountId, date: date);
+  }
+
   Future<void> _upsertLocalWeightLog({
     String? accountId,
     required String date,
@@ -263,6 +270,33 @@ class ProfileRepository {
       },
       where: 'id = ?',
       whereArgs: <Object?>[existingId],
+    );
+  }
+
+  Future<void> _deleteLocalWeightLog({
+    String? accountId,
+    required String date,
+  }) async {
+    final db = await _database.database;
+    final now = DateTime.now().toIso8601String();
+    final effectiveAccountId = accountId ?? _activeAccountId;
+    final where = effectiveAccountId == null
+        ? 'date = ? AND account_id IS NULL'
+        : 'date = ? AND account_id = ?';
+    final whereArgs = effectiveAccountId == null
+        ? <Object?>[date]
+        : <Object?>[date, effectiveAccountId];
+
+    await db.update(
+      'user_weight_logs',
+      <String, dynamic>{
+        'deleted_at': now,
+        'cache_confirmed': 1,
+        'cached_at': now,
+        'updated_at': now,
+      },
+      where: where,
+      whereArgs: whereArgs,
     );
   }
 
@@ -394,6 +428,32 @@ class CloudBackedProfileRepository extends ProfileRepository {
       rethrow;
     } catch (error) {
       throw _cloudRecordExceptionFor('body_metric_save_failed', error);
+    }
+  }
+
+  @override
+  Future<void> deleteWeightLog({
+    String? accountId,
+    required String date,
+  }) async {
+    final effectiveAccountId = accountId ?? _requireAccountId();
+    setActiveAccountId(effectiveAccountId);
+    await activeDeviceRepository.assertActive();
+    final now = DateTime.now().toUtc().toIso8601String();
+    try {
+      await client
+          .from('body_metric_logs')
+          .update(<String, dynamic>{'deleted_at': now})
+          .eq('account_id', effectiveAccountId)
+          .eq('date', date)
+          .filter('deleted_at', 'is', null)
+          .select()
+          .limit(1);
+      await _deleteLocalWeightLog(accountId: effectiveAccountId, date: date);
+    } on Phase2RepositoryException {
+      rethrow;
+    } catch (error) {
+      throw _cloudRecordExceptionFor('body_metric_delete_failed', error);
     }
   }
 

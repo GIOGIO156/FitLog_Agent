@@ -253,6 +253,7 @@ V1 边界：正式行只有用户确认后才写入。AI Chat 先创建草稿。
 - `body_fat_percent`
 - `waist_cm`
 - `source`
+- `deleted_at`
 - `created_at`
 - `updated_at`
 
@@ -261,6 +262,8 @@ V1 边界：正式行只有用户确认后才写入。AI Chat 先创建草稿。
 - 动态热量校准
 - carb-taper review
 - 数据足够时用于 weekly review 摘要
+
+正常读取会排除 soft-deleted rows。云端 `body_metric_logs` 删除后，匹配的 `user_weight_logs` cache 镜像也会 soft delete，校准和 review 服务不再消费这条历史体重记录。
 
 ### `calorie_calibration_state`
 
@@ -470,6 +473,7 @@ Phase 2 将它实现为 Supabase Postgres 表，具备 own-row select/insert/upd
 - 只记录体重、体脂和腰围，不记录年龄、身高或公式性别。
 - 过去日期补记不静默修改当前 Cloud Profile。
 - 身体资料卡提供记录入口，Body Trends 只读展示趋势。
+- 删除通过 `deleted_at` soft delete；正常 app 读取、Body Trends、summary、校准和 review 都会排除已删除记录。
 
 ### `food_records` / `food_items`
 
