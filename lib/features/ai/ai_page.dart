@@ -182,7 +182,7 @@ class _AiPageState extends State<AiPage> {
         return strings.subscriptionInactive;
       case AiAvailabilityStatus.profileMissing:
         return strings.profileRequired;
-      case AiAvailabilityStatus.readyForPhase3:
+      case AiAvailabilityStatus.gatewayPending:
         return strings.aiAvailableStatus;
     }
   }
@@ -728,7 +728,7 @@ class _AiAccountStatusSheet extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Text(
-              strings.phase3Required,
+              strings.aiGatewayPending,
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: const Color(0xFF687568)),

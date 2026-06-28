@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-06-28 Phase 3 Acceptance Closure
+
+### Changed
+
+- Renamed the AI availability ready-but-unsendable state from Phase 3 wording to Gateway pending wording, keeping the composer editable while send remains disabled until the AI Gateway exists.
+- Updated the AI account sheet copy so it no longer says message sending starts in Phase 3.
+- Closed Phase 3 documentation drift by marking daily summary cloud upsert/cache hardening as implemented and by keeping Phase 4 test scope aligned with the no-RAG Gateway/Chat History phase boundary.
+
+### Validation
+
+- Ran `dart format lib\domain\models\ai_availability.dart lib\features\account\account_controller.dart lib\features\ai\ai_page.dart lib\core\localization\app_strings.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+
 ## 2026-06-28 Body Metric Calendar Today And Delete
 
 ### Added

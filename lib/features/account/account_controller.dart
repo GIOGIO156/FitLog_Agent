@@ -103,10 +103,10 @@ class AccountController extends ChangeNotifier {
       );
     }
     return const AiAvailability(
-      status: AiAvailabilityStatus.readyForPhase3,
+      status: AiAvailabilityStatus.gatewayPending,
       canEditComposer: true,
       canSend: false,
-      reason: 'phase3_required',
+      reason: 'gateway_pending',
     );
   }
 

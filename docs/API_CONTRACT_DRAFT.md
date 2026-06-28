@@ -662,7 +662,7 @@ Rules:
 | Cloud Profile and local cache relationship | Locked |
 | Cloud Records source of truth | Implemented foundation: active-device guard, Cloud Records migration, cloud-backed body/food/workout repositories, local SQLite partial cache |
 | Records API shape | Implemented in Flutter repositories for body/food/workout; formal service API can still wrap the same contract |
-| Daily summary API shape | Table drafted/created; cloud upsert coordinator remains Phase 3 hardening |
+| Daily summary API shape | Implemented in Phase 3 hardening: table created, app-side cloud upsert/recovery, confirmed local cache, warm cache, and eviction boundary landed |
 | Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
 | Offline Profile behavior | Locked |
 | Image upload/compression/temporary retention | Locked: Supabase Storage temp bucket, 2 images/request, target <= 1.5 MB, hard reject > 5 MB, 24h TTL |

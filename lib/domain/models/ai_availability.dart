@@ -3,7 +3,7 @@ enum AiAvailabilityStatus {
   offline,
   subscriptionInactive,
   profileMissing,
-  readyForPhase3,
+  gatewayPending,
 }
 
 class AiAvailability {
@@ -19,5 +19,5 @@ class AiAvailability {
   final bool canSend;
   final String reason;
 
-  bool get isReadyVisual => status == AiAvailabilityStatus.readyForPhase3;
+  bool get isReadyVisual => status == AiAvailabilityStatus.gatewayPending;
 }

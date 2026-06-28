@@ -307,8 +307,8 @@ class AppStrings {
   String get redeemCodeRequired => _t('Enter a code.', '请输入兑换码。');
   String get redeemCodeSuccess => _t('Redeemed.', '兑换成功。');
   String get profileRequired => _t('Profile required', '需要先完善 Profile');
-  String get phase3Required =>
-      _t('Message sending starts in Phase 3.', '消息发送将在 Phase 3 接入。');
+  String get aiGatewayPending =>
+      _t('AI Gateway is not connected yet.', 'AI Gateway 尚未接通，暂时不能发送。');
   String get authRequired => _t('Please sign in first.', '请先登录。');
 
   String get quickActions => _t('Quick Actions', '快捷操作');
