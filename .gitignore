@@ -35,6 +35,8 @@ migrate_working_dir/
 
 # Local build configuration
 /config/supabase.local.json
+/supabase/.env*.local
+/supabase/.temp/
 
 # Symbolication related
 app.*.symbols

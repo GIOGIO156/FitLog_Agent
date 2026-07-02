@@ -102,11 +102,14 @@ class AccountController extends ChangeNotifier {
         reason: 'profile_missing',
       );
     }
-    return const AiAvailability(
+    final canUseGateway =
+        backendConfigured &&
+        (cloudRuntimeContext?.canUseOfficialCloud ?? false);
+    return AiAvailability(
       status: AiAvailabilityStatus.gatewayPending,
       canEditComposer: true,
-      canSend: false,
-      reason: 'gateway_pending',
+      canSend: canUseGateway,
+      reason: canUseGateway ? 'ready' : 'gateway_pending',
     );
   }
 

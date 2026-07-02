@@ -47,6 +47,16 @@ class FitLogNotifications {
     );
   }
 
+  static void topError(BuildContext context, String message) {
+    _show(
+      context,
+      message: message,
+      kind: FitLogNotificationKind.error,
+      duration: _errorDuration,
+      topAlignedOverride: true,
+    );
+  }
+
   static void info(BuildContext context, String message) {
     _show(
       context,
@@ -89,6 +99,7 @@ class FitLogNotifications {
     required Duration duration,
     String? actionLabel,
     VoidCallback? onActionPressed,
+    bool? topAlignedOverride,
   }) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) {
@@ -108,8 +119,9 @@ class FitLogNotifications {
     final fitTheme = context.fitLogTheme;
     final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
     final topAligned =
-        kind == FitLogNotificationKind.success ||
-        kind == FitLogNotificationKind.info;
+        topAlignedOverride ??
+        (kind == FitLogNotificationKind.success ||
+            kind == FitLogNotificationKind.info);
 
     late final OverlayEntry entry;
     entry = OverlayEntry(

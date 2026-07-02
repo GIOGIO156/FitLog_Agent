@@ -1,0 +1,556 @@
+import {
+  extractBearerToken,
+  extractSessionIdFromAccessToken,
+  gatewayResponse,
+  GatewayRequestError,
+  parseGatewayRequest,
+  parseProviderGatewayBody,
+} from "./contracts.ts";
+import { MockProviderError, runMockProvider } from "./mock_provider.ts";
+import { extractOpenAiText } from "./openai_provider.ts";
+import { providerForChoice } from "./providers.ts";
+import { extractQwenText } from "./qwen_provider.ts";
+
+Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
+  const parsed = parseGatewayRequest({
+    session_id: "00000000-0000-4000-8000-000000000001",
+    message: { text: " hello " },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "auto",
+    selected_date: "2026-06-29",
+    profile_version: "profile_1",
+    device_id: "device-a",
+  });
+
+  assertEquals(parsed.messageText, "hello");
+  assertEquals(parsed.modelChoice, "chatgpt");
+  assertEquals(parsed.workflowType, "auto");
+  assertEquals(parsed.deviceId, "device-a");
+  assertEquals(parsed.attachments.length, 0);
+});
+
+Deno.test("parseGatewayRequest accepts compact conversation context", () => {
+  const parsed = parseGatewayRequest({
+    session_id: "00000000-0000-4000-8000-000000000001",
+    message: { text: "what about training?" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "auto",
+    device_id: "device-a",
+    conversation_context: {
+      messages: [
+        { role: "user", text: "Can this meal be logged?" },
+        { role: "assistant", text: "A food draft was generated." },
+      ],
+      artifacts: [
+        {
+          type: "food_draft",
+          title: "Chicken rice",
+          summary: "Food draft artifact, about 520 kcal",
+        },
+      ],
+    },
+  });
+
+  assertEquals(parsed.conversationContext?.messages.length, 2);
+  assertEquals(parsed.conversationContext?.artifacts[0].type, "food_draft");
+});
+
+Deno.test("parseGatewayRequest accepts up to three Qwen image attachments", () => {
+  const parsed = parseGatewayRequest({
+    message: { text: "Can this work as dinner?" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "meal_decision",
+    device_id: "device-a",
+    attachments: [{
+      kind: "image",
+      mime_type: "image/png",
+      base64_data: "abc123",
+      byte_length: 128,
+      name: "meal.png",
+    }, {
+      kind: "image",
+      mime_type: "image/jpeg",
+      base64_data: "def456",
+      byte_length: 256,
+      name: "label.jpg",
+    }, {
+      kind: "image",
+      mime_type: "image/webp",
+      base64_data: "ghi789",
+      byte_length: 384,
+      name: "portion.webp",
+    }],
+  });
+
+  assertEquals(parsed.attachments.length, 3);
+  assertEquals(parsed.attachments[0].mimeType, "image/png");
+  assertEquals(parsed.attachments[0].name, "meal.png");
+  assertEquals(parsed.attachments[2].mimeType, "image/webp");
+});
+
+Deno.test("parseGatewayRequest rejects future-phase fields", () => {
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      context_objects: [{ kind: "profile" }],
+    })
+  );
+});
+
+Deno.test("parseGatewayRequest rejects unsupported image requests", () => {
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "chatgpt",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/jpeg",
+        base64_data: "abc123",
+        byte_length: 128,
+      }],
+    })
+  );
+
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/gif",
+        base64_data: "abc123",
+        byte_length: 128,
+      }],
+    })
+  );
+
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/png",
+        base64_data: "abc123",
+        byte_length: 5 * 1024 * 1024,
+      }],
+    })
+  );
+
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect images" },
+      language: "en",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [0, 1, 2, 3].map((index) => ({
+        kind: "image",
+        mime_type: "image/png",
+        base64_data: `abc${index}`,
+        byte_length: 128,
+      })),
+    })
+  );
+});
+
+Deno.test("parseGatewayRequest rejects unsupported model and workflow", () => {
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "hello" },
+      language: "en",
+      model_choice: "provider_raw",
+      workflow_hint: "auto",
+      device_id: "device-a",
+    })
+  );
+
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "hello" },
+      language: "en",
+      model_choice: "chatgpt",
+      workflow_hint: "open_agent_loop",
+      device_id: "device-a",
+    })
+  );
+});
+
+Deno.test("extractSessionIdFromAccessToken uses session claim fallback order", () => {
+  const token = tokenFor({
+    sub: "acct",
+    session_id: "session-primary",
+    sid: "session-secondary",
+    jti: "session-tertiary",
+  });
+  const sidToken = tokenFor({ sub: "acct", sid: "session-secondary" });
+  const jtiToken = tokenFor({ sub: "acct", jti: "session-tertiary" });
+
+  assertEquals(extractSessionIdFromAccessToken(token), "session-primary");
+  assertEquals(extractSessionIdFromAccessToken(sidToken), "session-secondary");
+  assertEquals(extractSessionIdFromAccessToken(jtiToken), "session-tertiary");
+  assertEquals(extractSessionIdFromAccessToken("not-a-jwt"), null);
+});
+
+Deno.test("extractBearerToken parses Authorization header", () => {
+  assertEquals(extractBearerToken("Bearer token_1"), "token_1");
+  assertEquals(extractBearerToken("bearer token_2"), "token_2");
+  assertEquals(extractBearerToken("token_3"), null);
+});
+
+Deno.test("gatewayResponse emits Step 1-compatible error envelope", () => {
+  const body = gatewayResponse({
+    modelChoice: "qwen",
+    language: "en",
+    workflow: "meal_decision",
+    error: {
+      code: "subscription_required",
+      message: "AI subscription is required.",
+    },
+  });
+
+  assertEquals(body.model_choice, "qwen");
+  assertEquals(body.model_provider, null);
+  assertEquals((body.message as Record<string, unknown>).language, "en");
+  assertEquals((body.error as Record<string, unknown>).code, "subscription_required");
+  assertEquals(body.draft, null);
+});
+
+Deno.test("parseProviderGatewayBody parses multimodal JSON with food draft", () => {
+  const request = parseGatewayRequest({
+    message: { text: "log this food" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+    attachments: [{
+      kind: "image",
+      mime_type: "image/jpeg",
+      base64_data: "abc123",
+      byte_length: 128,
+    }],
+  });
+  const parsed = parseProviderGatewayBody(JSON.stringify({
+    message: { text: "Review this draft before saving." },
+    needs_clarification: false,
+    clarification_questions: [],
+    draft: validDraft(),
+  }), request);
+
+  assertEquals(parsed.messageText, "Review this draft before saving.");
+  assertEquals(parsed.draft?.meal_name, "Chicken rice");
+  assertEquals(parsed.needsClarification, false);
+});
+
+Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
+  const request = parseGatewayRequest({
+    message: { text: "Log bench press 20 kg for 3 sets of 10" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  });
+  const parsed = parseProviderGatewayBody(JSON.stringify({
+    message: { text: "Review this workout draft before saving." },
+    needs_clarification: false,
+    clarification_questions: [],
+    draft: validWorkoutDraft(),
+  }), request);
+
+  assertEquals(parsed.messageText, "Review this workout draft before saving.");
+  assertEquals(
+    (parsed.draft as { schema_version?: string } | null)?.schema_version,
+    "workout_draft.v1",
+  );
+});
+
+Deno.test("parseProviderGatewayBody extracts JSON object from provider prose", () => {
+  const request = parseGatewayRequest({
+    message: { text: "I walked 10 minutes. Create a workout draft." },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  });
+  const parsed = parseProviderGatewayBody([
+    "Sure, here is the editable draft:",
+    "```json",
+    JSON.stringify({
+      message: { text: "Review this workout draft before saving." },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft: validWorkoutDraft(),
+    }),
+    "```",
+  ].join("\n"), request);
+
+  assertEquals(parsed.messageText, "Review this workout draft before saving.");
+  assertEquals(
+    (parsed.draft as { schema_version?: string } | null)?.schema_version,
+    "workout_draft.v1",
+  );
+});
+
+Deno.test("runMockProvider returns fixed text and stable simulated failures", () => {
+  const baseRequest = parseGatewayRequest({
+    message: { text: "hello" },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  });
+  assert(runMockProvider(baseRequest).includes("mock reply"));
+
+  const timeoutRequest = parseGatewayRequest({
+    message: { text: "[mock_timeout]" },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  });
+  try {
+    runMockProvider(timeoutRequest);
+    throw new Error("expected timeout");
+  } catch (error) {
+    assert(error instanceof MockProviderError);
+    assertEquals((error as MockProviderError).code, "gateway_timeout");
+  }
+});
+
+Deno.test("provider router maps stable choices to provider adapters", () => {
+  const openAi = providerForChoice("chatgpt", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, fakeFetch({ output_text: "ok" }));
+  const qwen = providerForChoice("qwen", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, fakeFetch({ choices: [{ message: { content: "ok" } }] }));
+
+  assertEquals(openAi.providerId, "openai");
+  assertEquals(openAi.model, "openai-model");
+  assertEquals(qwen.providerId, "qwen");
+  assertEquals(qwen.model, "qwen-model");
+});
+
+Deno.test("provider parsers extract text and reject invalid payloads", () => {
+  assertEquals(extractOpenAiText({ output_text: " hello " }), "hello");
+  assertEquals(
+    extractQwenText({ choices: [{ message: { content: " 你好 " } }] }),
+    "你好",
+  );
+
+  assertThrowsProviderFailure(() => extractOpenAiText({ output_text: "" }));
+  assertThrowsProviderFailure(() => extractQwenText({ choices: [] }));
+});
+
+Deno.test("provider adapter builds safe request without leaking unsupported fields", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const provider = providerForChoice("qwen", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, async (_url, init) => {
+    capturedBody = JSON.parse(init?.body?.toString() ?? "{}");
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+      { status: 200 },
+    );
+  });
+
+  const result = await provider.generateText(parseGatewayRequest({
+    message: { text: "hello" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  }));
+
+  assertEquals(result, "ok");
+  assertEquals(capturedBody?.model, "qwen-model");
+  assertEquals(capturedBody?.enable_thinking, false);
+  assertEquals("attachments" in (capturedBody ?? {}), false);
+  assertEquals("context_objects" in (capturedBody ?? {}), false);
+});
+
+Deno.test("Qwen provider adapter builds multimodal image request", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const provider = providerForChoice("qwen", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, async (_url, init) => {
+    capturedBody = JSON.parse(init?.body?.toString() ?? "{}");
+    return new Response(
+      JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              message: { text: "ok" },
+              needs_clarification: false,
+              clarification_questions: [],
+              draft: null,
+            }),
+          },
+        }],
+      }),
+      { status: 200 },
+    );
+  });
+
+  await provider.generateText(parseGatewayRequest({
+    message: { text: "Can this be dinner?" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "meal_decision",
+    device_id: "device-a",
+    attachments: [{
+      kind: "image",
+      mime_type: "image/webp",
+      base64_data: "base64-image",
+      byte_length: 256,
+    }, {
+      kind: "image",
+      mime_type: "image/png",
+      base64_data: "second-image",
+      byte_length: 128,
+    }],
+  }));
+
+  const json = JSON.stringify(capturedBody);
+  assertEquals(capturedBody?.response_format, { type: "json_object" });
+  assert(json.includes("data:image/webp;base64,base64-image"));
+  assert(json.includes("data:image/png;base64,second-image"));
+  assertEquals(json.includes("official_record_write"), false);
+  assertEquals(json.includes("rag_context"), false);
+});
+
+function assertThrowsGatewayRequest(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    assert(error instanceof GatewayRequestError);
+    assertEquals((error as GatewayRequestError).code, "record_schema_mismatch");
+    return;
+  }
+  throw new Error("Expected GatewayRequestError");
+}
+
+function assertThrowsProviderFailure(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    assertEquals((error as Error).message, "provider_failure");
+    return;
+  }
+  throw new Error("Expected provider failure");
+}
+
+function fakeFetch(body: unknown): typeof fetch {
+  return (() =>
+    Promise.resolve(
+      new Response(JSON.stringify(body), { status: 200 }),
+    )) as typeof fetch;
+}
+
+function validDraft() {
+  return {
+    meal_name: "Chicken rice",
+    total_weight_g: 320,
+    calories_kcal: 520,
+    protein_g: 32,
+    carbs_g: 62,
+    fat_g: 14,
+    confidence: 0.72,
+    estimation_notes: "Estimated from visible plate.",
+    items: [{
+      name: "Chicken",
+      weight_g: 120,
+      calories_kcal: 220,
+      protein_g: 28,
+      carbs_g: 0,
+      fat_g: 10,
+    }],
+  };
+}
+
+function validWorkoutDraft() {
+  return {
+    schema_version: "workout_draft.v1",
+    record_name: "Bench press",
+    date: null,
+    notes: "Generated by AI chat.",
+    exercises: [{
+      exercise_name: "Bench Press",
+      exercise_key: null,
+      exercise_type: "strength",
+      body_part: null,
+      duration_minutes: null,
+      active_duration_minutes: null,
+      cardio_intensity_basis: null,
+      sets: [{
+        weight_kg: 20,
+        reps: 10,
+        duration_seconds: null,
+      }],
+    }],
+  };
+}
+
+function tokenFor(payload: Record<string, unknown>): string {
+  return [
+    encodeBase64Url(JSON.stringify({ alg: "none", typ: "JWT" })),
+    encodeBase64Url(JSON.stringify(payload)),
+    "signature",
+  ].join(".");
+}
+
+function encodeBase64Url(value: string): string {
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function assert(value: boolean, message = "Assertion failed"): void {
+  if (!value) {
+    throw new Error(message);
+  }
+}
+
+function assertEquals(actual: unknown, expected: unknown): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}

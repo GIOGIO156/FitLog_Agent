@@ -288,7 +288,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(
       find.text("I'm listening, Cloud Nick", findRichText: true),
@@ -321,19 +321,22 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     await tester.tap(find.byIcon(Icons.manage_accounts_outlined));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     final switchFinder = find.byKey(
       const ValueKey<String>('ai_local_context_permission_switch'),
     );
+    await tester.ensureVisible(switchFinder);
+    await tester.pump();
     expect(switchFinder, findsOneWidget);
     expect(controller.localContextPermission?.allowed, isFalse);
 
     await tester.tap(switchFinder);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(controller.localContextPermission?.allowed, isTrue);
     expect(tester.widget<SwitchListTile>(switchFinder).value, isTrue);

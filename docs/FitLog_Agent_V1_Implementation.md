@@ -831,7 +831,7 @@ AI providers：
 
 - App 端先压缩图片，再上传到 Supabase Storage 私有临时 bucket。
 - AI Gateway 接收 attachment reference，而不是长期公开 URL。
-- 每次 AI 请求最多 2 张图片。
+- 每次 AI 请求最多 3 张图片。
 - 压缩目标为单张不超过 1.5 MB；压缩后仍超过 5 MB 则拒绝并提示用户换图或裁剪。
 - 推荐最长边 1600 px，默认使用 JPEG，除非图片确实需要透明通道。
 - 原图默认不长期保存；临时图片默认 24 小时过期。

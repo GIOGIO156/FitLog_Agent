@@ -1,32 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
-import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import 'manual_food_entry_page.dart';
 import 'paste_ai_result_page.dart';
+import 'photo_food_analysis_page.dart';
 
 class AddFoodPage extends StatelessWidget {
   const AddFoodPage({super.key, this.initialDate});
 
   final String? initialDate;
-
-  Future<void> _copyPrompt(BuildContext context) async {
-    final language = context.languageController.language;
-    await Clipboard.setData(
-      ClipboardData(text: PromptTemplates.promptForLanguage(language)),
-    );
-
-    if (!context.mounted) {
-      return;
-    }
-
-    FitLogNotifications.success(context, context.strings.promptCopied);
-  }
 
   Future<void> _openPasteAi(BuildContext context) async {
     final saved = await Navigator.of(context).push<bool>(
@@ -52,6 +37,18 @@ class AddFoodPage extends StatelessWidget {
     }
   }
 
+  Future<void> _openPhotoAi(BuildContext context) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PhotoFoodAnalysisPage(initialDate: initialDate),
+      ),
+    );
+
+    if (saved == true && context.mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
@@ -64,13 +61,13 @@ class AddFoodPage extends StatelessWidget {
           children: <Widget>[
             FitLogPageHeader(
               title: strings.addFood,
-              subtitle: strings.localFirstAiBoundaryHint,
+              subtitle: strings.estimateNotice,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
             ),
-            _PromptShortcutButton(
-              title: strings.copyAiFoodPrompt,
-              subtitle: strings.copyPromptSubtitle,
-              onTap: () => _copyPrompt(context),
+            _PrimaryPhotoAiButton(
+              title: strings.photoAiAnalysis,
+              subtitle: strings.photoAiEntrySubtitle,
+              onTap: () => _openPhotoAi(context),
             ),
             _AddFoodActionCard(
               icon: Icons.paste_outlined,
@@ -86,12 +83,6 @@ class AddFoodPage extends StatelessWidget {
               subtitle: strings.manualEntrySubtitle,
               onTap: () => _openManualEntry(context),
             ),
-            _AddFoodActionCard(
-              icon: Icons.photo_camera_outlined,
-              color: const Color(0xFF6EA4DF),
-              title: strings.photoAiAnalysis,
-              subtitle: strings.photoAiPlaceholderHint,
-            ),
           ],
         ),
       ),
@@ -99,8 +90,8 @@ class AddFoodPage extends StatelessWidget {
   }
 }
 
-class _PromptShortcutButton extends StatelessWidget {
-  const _PromptShortcutButton({
+class _PrimaryPhotoAiButton extends StatelessWidget {
+  const _PrimaryPhotoAiButton({
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -147,7 +138,7 @@ class _PromptShortcutButton extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Icon(
-                    Icons.content_copy_rounded,
+                    Icons.photo_camera_outlined,
                     color: Colors.white,
                   ),
                 ),
@@ -185,8 +176,8 @@ class _PromptShortcutButton extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    context.strings.copy,
-                    style: TextStyle(
+                    context.strings.start,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: fitTheme.primaryDeep,
                     ),

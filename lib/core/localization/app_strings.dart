@@ -29,16 +29,8 @@ class AppStrings {
       _t('Saved only on this device for your local UI.', '仅保存在本机，用于本地 UI 展示。');
   String get localFirstTipTitle => _t('Local-first', 'Local-first');
   String get localFirstAiBoundaryHint => _t(
-    'Prompt copy and JSON paste stay manual. There is still no in-app AI or photo recognition in this local build.',
-    'Prompt 复制和 JSON 粘贴仍然是手动流程。这个本地版本依然没有 App 内 AI 或图片识别。',
-  );
-  String get photoAiPlaceholderHint => _t(
-    'Reserved entry only. No in-app image analysis is implemented yet.',
-    '当前只是预留入口，尚未实现 App 内图片分析。',
-  );
-  String get copyPromptSubtitle => _t(
-    'Copy the static prompt for external AI tools',
-    '复制静态 prompt 给外部 AI 工具使用',
+    'AI outputs stay as drafts until you review and save them.',
+    'AI 输出在你确认保存前都只是草稿。',
   );
   String foodRecordsSummary(int mealCount) =>
       _t('$mealCount meal${mealCount == 1 ? '' : 's'}', '已记录 $mealCount 餐');
@@ -70,13 +62,52 @@ class AppStrings {
   );
   String get aiComposerHint => _t('Ask away with FitLog', '快问问 FitLog');
   String get aiSendTooltip => _t('Send', '发送');
-  String get aiAttachTooltip =>
-      _t('Image attachment is not available in Phase 1', 'Phase 1 暂不支持图片附件');
+  String get aiAttachTooltip => _t('Attach image', '添加图片');
+  String get aiImageRequiresQwen =>
+      _t('Image chat requires Qwen.', '图片对话需要使用千问。');
+  String get aiImageOnlyMessage => _t('Please analyze this image.', '请分析这张图片。');
+  String get aiImageLimitReached =>
+      _t('You can attach up to 3 images.', '最多可添加 3 张图片。');
+  String get aiFoodDraftCardTitle => _t('Food draft ready', '饮食草稿已生成');
+  String aiFoodDraftCardSummary(String mealName, String calories) =>
+      _t('$mealName · about $calories kcal', '$mealName · 约 $calories kcal');
+  String get aiFoodDraftCardAction => _t('Review and confirm', '查看并确认饮食草稿');
+  String get aiFoodDraftCardUnavailable =>
+      _t('Draft unavailable. Please regenerate it.', '草稿不可用，请重新生成。');
+  String get aiWorkoutDraftCardTitle => _t('Workout draft ready', '训练草稿已生成');
+  String aiWorkoutDraftCardSummary(String recordName, int exerciseCount) => _t(
+    '$recordName · $exerciseCount exercise${exerciseCount == 1 ? '' : 's'}',
+    '$recordName · $exerciseCount 个动作',
+  );
+  String get aiWorkoutDraftCardAction => _t('Review and confirm', '查看并确认');
+  String get aiWorkoutDraftCardUnavailable =>
+      _t('Workout draft unavailable. Please regenerate it.', '训练草稿不可用，请重新生成。');
+  String get aiWorkoutDraftReplaceTitle =>
+      _t('Replace unsaved workout draft?', '替换未保存训练草稿？');
+  String get aiWorkoutDraftReplaceMessage => _t(
+    'You already have an unsaved workout draft. Replace it with this AI-generated draft?',
+    '当前已有一条未保存训练草稿。要用这条 AI 生成的训练草稿替换它吗？',
+  );
+  String get aiWorkoutDraftReplaceAction => _t('Replace draft', '替换草稿');
   String get aiHistoryTooltip => _t('Chat history', '历史会话');
   String get aiHistoryTitle => _t('Chat history', '历史会话');
   String get aiHistorySignedOut => _t(
     'History will be available after cloud accounts and chat storage are implemented.',
     '云端账号和会话存储实现后，这里会显示历史会话。',
+  );
+  String get aiHistoryEmpty => _t('No chats yet.', '还没有会话。');
+  String get aiNewChat => _t('New chat', '新会话');
+  String get aiUntitledChat => _t('Untitled chat', '未命名会话');
+  String get aiArchiveChat => _t('Archive chat', '归档会话');
+  String get aiDeleteChat => _t('Delete chat', '删除会话');
+  String get aiRenameChat => _t('Rename chat', '重命名会话');
+  String get aiRenameChatEmpty => _t('Enter a chat title.', '请输入会话标题。');
+  String get aiRenameChatFailed =>
+      _t('Chat title could not be renamed.', '会话重命名失败。');
+  String get aiDeleteChatConfirmTitle => _t('Delete chat?', '删除会话？');
+  String aiDeleteChatConfirmBody(String title) => _t(
+    'Delete "$title" from chat history? This cannot be undone.',
+    '确认从历史会话中删除“$title”？此操作无法撤销。',
   );
   String get aiAccountTooltip => _t('Account and subscription', '账号与订阅');
   String get aiAccountComingSoon =>
@@ -84,8 +115,11 @@ class AppStrings {
   String get aiProviderChatGpt => _t('ChatGPT', 'ChatGPT');
   String get aiProviderQwen => _t('Qwen', '千问');
   String get aiSignedOutStatus => _t('Signed out', '未登录');
-  String get aiAvailableStatus => _t('Available', '可用');
+  String get aiAvailableStatus => _t('Ready', '可用');
+  String get aiUnavailableStatus => _t('Off', '不可用');
   String get aiOfflineStatus => _t('Offline', '离线');
+  String get aiPreparingStatus => _t('Preparing', '准备中');
+  String get aiThinkingStatus => _t('Thinking', '思考中');
   String get phase2BackendNotConfigured => _t(
     'Supabase is not configured for this build. Start the app with SUPABASE_URL and SUPABASE_ANON_KEY to test login.',
     '当前构建未配置 Supabase。请使用 SUPABASE_URL 和 SUPABASE_ANON_KEY 启动后测试登录。',
@@ -93,8 +127,8 @@ class AppStrings {
   String get profileSignInTitle =>
       _t('Sign in to manage your Profile', '登录后管理 Profile');
   String get profileSignInBody => _t(
-    'Agent V1 keeps the formal Profile in the cloud. Local food and workout records stay on this device.',
-    'Agent V1 的正式 Profile 保存在云端。本机饮食和训练记录仍保留在这台设备上。',
+    'Sign in to manage your Cloud Profile and cloud official records. Existing local history is never uploaded without confirmation.',
+    '登录后管理云端 Profile 和云端正式记录。已有本机历史不会在未确认时上传。',
   );
   String get emailLabel => _t('Email', '邮箱');
   String get otpCodeLabel => _t('OTP code', '验证码');
@@ -204,8 +238,8 @@ class AppStrings {
         return _t('Redeem failed. Please try again.', '兑换失败，请重试。');
       case 'local_context_save_failed':
         return _t(
-          'Local context permission could not be updated. Please try again.',
-          '本机记录授权更新失败，请重试。',
+          'Record-summary permission could not be updated. Please try again.',
+          '用户记录摘要授权更新失败，请重试。',
         );
       case 'profile_load_failed':
         return _t(
@@ -284,10 +318,10 @@ class AppStrings {
     '离线状态：可以查看缓存 Profile，但不能保存修改。',
   );
   String get aiLocalContextPermissionTitle =>
-      _t('Use device records for AI answers', '允许 AI 使用本机记录摘要');
+      _t('Use record summaries for AI answers', '允许 AI 使用用户记录摘要');
   String get aiLocalContextPermissionBody => _t(
-    'When enabled, future AI answers may use necessary summaries from food, workout, and weight records on this device. Full history is not uploaded in Phase 2.',
-    '开启后，后续 AI 回答可以使用这台设备上的饮食、训练和体重记录必要摘要。Phase 2 不上传完整历史。',
+    'When enabled, later AI workflows may use necessary cloud summaries from confirmed food, workout, and body records. Full raw history is not uploaded by default.',
+    '开启后，后续 AI workflow 可以使用已确认饮食、训练和身体记录的必要云端摘要。默认不会上传完整原始历史。',
   );
   String get subscriptionActive => _t('Subscription active', '订阅已生效');
   String get subscriptionInactive => _t('Subscription inactive', '订阅未生效');
@@ -309,18 +343,30 @@ class AppStrings {
   String get profileRequired => _t('Profile required', '需要先完善 Profile');
   String get aiGatewayPending =>
       _t('AI Gateway is not connected yet.', 'AI Gateway 尚未接通，暂时不能发送。');
+  String get aiGatewayConnected =>
+      _t('AI Gateway is connected.', 'AI Gateway 已接通。');
+  String get aiGatewayTimeout =>
+      _t('AI response timed out. Try again.', 'AI 响应超时，请重试。');
+  String get aiProviderFailure => _t(
+    'AI provider could not answer. Try again later.',
+    'AI 服务暂时无法回答，请稍后再试。',
+  );
+  String get aiRequestUnsupported =>
+      _t('This AI request is not supported yet.', '当前版本暂不支持这个 AI 请求。');
+  String get aiNetworkFailure =>
+      _t('Network failed. Your input was kept.', '网络连接失败，输入已保留。');
+  String get aiChatNetworkFailure => _t(
+    'Network failed. Your message was kept for retry.',
+    '网络连接失败，消息已保留，可重试。',
+  );
+  String get aiUnknownFailure =>
+      _t('AI request failed. Try again.', 'AI 请求失败，请重试。');
   String get authRequired => _t('Please sign in first.', '请先登录。');
 
   String get quickActions => _t('Quick Actions', '快捷操作');
   String get addFood => _t('Add Food', '添加食物');
   String get addWorkout => _t('Add Workout', '添加训练');
   String get saveWorkoutPlan => _t('Save Workout Record', '保存训练记录');
-
-  String get copyAiFoodPrompt => _t('Copy AI Food Prompt', '复制 AI 食物提示词');
-  String get promptCopied => _t(
-    'AI food prompt copied. Paste it into ChatGPT or Gemini after uploading your food photo.',
-    'AI 食物提示词已复制。上传食物照片后，请粘贴到 ChatGPT 或 Gemini。',
-  );
 
   String get estimateNotice => _t(
     'All values are estimates for personal logging. Energy ratio uses the deficit target plus logged net exercise; g/kg uses the bodyweight table independently.',
@@ -362,20 +408,14 @@ class AppStrings {
     switch (source) {
       case 'ai_paste':
         return _t('AI Paste', 'AI 粘贴');
+      case 'ai_photo':
+        return _t('AI Photo', '图片 AI');
       case 'manual':
         return _t('Manual', '手动录入');
       default:
         return source;
     }
   }
-
-  String get recommendedFlow => _t('Recommended Flow', '推荐流程');
-  String get step1 => _t('1. Open ChatGPT or Gemini', '1. 打开 ChatGPT 或 Gemini');
-  String get step2 => _t('2. Upload or take a food photo', '2. 上传或拍摄食物照片');
-  String get step3 => _t('3. Paste the copied prompt', '3. 粘贴已复制的提示词');
-  String get step4 => _t('4. Copy the JSON result', '4. 复制 JSON 结果');
-  String get step5 =>
-      _t('5. Return here and tap Paste AI Result', '5. 返回这里并点击“粘贴 AI 结果”');
 
   String get recommendedGpt => _t('Recommended GPT', '推荐 GPT');
 
@@ -388,7 +428,7 @@ class AppStrings {
 
   String get pasteAiResult => _t('Paste AI Result', '粘贴 AI 结果');
   String get pasteAiSubtitle =>
-      _t('Paste ChatGPT/Gemini JSON and parse', '粘贴 ChatGPT/Gemini JSON 并解析');
+      _t('Paste external AI JSON and parse', '粘贴外部 AI JSON 并解析');
   String get manualEntry => _t('Manual Entry', '手动录入');
   String get manualEntrySubtitle =>
       _t('Manually input a food record', '手动填写一条食物记录');
@@ -420,6 +460,49 @@ class AppStrings {
   String get noFoodItemListDetected =>
       _t('No item list detected in JSON.', 'JSON 中未检测到 item 列表。');
   String get photoAiAnalysis => _t('Photo AI Analysis', '图片 AI 分析');
+  String get photoAiEntrySubtitle => _t(
+    'Take or choose a photo to create an editable food draft',
+    '拍照或选择图片，生成可编辑食物草稿',
+  );
+  String get start => _t('Start', '开始');
+  String get photoAiHeaderBody => _t(
+    'FitLog AI estimates a draft from up to 3 food images. Review and save on the next page.',
+    'FitLog AI 会从最多 3 张食物图片估算草稿。请在下一页确认后再保存。',
+  );
+  String get photoAiPickPlaceholder =>
+      _t('Add up to 3 food photos', '最多添加 3 张食物图片');
+  String get takePhoto => _t('Photo', '拍照');
+  String get chooseFromGallery => _t('Gallery', '相册');
+  String get retakePhoto => _t('Photo', '拍照');
+  String get replacePhoto => _t('Replace', '换图');
+  String get removePhoto => _t('Remove', '移除');
+  String get photoAiNoteLabel => _t('Optional note', '补充说明');
+  String get photoAiNoteHint => _t(
+    'Example: I ate half the rice; chicken thigh without skin',
+    '例如：米饭只吃了一半，鸡腿去皮',
+  );
+  String get startPhotoAiAnalysis => _t('Analyze photo', '开始分析');
+  String get photoAiAnalyzing => _t('Analyzing...', '正在分析...');
+  String get photoAiPickImageFirst =>
+      _t('Choose at least one food photo first.', '请先选择至少一张食物图片。');
+  String get photoAiPickFailed =>
+      _t('Could not open camera or gallery.', '无法打开相机或相册。');
+  String get photoAiUnsupportedImage =>
+      _t('Use a JPEG, PNG, or WebP image.', '请使用 JPEG、PNG 或 WebP 图片。');
+  String get photoAiImageTooLarge => _t(
+    'One compressed image is too large. Choose smaller images or retake it.',
+    '有图片压缩后仍过大，请换更小的图片或重新拍摄。',
+  );
+  String get photoAiNeedsClarification => _t(
+    'The image is unclear. Add a note or retake the photo.',
+    '图片信息不够清楚，请补充说明或重新拍摄。',
+  );
+  String get photoAiNoDraft =>
+      _t('AI did not return a usable food draft.', 'AI 未返回可用的食物草稿。');
+  String get photoAiNetworkFailure => _t(
+    'Network failed. Your photo and note are still here. Try again.',
+    '网络连接失败，当前图片和说明仍在，可重试。',
+  );
   String get comingSoon => _t('Coming soon', '即将上线');
 
   String get pasteInstruction => _t(
@@ -755,8 +838,8 @@ class AppStrings {
   String get signOutAccount => _t('Sign out', '退出账号');
   String get signOutAccountTitle => _t('Sign out of this account?', '退出当前账号？');
   String get signOutAccountBody => _t(
-    'Food, workout, and weight records on this device will stay here. Cloud Profile cache for this account will be cleared.',
-    '这台设备上的饮食、训练和体重记录会保留；当前账号的云端 Profile 缓存会清除。',
+    'Cloud official records stay in this account. This device will clear the sign-in session and Cloud Profile cache.',
+    '云端正式记录仍保留在当前账号中；这台设备会清除登录态和 Cloud Profile 缓存。',
   );
   String get signedOut => _t('Signed out.', '已退出账号。');
 

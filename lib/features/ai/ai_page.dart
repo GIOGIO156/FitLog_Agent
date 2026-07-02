@@ -1,24 +1,66 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../app.dart';
 import '../../core/localization/localization_extensions.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_notifications.dart';
+import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_availability.dart';
+import '../../domain/models/ai_food_photo_analysis.dart';
+import '../../domain/models/ai_gateway_error.dart';
+import '../../domain/models/ai_gateway_request.dart';
+import '../../domain/models/ai_workout_draft.dart';
+import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/subscription_status.dart';
 import '../account/account_controller.dart';
+import '../food/food_image_picker.dart';
+import '../food/food_preview_page.dart';
+import '../workout/add_workout_page.dart';
+import 'ai_chat_controller.dart';
 
 enum AiShellMode { disabled, ready, processing, needsClarification }
 
 enum _AiProvider { chatGpt, qwen }
 
+enum _AiBackgroundMotion { idleLanding, quietChat }
+
+enum _AiStatusTone { available, blocked, unavailable }
+
+const String _selectedAiProviderPreferenceKey = 'fitlog.ai.selected_provider';
+const int _maxChatImages = 3;
+const int _maxChatImageBytes = 4 * 1024 * 1024;
+const double _aiTopBarHeight = 58;
+const double _aiMessageTopGap = 4;
+const double _aiMessageBottomGap = 10;
+const double _aiDefaultComposerHeight = 88;
+const double _aiSendingTurnEstimatedHeight = 96;
+const Set<String> _supportedChatImageMimeTypes = <String>{
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+};
+
+class _AiStatusPresentation {
+  const _AiStatusPresentation({required this.label, required this.tone});
+
+  final String label;
+  final _AiStatusTone tone;
+}
+
 class AiPage extends StatefulWidget {
-  const AiPage({super.key, this.mode, this.displayName});
+  const AiPage({super.key, this.mode, this.displayName, this.imagePicker});
 
   final AiShellMode? mode;
   final String? displayName;
+  final FoodImagePicker? imagePicker;
 
   @override
   State<AiPage> createState() => _AiPageState();
@@ -26,12 +68,30 @@ class AiPage extends StatefulWidget {
 
 class _AiPageState extends State<AiPage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _messageScrollController = ScrollController();
+  final GlobalKey _composerLayoutKey = GlobalKey();
+  final GlobalKey _latestUserMessageKey = GlobalKey();
+  late final FoodImagePicker _imagePicker;
   _AiProvider _provider = _AiProvider.chatGpt;
   bool _historyOpen = false;
+  List<PickedFoodImage> _attachedImages = const <PickedFoodImage>[];
+  String? _composerNoticeText;
+  Timer? _composerNoticeTimer;
   String? _accountBoundaryKey;
+  String? _chatSyncKey;
+  double _composerHeight = _aiDefaultComposerHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
+    unawaited(_loadProviderPreference());
+  }
 
   @override
   void dispose() {
+    _composerNoticeTimer?.cancel();
+    _messageScrollController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -39,22 +99,50 @@ class _AiPageState extends State<AiPage> {
   @override
   Widget build(BuildContext context) {
     final accountController = _maybeAccountController(listen: true);
+    final chatController = _maybeChatController(listen: true);
+    final cloudRuntimeContext = _maybeCloudRuntimeContext(listen: true);
     _syncAccountDraftBoundary(accountController);
+    _scheduleChatSync(accountController, chatController);
     final effectiveMode = _effectiveMode(accountController);
     final cloudNickname =
         accountController?.cloudProfileState.cloudProfile?.profile.nickname;
-    final canSend = widget.mode == null
+    final canUseGateway = widget.mode == null
         ? accountController?.aiAvailability.canSend ?? false
         : effectiveMode != AiShellMode.disabled;
+    final hasConversation = chatController?.hasVisibleConversation ?? false;
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewInsets.bottom;
     final keyboardVisible = bottomInset > 0;
-    final centerBottomPadding = keyboardVisible
-        ? math.min(bottomInset + 190.0, mediaQuery.size.height * 0.64)
-        : 148.0;
+    final quietBackground =
+        hasConversation ||
+        keyboardVisible ||
+        (chatController?.sending ?? false);
+    final status = _statusPresentation(
+      context,
+      accountController: accountController,
+      canSend: canUseGateway,
+    );
+    final gatewayErrorLabel = chatController?.lastError == null
+        ? null
+        : _aiErrorLabel(context, chatController!.lastError!);
+    final errorLabel = _composerNoticeText ?? gatewayErrorLabel;
     final composerBottomPadding = keyboardVisible
         ? bottomInset + 12.0
         : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
+    final bottomObstruction =
+        composerBottomPadding + _composerHeight + _aiMessageBottomGap;
+    final contentTopPadding = hasConversation
+        ? _aiTopBarHeight + _aiMessageTopGap
+        : 74.0;
+    final viewportHeight =
+        mediaQuery.size.height -
+        mediaQuery.padding.top -
+        contentTopPadding -
+        bottomObstruction;
+    final sendAnchorPadding = chatController?.sending == true
+        ? math.max(0.0, viewportHeight - _aiSendingTurnEstimatedHeight)
+        : 0.0;
+    _scheduleComposerMeasure();
 
     return Stack(
       key: const ValueKey<String>('ai_page'),
@@ -63,7 +151,9 @@ class _AiPageState extends State<AiPage> {
           child: RepaintBoundary(
             child: _AiAnimatedBackground(
               mode: effectiveMode,
-              pausedForKeyboard: keyboardVisible,
+              motion: quietBackground
+                  ? _AiBackgroundMotion.quietChat
+                  : _AiBackgroundMotion.idleLanding,
             ),
           ),
         ),
@@ -71,22 +161,49 @@ class _AiPageState extends State<AiPage> {
           bottom: false,
           child: Stack(
             children: <Widget>[
-              Positioned.fill(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(20, 18, 20, centerBottomPadding),
-                  child: Center(
-                    child: _AiCenterStatus(
-                      mode: effectiveMode,
-                      displayName:
-                          widget.displayName ??
-                          cloudNickname ??
-                          accountController?.authSession.displayName,
+              if (hasConversation)
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      contentTopPadding,
+                      18,
+                      bottomObstruction,
+                    ),
+                    child: _AiMessageList(
+                      controller: chatController!,
+                      scrollController: _messageScrollController,
+                      latestUserKey: _latestUserMessageKey,
+                      sendAnchorBottomPadding: sendAnchorPadding,
+                      onOpenFoodDraft: _openFoodDraftPreview,
+                      onOpenWorkoutDraft: _openWorkoutDraftPreview,
+                    ),
+                  ),
+                )
+              else
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(18, 18, 18, bottomObstruction),
+                    child: Center(
+                      child: SingleChildScrollView(
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: _AiCenterStatus(
+                          mode: effectiveMode,
+                          displayName:
+                              widget.displayName ??
+                              cloudNickname ??
+                              accountController?.authSession.displayName,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
               _AiTopBar(
                 accountController: accountController,
+                showProviderStatus: hasConversation,
+                provider: _provider,
+                status: status,
+                onProviderChanged: _selectProvider,
                 onOpenHistory: () => setState(() => _historyOpen = true),
               ),
               Align(
@@ -100,15 +217,28 @@ class _AiPageState extends State<AiPage> {
                   ),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 620),
-                    child: _AiComposer(
-                      controller: _controller,
-                      provider: _provider,
-                      canSend: canSend,
-                      mode: effectiveMode,
-                      statusLabel: _statusLabel(context, accountController),
-                      onProviderChanged: (provider) {
-                        setState(() => _provider = provider);
-                      },
+                    child: KeyedSubtree(
+                      key: _composerLayoutKey,
+                      child: _AiComposer(
+                        controller: _controller,
+                        provider: _provider,
+                        canSend: canUseGateway,
+                        sending: chatController?.sending ?? false,
+                        attachedImages: _attachedImages,
+                        mode: effectiveMode,
+                        status: status,
+                        hasConversation: hasConversation,
+                        errorLabel: errorLabel,
+                        onProviderChanged: _selectProvider,
+                        onAttachPressed: _chooseImageAttachment,
+                        onRemoveAttachment: _removeImageAttachment,
+                        onSend: (text) => _sendMessage(
+                          text: text,
+                          chatController: chatController,
+                          accountController: accountController,
+                          cloudRuntimeContext: cloudRuntimeContext,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -117,7 +247,10 @@ class _AiPageState extends State<AiPage> {
           ),
         ),
         if (_historyOpen)
-          _AiHistoryPanel(onClose: () => setState(() => _historyOpen = false)),
+          _AiHistoryPanel(
+            controller: chatController,
+            onClose: () => setState(() => _historyOpen = false),
+          ),
         Positioned(
           left: 0,
           right: 0,
@@ -150,6 +283,22 @@ class _AiPageState extends State<AiPage> {
     }
   }
 
+  AiChatController? _maybeChatController({required bool listen}) {
+    try {
+      return Provider.of<AiChatController>(context, listen: listen);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  CloudRuntimeContext? _maybeCloudRuntimeContext({required bool listen}) {
+    try {
+      return Provider.of<CloudRuntimeContext>(context, listen: listen);
+    } catch (_) {
+      return null;
+    }
+  }
+
   AiShellMode _effectiveMode(AccountController? accountController) {
     final explicitMode = widget.mode;
     if (explicitMode != null) {
@@ -160,30 +309,424 @@ class _AiPageState extends State<AiPage> {
         : AiShellMode.disabled;
   }
 
-  String _statusLabel(
-    BuildContext context,
-    AccountController? accountController,
-  ) {
+  _AiStatusPresentation _statusPresentation(
+    BuildContext context, {
+    required AccountController? accountController,
+    required bool canSend,
+  }) {
     final strings = context.strings;
+    if (canSend) {
+      return _AiStatusPresentation(
+        label: strings.aiAvailableStatus,
+        tone: _AiStatusTone.available,
+      );
+    }
     final availability = accountController?.aiAvailability;
     if (availability == null) {
-      return strings.aiSignedOutStatus;
+      return _AiStatusPresentation(
+        label: strings.aiUnavailableStatus,
+        tone: _AiStatusTone.unavailable,
+      );
     }
     switch (availability.status) {
       case AiAvailabilityStatus.signedOut:
-        return strings.aiSignedOutStatus;
+        return _AiStatusPresentation(
+          label: strings.aiUnavailableStatus,
+          tone: _AiStatusTone.unavailable,
+        );
       case AiAvailabilityStatus.offline:
-        return strings.aiOfflineStatus;
+        return _AiStatusPresentation(
+          label: strings.aiUnavailableStatus,
+          tone: _AiStatusTone.unavailable,
+        );
       case AiAvailabilityStatus.subscriptionInactive:
         if (accountController?.subscriptionStatus.state ==
             SubscriptionState.error) {
-          return strings.subscriptionUnavailable;
+          return _AiStatusPresentation(
+            label: strings.aiUnavailableStatus,
+            tone: _AiStatusTone.blocked,
+          );
         }
-        return strings.subscriptionInactive;
+        return _AiStatusPresentation(
+          label: strings.aiUnavailableStatus,
+          tone: _AiStatusTone.blocked,
+        );
       case AiAvailabilityStatus.profileMissing:
-        return strings.profileRequired;
+        return _AiStatusPresentation(
+          label: strings.aiUnavailableStatus,
+          tone: _AiStatusTone.blocked,
+        );
       case AiAvailabilityStatus.gatewayPending:
-        return strings.aiAvailableStatus;
+        return _AiStatusPresentation(
+          label: strings.aiUnavailableStatus,
+          tone: _AiStatusTone.blocked,
+        );
+    }
+  }
+
+  Future<void> _sendMessage({
+    required String text,
+    required AiChatController? chatController,
+    required AccountController? accountController,
+    required CloudRuntimeContext? cloudRuntimeContext,
+  }) async {
+    if (chatController == null ||
+        accountController == null ||
+        cloudRuntimeContext == null) {
+      return;
+    }
+    chatController.syncAccount(
+      accountId: accountController.authSession.accountId,
+      canUseAi: accountController.aiAvailability.canSend,
+    );
+    final deviceId = cloudRuntimeContext.deviceId;
+    if ((deviceId ?? '').isEmpty) {
+      chatController.showLocalError(
+        const AiGatewayError(
+          code: AiGatewayErrorCode.unknown,
+          rawCode: 'active_device_missing',
+          message: 'Active device is not ready.',
+        ),
+      );
+      return;
+    }
+    final cloudProfile = accountController.cloudProfileState.cloudProfile;
+    final strings = context.stringsRead;
+    final sentImages = List<PickedFoodImage>.unmodifiable(_attachedImages);
+    if (sentImages.isNotEmpty && _provider != _AiProvider.qwen) {
+      FitLogNotifications.error(context, strings.aiImageRequiresQwen);
+      return;
+    }
+    String? validationError;
+    for (final image in sentImages) {
+      validationError = _validationErrorForImage(image);
+      if (validationError != null) {
+        break;
+      }
+    }
+    if (validationError != null) {
+      FitLogNotifications.error(context, validationError);
+      return;
+    }
+    final enteredText = text.trim();
+    final trimmed = enteredText.isEmpty && sentImages.isNotEmpty
+        ? strings.aiImageOnlyMessage
+        : enteredText;
+    _clearComposerNotice();
+    final attachments = sentImages
+        .map(
+          (image) => AiGatewayImageAttachment(
+            mimeType: image.mimeType,
+            base64Data: base64Encode(image.bytes),
+            byteLength: image.byteLength,
+            name: image.name,
+          ),
+        )
+        .toList(growable: false);
+    _controller.clear();
+    if (sentImages.isNotEmpty) {
+      setState(() => _attachedImages = const <PickedFoodImage>[]);
+    }
+    final sendFuture = chatController.sendText(
+      text: trimmed,
+      language: strings.isChinese ? 'zh' : 'en',
+      modelChoice: _modelChoiceFor(_provider),
+      deviceId: deviceId!,
+      selectedDate: DateUtilsX.todayKey(),
+      profileVersion: cloudProfile == null
+          ? null
+          : 'profile_${cloudProfile.profileVersion}',
+      attachments: attachments,
+    );
+    final success = await sendFuture;
+    if (!mounted) {
+      return;
+    }
+    if (success) {
+      _controller.clear();
+    } else if (_controller.text.isEmpty) {
+      _controller.text = enteredText;
+      _controller.selection = TextSelection.collapsed(
+        offset: enteredText.length,
+      );
+      if (sentImages.isNotEmpty) {
+        setState(() => _attachedImages = sentImages);
+      }
+    }
+  }
+
+  Future<void> _chooseImageAttachment() async {
+    if (_attachedImages.length >= _maxChatImages) {
+      _showComposerNotice(context.stringsRead.aiImageLimitReached);
+      return;
+    }
+    final source = await showModalBottomSheet<FoodImageSource>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        final strings = sheetContext.strings;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: Text(strings.takePhoto),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(FoodImageSource.camera),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: Text(strings.chooseFromGallery),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(FoodImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (source == null) {
+      return;
+    }
+    await _pickImageAttachment(source);
+  }
+
+  Future<void> _pickImageAttachment(FoodImageSource source) async {
+    try {
+      final remainingSlots = _maxChatImages - _attachedImages.length;
+      final images = await _imagePicker.pickMultiple(
+        source,
+        limit: remainingSlots,
+      );
+      if (!mounted || images.isEmpty) {
+        return;
+      }
+      final nextImages = <PickedFoodImage>[];
+      String? validationError;
+      for (final image in images) {
+        validationError = _validationErrorForImage(image);
+        if (validationError != null) {
+          break;
+        }
+        if (_attachedImages.length + nextImages.length >= _maxChatImages) {
+          validationError = context.strings.aiImageLimitReached;
+          break;
+        }
+        nextImages.add(image);
+      }
+      if (validationError != null) {
+        _showComposerNotice(validationError);
+      }
+      if (nextImages.isEmpty) {
+        return;
+      }
+      _clearComposerNotice();
+      setState(() {
+        _attachedImages = <PickedFoodImage>[..._attachedImages, ...nextImages];
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      _showComposerNotice(context.strings.photoAiPickFailed);
+    }
+  }
+
+  void _removeImageAttachment(int index) {
+    if (index < 0 || index >= _attachedImages.length) {
+      return;
+    }
+    final nextImages = List<PickedFoodImage>.from(_attachedImages)
+      ..removeAt(index);
+    _clearComposerNotice();
+    setState(
+      () => _attachedImages = List<PickedFoodImage>.unmodifiable(nextImages),
+    );
+  }
+
+  void _showComposerNotice(String label) {
+    _composerNoticeTimer?.cancel();
+    setState(() => _composerNoticeText = label);
+    _composerNoticeTimer = Timer(const Duration(milliseconds: 4800), () {
+      if (!mounted || _composerNoticeText != label) {
+        return;
+      }
+      setState(() => _composerNoticeText = null);
+    });
+  }
+
+  void _clearComposerNotice() {
+    _composerNoticeTimer?.cancel();
+    _composerNoticeTimer = null;
+    if (_composerNoticeText == null) {
+      return;
+    }
+    setState(() => _composerNoticeText = null);
+  }
+
+  String? _validationErrorForImage(PickedFoodImage image) {
+    final strings = context.stringsRead;
+    if (!_supportedChatImageMimeTypes.contains(image.mimeType)) {
+      return strings.photoAiUnsupportedImage;
+    }
+    if (image.byteLength > _maxChatImageBytes) {
+      return strings.photoAiImageTooLarge;
+    }
+    return null;
+  }
+
+  void _scheduleComposerMeasure() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final box =
+          _composerLayoutKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) {
+        return;
+      }
+      final nextHeight = box.size.height;
+      if ((nextHeight - _composerHeight).abs() < 0.5) {
+        return;
+      }
+      setState(() => _composerHeight = nextHeight);
+    });
+  }
+
+  Future<void> _openFoodDraftPreview(AiFoodDraft draft) async {
+    final record = draft.toFoodRecord(
+      date: DateUtilsX.todayKey(),
+      modelProvider: 'qwen',
+    );
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => FoodPreviewPage(initialRecord: record),
+      ),
+    );
+  }
+
+  Future<void> _openWorkoutDraftPreview(AiWorkoutDraft draft) async {
+    final services = context.read<AppServices>();
+    final existingDraft = await services.workoutDraftRepository
+        .getActiveDraft();
+    if (!mounted) {
+      return;
+    }
+    if (existingDraft != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          final strings = dialogContext.strings;
+          return AlertDialog(
+            title: Text(strings.aiWorkoutDraftReplaceTitle),
+            content: Text(strings.aiWorkoutDraftReplaceMessage),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(strings.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(strings.aiWorkoutDraftReplaceAction),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) {
+        return;
+      }
+    }
+    final resolvedDate = draft.date ?? DateUtilsX.todayKey();
+    await services.workoutDraftRepository.saveActiveDraft(
+      draft.toWorkoutRecordDraft(dateFallback: resolvedDate),
+    );
+    if (!mounted) {
+      return;
+    }
+    context.read<RefreshNotifier>().markDataChanged();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => AddWorkoutPage(initialDate: resolvedDate),
+      ),
+    );
+  }
+
+  AiGatewayModelChoice _modelChoiceFor(_AiProvider provider) {
+    switch (provider) {
+      case _AiProvider.chatGpt:
+        return AiGatewayModelChoice.chatgpt;
+      case _AiProvider.qwen:
+        return AiGatewayModelChoice.qwen;
+    }
+  }
+
+  Future<void> _loadProviderPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final provider = _providerFromPreferenceValue(
+      prefs.getString(_selectedAiProviderPreferenceKey),
+    );
+    if (!mounted || provider == null || provider == _provider) {
+      return;
+    }
+    setState(() => _provider = provider);
+  }
+
+  Future<void> _selectProvider(_AiProvider provider) async {
+    if (_provider != provider) {
+      setState(() => _provider = provider);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _selectedAiProviderPreferenceKey,
+      _providerPreferenceValue(provider),
+    );
+  }
+
+  _AiProvider? _providerFromPreferenceValue(String? value) {
+    switch (value) {
+      case 'chatgpt':
+        return _AiProvider.chatGpt;
+      case 'qwen':
+        return _AiProvider.qwen;
+      default:
+        return null;
+    }
+  }
+
+  String _providerPreferenceValue(_AiProvider provider) {
+    switch (provider) {
+      case _AiProvider.chatGpt:
+        return 'chatgpt';
+      case _AiProvider.qwen:
+        return 'qwen';
+    }
+  }
+
+  String _aiErrorLabel(BuildContext context, AiGatewayError error) {
+    final strings = context.strings;
+    switch (error.code) {
+      case AiGatewayErrorCode.authRequired:
+        return strings.authRequired;
+      case AiGatewayErrorCode.subscriptionRequired:
+        return strings.subscriptionInactive;
+      case AiGatewayErrorCode.deviceReplaced:
+        return strings.phase2ErrorMessage('device_replaced');
+      case AiGatewayErrorCode.gatewayTimeout:
+        return strings.aiGatewayTimeout;
+      case AiGatewayErrorCode.providerFailure:
+        return strings.aiProviderFailure;
+      case AiGatewayErrorCode.recordSchemaMismatch:
+        return strings.aiRequestUnsupported;
+      case AiGatewayErrorCode.networkFailure:
+        return strings.aiChatNetworkFailure;
+      case AiGatewayErrorCode.unknown:
+        return strings.aiUnknownFailure;
     }
   }
 
@@ -193,19 +736,42 @@ class _AiPageState extends State<AiPage> {
     final previousKey = _accountBoundaryKey;
     _accountBoundaryKey = nextKey;
     if (previousKey != null && previousKey != nextKey) {
+      _composerNoticeTimer?.cancel();
+      _composerNoticeTimer = null;
       _controller.clear();
+      _attachedImages = const <PickedFoodImage>[];
+      _composerNoticeText = null;
     }
+  }
+
+  void _scheduleChatSync(
+    AccountController? accountController,
+    AiChatController? chatController,
+  ) {
+    if (chatController == null) {
+      return;
+    }
+    final accountId = accountController?.authSession.accountId;
+    final canUseAi = accountController?.aiAvailability.canSend ?? false;
+    final nextKey = '${accountId ?? 'none'}:$canUseAi';
+    if (_chatSyncKey == nextKey) {
+      return;
+    }
+    _chatSyncKey = nextKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      chatController.syncAccount(accountId: accountId, canUseAi: canUseAi);
+    });
   }
 }
 
 class _AiAnimatedBackground extends StatefulWidget {
-  const _AiAnimatedBackground({
-    required this.mode,
-    required this.pausedForKeyboard,
-  });
+  const _AiAnimatedBackground({required this.mode, required this.motion});
 
   final AiShellMode mode;
-  final bool pausedForKeyboard;
+  final _AiBackgroundMotion motion;
 
   @override
   State<_AiAnimatedBackground> createState() => _AiAnimatedBackgroundState();
@@ -219,19 +785,16 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: _duration);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncAnimation();
+    _controller.repeat();
   }
 
   @override
   void didUpdateWidget(covariant _AiAnimatedBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
     _controller.duration = _duration;
-    _syncAnimation();
+    if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   @override
@@ -241,57 +804,68 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
   }
 
   Duration get _duration {
-    switch (widget.mode) {
-      case AiShellMode.processing:
-        return const Duration(seconds: 10);
-      case AiShellMode.ready:
-      case AiShellMode.needsClarification:
+    switch (widget.motion) {
+      case _AiBackgroundMotion.idleLanding:
         return const Duration(seconds: 16);
-      case AiShellMode.disabled:
-        return const Duration(seconds: 36);
-    }
-  }
-
-  void _syncAnimation() {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final shouldAnimate = !widget.pausedForKeyboard && !reduceMotion;
-    if (shouldAnimate && !_controller.isAnimating) {
-      _controller.repeat();
-    } else if (!shouldAnimate && _controller.isAnimating) {
-      _controller.stop();
+      case _AiBackgroundMotion.quietChat:
+        return const Duration(seconds: 28);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          painter: _AiFlowBackgroundPainter(
-            progress: _controller.value,
-            mode: widget.mode,
-          ),
-        );
-      },
+    return ClipRect(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final progress = _controller.value;
+          final quiet = widget.motion == _AiBackgroundMotion.quietChat;
+          final motionScale = quiet ? 0.50 : 1.0;
+          final angle = progress * math.pi * 2;
+          return Transform.translate(
+            offset: Offset(
+              math.sin(angle) * 24 * motionScale,
+              math.cos(angle * 0.78) * 14 * motionScale,
+            ),
+            child: Transform.scale(
+              scale: 1.08,
+              child: CustomPaint(
+                isComplex: true,
+                willChange: false,
+                painter: _AiFlowBackgroundPainter(
+                  progress: progress,
+                  mode: widget.mode,
+                  motion: widget.motion,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
 class _AiFlowBackgroundPainter extends CustomPainter {
-  const _AiFlowBackgroundPainter({required this.progress, required this.mode});
+  const _AiFlowBackgroundPainter({
+    required this.progress,
+    required this.mode,
+    required this.motion,
+  });
 
   final double progress;
   final AiShellMode mode;
+  final _AiBackgroundMotion motion;
 
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final disabled = mode == AiShellMode.disabled;
+    final quiet = motion == _AiBackgroundMotion.quietChat;
+    final motionScale = quiet ? 0.62 : 1.0;
     final emphasis = switch (mode) {
       AiShellMode.processing => 1.0,
-      AiShellMode.ready => 0.42,
+      AiShellMode.ready => 0.58,
       AiShellMode.needsClarification => 0.24,
       AiShellMode.disabled => 0.0,
     };
@@ -307,15 +881,15 @@ class _AiFlowBackgroundPainter extends CustomPainter {
 
     final basePaint = Paint()
       ..shader = LinearGradient(
-        begin: Alignment(-0.64 + shift * 0.14, -1),
-        end: Alignment(0.76 - shift * 0.14, 1),
+        begin: Alignment(-0.64 + shift * 0.18 * motionScale, -1),
+        end: Alignment(0.76 - shift * 0.18 * motionScale, 1),
         colors: baseColors,
       ).createShader(rect);
     canvas.drawRect(rect, basePaint);
 
     final washPaint = Paint()
       ..shader = LinearGradient(
-        begin: Alignment(-1 + shift * 0.20, -0.4),
+        begin: Alignment(-1 + shift * 0.26 * motionScale, -0.4),
         end: Alignment(1, 0.8),
         colors: disabled
             ? <Color>[
@@ -337,23 +911,26 @@ class _AiFlowBackgroundPainter extends CustomPainter {
       ).createShader(rect);
 
     final washPath = Path()
-      ..moveTo(-size.width * 0.18, size.height * (0.15 + shift * 0.03))
+      ..moveTo(
+        -size.width * 0.18,
+        size.height * (0.15 + shift * 0.03 * motionScale),
+      )
       ..cubicTo(
         size.width * 0.28,
-        size.height * (0.02 - shift * 0.04),
+        size.height * (0.02 - shift * 0.04 * motionScale),
         size.width * 0.70,
-        size.height * (0.34 + shift * 0.05),
+        size.height * (0.34 + shift * 0.05 * motionScale),
         size.width * 1.16,
-        size.height * (0.20 - shift * 0.02),
+        size.height * (0.20 - shift * 0.02 * motionScale),
       )
       ..lineTo(size.width * 1.16, size.height * 0.80)
       ..cubicTo(
         size.width * 0.70,
-        size.height * (0.68 + shift * 0.04),
+        size.height * (0.68 + shift * 0.04 * motionScale),
         size.width * 0.26,
-        size.height * (0.90 - shift * 0.03),
+        size.height * (0.90 - shift * 0.03 * motionScale),
         -size.width * 0.18,
-        size.height * (0.72 + shift * 0.02),
+        size.height * (0.72 + shift * 0.02 * motionScale),
       )
       ..close();
     canvas.drawPath(washPath, washPaint);
@@ -373,7 +950,9 @@ class _AiFlowBackgroundPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AiFlowBackgroundPainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.mode != mode;
+    return oldDelegate.mode != mode ||
+        oldDelegate.motion != motion ||
+        oldDelegate.progress != progress;
   }
 }
 
@@ -381,50 +960,81 @@ class _AiTopBar extends StatelessWidget {
   const _AiTopBar({
     required this.onOpenHistory,
     required this.accountController,
+    required this.showProviderStatus,
+    required this.provider,
+    required this.status,
+    required this.onProviderChanged,
   });
 
   final VoidCallback onOpenHistory;
   final AccountController? accountController;
+  final bool showProviderStatus;
+  final _AiProvider provider;
+  final _AiStatusPresentation status;
+  final ValueChanged<_AiProvider> onProviderChanged;
 
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Row(
+    return SizedBox(
+      height: 58,
+      child: Stack(
         children: <Widget>[
-          _AiRoundButton(
-            tooltip: strings.aiHistoryTooltip,
-            icon: Icons.history_rounded,
-            onPressed: onOpenHistory,
+          Positioned(
+            left: 12,
+            top: 8,
+            child: _AiRoundButton(
+              tooltip: strings.aiHistoryTooltip,
+              icon: Icons.history_rounded,
+              onPressed: onOpenHistory,
+            ),
           ),
-          const Spacer(),
-          _AiRoundButton(
-            tooltip: strings.aiAccountTooltip,
-            icon: Icons.manage_accounts_outlined,
-            onPressed: () {
-              if (accountController == null) {
-                FitLogNotifications.info(context, strings.aiAccountComingSoon);
-                return;
-              }
-              showModalBottomSheet<void>(
-                context: context,
-                showDragHandle: true,
-                isScrollControlled: true,
-                useSafeArea: true,
-                builder: (_) {
-                  return AnimatedBuilder(
-                    animation: accountController!,
-                    builder: (context, _) {
-                      return _AiAccountStatusSheet(
-                        accountController: accountController!,
-                      );
-                    },
+          if (showProviderStatus)
+            Positioned(
+              left: 66,
+              right: 66,
+              top: 8,
+              child: Center(
+                child: _AiProviderStatusRow(
+                  provider: provider,
+                  status: status,
+                  onProviderChanged: onProviderChanged,
+                ),
+              ),
+            ),
+          Positioned(
+            right: 12,
+            top: 8,
+            child: _AiRoundButton(
+              tooltip: strings.aiAccountTooltip,
+              icon: Icons.manage_accounts_outlined,
+              onPressed: () {
+                if (accountController == null) {
+                  FitLogNotifications.info(
+                    context,
+                    strings.aiAccountComingSoon,
                   );
-                },
-              );
-            },
+                  return;
+                }
+                showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  isScrollControlled: true,
+                  useSafeArea: true,
+                  builder: (_) {
+                    return AnimatedBuilder(
+                      animation: accountController!,
+                      builder: (context, _) {
+                        return _AiAccountStatusSheet(
+                          accountController: accountController!,
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -532,17 +1142,31 @@ class _AiComposer extends StatelessWidget {
     required this.controller,
     required this.provider,
     required this.canSend,
+    required this.sending,
+    required this.attachedImages,
     required this.mode,
-    required this.statusLabel,
+    required this.status,
+    required this.hasConversation,
+    required this.errorLabel,
     required this.onProviderChanged,
+    required this.onAttachPressed,
+    required this.onRemoveAttachment,
+    required this.onSend,
   });
 
   final TextEditingController controller;
   final _AiProvider provider;
   final bool canSend;
+  final bool sending;
+  final List<PickedFoodImage> attachedImages;
   final AiShellMode mode;
-  final String statusLabel;
+  final _AiStatusPresentation status;
+  final bool hasConversation;
+  final String? errorLabel;
   final ValueChanged<_AiProvider> onProviderChanged;
+  final VoidCallback onAttachPressed;
+  final ValueChanged<int> onRemoveAttachment;
+  final ValueChanged<String> onSend;
 
   @override
   Widget build(BuildContext context) {
@@ -551,89 +1175,213 @@ class _AiComposer extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Wrap(
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 8,
-          runSpacing: 8,
-          children: <Widget>[
-            _AiProviderSelector(
-              provider: provider,
-              onChanged: onProviderChanged,
-            ),
-            _AiStatusPill(label: statusLabel),
-          ],
-        ),
-        const SizedBox(height: 10),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.76),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: const Color(0xFF273321).withValues(alpha: 0.08),
-                blurRadius: 26,
-                offset: const Offset(0, 12),
+        if (errorLabel != null && !hasConversation) ...<Widget>[
+          _AiComposerError(label: errorLabel!),
+          const SizedBox(height: 8),
+        ],
+        if (!hasConversation) ...<Widget>[
+          _AiProviderStatusRow(
+            provider: provider,
+            status: status,
+            onProviderChanged: onProviderChanged,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (errorLabel != null && hasConversation) ...<Widget>[
+          _AiComposerError(label: errorLabel!),
+          const SizedBox(height: 8),
+        ],
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            final canSubmit =
+                canSend &&
+                !sending &&
+                (value.text.trim().isNotEmpty || attachedImages.isNotEmpty);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.76),
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: const Color(0xFF273321).withValues(alpha: 0.08),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: <Widget>[
-                Tooltip(
-                  message: strings.aiAttachTooltip,
-                  child: IconButton(
-                    onPressed: null,
-                    icon: const Icon(Icons.add_rounded),
-                    color: const Color(0xFF506052),
-                    disabledColor: const Color(0xFF9DA89F),
-                  ),
-                ),
-                Expanded(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 112),
-                    child: TextField(
-                      key: const ValueKey<String>('ai_composer_field'),
-                      controller: controller,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.newline,
-                      decoration: InputDecoration(
-                        hintText: strings.aiComposerHint,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 12,
-                        ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (attachedImages.isNotEmpty) ...<Widget>[
+                      _AiAttachedImagePreview(
+                        images: attachedImages,
+                        onRemove: onRemoveAttachment,
                       ),
+                      const SizedBox(height: 6),
+                    ],
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        Tooltip(
+                          message: strings.aiAttachTooltip,
+                          child: IconButton(
+                            key: const ValueKey<String>(
+                              'ai_attach_image_button',
+                            ),
+                            onPressed: canSend && !sending
+                                ? onAttachPressed
+                                : null,
+                            icon: const Icon(Icons.add_rounded),
+                            color: const Color(0xFF506052),
+                            disabledColor: const Color(0xFF9DA89F),
+                          ),
+                        ),
+                        Expanded(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 112),
+                            child: TextField(
+                              key: const ValueKey<String>('ai_composer_field'),
+                              controller: controller,
+                              minLines: 1,
+                              maxLines: 4,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                hintText: strings.aiComposerHint,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                filled: false,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Tooltip(
+                          message: strings.aiSendTooltip,
+                          child: IconButton.filled(
+                            key: const ValueKey<String>('ai_send_button'),
+                            onPressed: canSubmit
+                                ? () => onSend(value.text)
+                                : null,
+                            style: IconButton.styleFrom(
+                              disabledBackgroundColor: const Color(0xFFD8E0D7),
+                              disabledForegroundColor: const Color(0xFF8C978D),
+                              backgroundColor: const Color(0xFF5FA94D),
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: sending
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.arrow_upward_rounded),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  ],
                 ),
-                Tooltip(
-                  message: strings.aiSendTooltip,
-                  child: IconButton.filled(
-                    key: const ValueKey<String>('ai_send_button'),
-                    onPressed: canSend ? () {} : null,
-                    style: IconButton.styleFrom(
-                      disabledBackgroundColor: const Color(0xFFD8E0D7),
-                      disabledForegroundColor: const Color(0xFF8C978D),
-                      backgroundColor: const Color(0xFF5FA94D),
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.arrow_upward_rounded),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ],
+    );
+  }
+}
+
+class _AiComposerError extends StatelessWidget {
+  const _AiComposerError({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      key: const ValueKey<String>('ai_composer_error'),
+      alignment: Alignment.center,
+      child: _AiErrorPill(label: label),
+    );
+  }
+}
+
+class _AiAttachedImagePreview extends StatelessWidget {
+  const _AiAttachedImagePreview({required this.images, required this.onRemove});
+
+  final List<PickedFoodImage> images;
+  final ValueChanged<int> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      key: const ValueKey<String>('ai_attached_image_preview'),
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: <Widget>[
+          for (var index = 0; index < images.length; index++)
+            _AiAttachedImageThumb(
+              image: images[index],
+              onRemove: () => onRemove(index),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiAttachedImageThumb extends StatelessWidget {
+  const _AiAttachedImageThumb({required this.image, required this.onRemove});
+
+  final PickedFoodImage image;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 58,
+      height: 58,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: <Widget>[
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.memory(image.bytes, fit: BoxFit.cover),
+            ),
+          ),
+          Positioned(
+            right: -6,
+            top: -6,
+            child: Tooltip(
+              message: context.strings.removePhoto,
+              child: Material(
+                color: Colors.white.withValues(alpha: 0.92),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onRemove,
+                  child: const SizedBox.square(
+                    dimension: 24,
+                    child: Icon(Icons.close_rounded, size: 16),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -728,7 +1476,9 @@ class _AiAccountStatusSheet extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Text(
-              strings.aiGatewayPending,
+              accountController.aiAvailability.canSend
+                  ? strings.aiGatewayConnected
+                  : strings.aiGatewayPending,
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: const Color(0xFF687568)),
@@ -760,6 +1510,32 @@ class _AiAccountLine extends StatelessWidget {
             ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _AiProviderStatusRow extends StatelessWidget {
+  const _AiProviderStatusRow({
+    required this.provider,
+    required this.status,
+    required this.onProviderChanged,
+  });
+
+  final _AiProvider provider;
+  final _AiStatusPresentation status;
+  final ValueChanged<_AiProvider> onProviderChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        _AiProviderSelector(provider: provider, onChanged: onProviderChanged),
+        _AiStatusPill(status: status),
       ],
     );
   }
@@ -847,12 +1623,23 @@ class _AiProviderChip extends StatelessWidget {
 }
 
 class _AiStatusPill extends StatelessWidget {
-  const _AiStatusPill({required this.label});
+  const _AiStatusPill({required this.status});
 
-  final String label;
+  final _AiStatusPresentation status;
 
   @override
   Widget build(BuildContext context) {
+    final indicatorColor = switch (status.tone) {
+      _AiStatusTone.available => const Color(0xFF5FA94D),
+      _AiStatusTone.blocked => const Color(0xFFD58B33),
+      _AiStatusTone.unavailable => const Color(0xFF8E9A93),
+    };
+    final textColor = switch (status.tone) {
+      _AiStatusTone.available => const Color(0xFF2F6F35),
+      _AiStatusTone.blocked => const Color(0xFF86551F),
+      _AiStatusTone.unavailable => const Color(0xFF66736B),
+    };
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.50),
@@ -864,16 +1651,20 @@ class _AiStatusPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(
-              Icons.radio_button_unchecked_rounded,
-              size: 12,
-              color: Color(0xFF7E8A83),
+            Container(
+              key: const ValueKey<String>('ai_status_indicator'),
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: indicatorColor,
+                shape: BoxShape.circle,
+              ),
             ),
             const SizedBox(width: 6),
             Text(
-              label,
+              status.label,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: const Color(0xFF66736B),
+                color: textColor,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -884,8 +1675,939 @@ class _AiStatusPill extends StatelessWidget {
   }
 }
 
+class _AiMessageList extends StatelessWidget {
+  const _AiMessageList({
+    required this.controller,
+    required this.scrollController,
+    required this.latestUserKey,
+    required this.sendAnchorBottomPadding,
+    required this.onOpenFoodDraft,
+    required this.onOpenWorkoutDraft,
+  });
+
+  final AiChatController controller;
+  final ScrollController scrollController;
+  final GlobalKey latestUserKey;
+  final double sendAnchorBottomPadding;
+  final ValueChanged<AiFoodDraft> onOpenFoodDraft;
+  final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <Widget>[];
+    bool? previousWasUser;
+    final hasPendingUser =
+        (controller.pendingUserText ?? '').isNotEmpty ||
+        controller.pendingUserAttachments.isNotEmpty;
+    final pendingUserKey = hasPendingUser && controller.sending
+        ? latestUserKey
+        : null;
+
+    void addMessage(Widget child, {required bool isUser}) {
+      if (items.isNotEmpty) {
+        final startsNextTurn = previousWasUser == false && isUser;
+        items.add(SizedBox(height: startsNextTurn ? 14 : 6));
+      }
+      items.add(child);
+      previousWasUser = isUser;
+    }
+
+    for (final message in controller.messages) {
+      addMessage(
+        _AiMessageBubble(
+          message: message,
+          attachments: controller.runtimeAttachmentsFor(message),
+          foodDraft: controller.foodDraftArtifactFor(message),
+          workoutDraft: controller.workoutDraftArtifactFor(message),
+          onOpenFoodDraft: onOpenFoodDraft,
+          onOpenWorkoutDraft: onOpenWorkoutDraft,
+        ),
+        isUser: message.isUser,
+      );
+    }
+    if (hasPendingUser) {
+      final pendingBubble = _AiPendingMessageBubble(
+        text: controller.pendingUserText ?? '',
+        attachments: controller.pendingUserAttachments,
+      );
+      addMessage(
+        pendingUserKey == null
+            ? pendingBubble
+            : KeyedSubtree(key: pendingUserKey, child: pendingBubble),
+        isUser: true,
+      );
+    }
+    if (controller.sending) {
+      addMessage(const _AiAssistantLoadingBubble(), isUser: false);
+    }
+    if (controller.loadingMessages) {
+      if (items.isNotEmpty) {
+        items.add(const SizedBox(height: 12));
+      }
+      items.add(
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    if (sendAnchorBottomPadding > 0) {
+      items.add(
+        SizedBox(
+          key: const ValueKey<String>('ai_send_anchor_fill'),
+          height: sendAnchorBottomPadding,
+        ),
+      );
+    }
+    if (controller.sending && pendingUserKey != null) {
+      _scheduleSendAnchorScroll(scrollController, pendingUserKey);
+    }
+
+    return ListView(
+      key: const ValueKey<String>('ai_message_list'),
+      controller: scrollController,
+      physics: controller.sending
+          ? const NeverScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 14),
+      children: items,
+    );
+  }
+}
+
+void _scheduleSendAnchorScroll(
+  ScrollController scrollController,
+  GlobalKey? pendingUserKey,
+) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (_ensureSendAnchorVisible(pendingUserKey)) {
+      return;
+    }
+    if (!scrollController.hasClients) {
+      return;
+    }
+    scrollController.jumpTo(scrollController.position.maxScrollExtent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureSendAnchorVisible(pendingUserKey);
+    });
+  });
+}
+
+bool _ensureSendAnchorVisible(GlobalKey? pendingUserKey) {
+  final targetContext = pendingUserKey?.currentContext;
+  if (targetContext == null) {
+    return false;
+  }
+  Scrollable.ensureVisible(
+    targetContext,
+    alignment: 0,
+    duration: Duration.zero,
+  );
+  return true;
+}
+
+class _AiMessageBubble extends StatelessWidget {
+  const _AiMessageBubble({
+    required this.message,
+    required this.attachments,
+    required this.foodDraft,
+    required this.workoutDraft,
+    required this.onOpenFoodDraft,
+    required this.onOpenWorkoutDraft,
+  });
+
+  final AiChatMessage message;
+  final List<AiGatewayImageAttachment> attachments;
+  final AiFoodDraftArtifact? foodDraft;
+  final AiWorkoutDraftArtifact? workoutDraft;
+  final ValueChanged<AiFoodDraft> onOpenFoodDraft;
+  final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AiBubbleSurface(
+      text: message.contentText,
+      isUser: message.isUser,
+      pending: false,
+      attachments: attachments,
+      foodDraft: foodDraft,
+      workoutDraft: workoutDraft,
+      onOpenFoodDraft: onOpenFoodDraft,
+      onOpenWorkoutDraft: onOpenWorkoutDraft,
+    );
+  }
+}
+
+class _AiPendingMessageBubble extends StatelessWidget {
+  const _AiPendingMessageBubble({
+    required this.text,
+    required this.attachments,
+  });
+
+  final String text;
+  final List<AiGatewayImageAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return _AiBubbleSurface(
+      text: text,
+      isUser: true,
+      pending: true,
+      attachments: attachments,
+    );
+  }
+}
+
+class _AiBubbleSurface extends StatelessWidget {
+  const _AiBubbleSurface({
+    required this.text,
+    required this.isUser,
+    required this.pending,
+    this.attachments = const <AiGatewayImageAttachment>[],
+    this.foodDraft,
+    this.workoutDraft,
+    this.onOpenFoodDraft,
+    this.onOpenWorkoutDraft,
+  });
+
+  final String text;
+  final bool isUser;
+  final bool pending;
+  final List<AiGatewayImageAttachment> attachments;
+  final AiFoodDraftArtifact? foodDraft;
+  final AiWorkoutDraftArtifact? workoutDraft;
+  final ValueChanged<AiFoodDraft>? onOpenFoodDraft;
+  final ValueChanged<AiWorkoutDraft>? onOpenWorkoutDraft;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: isUser
+                ? const Color(
+                    0xFF5FA94D,
+                  ).withValues(alpha: pending ? 0.70 : 0.92)
+                : Colors.white.withValues(alpha: 0.80),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            child: isUser
+                ? _AiUserMessageContent(text: text, attachments: attachments)
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      _AiMarkdownText(
+                        text: text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF1A261D),
+                          height: 1.42,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (foodDraft != null) ...[
+                        const SizedBox(height: 12),
+                        _AiFoodDraftArtifactCard(
+                          draft: foodDraft!,
+                          onPressed:
+                              foodDraft!.draft == null ||
+                                  onOpenFoodDraft == null
+                              ? null
+                              : () => onOpenFoodDraft!(foodDraft!.draft!),
+                        ),
+                      ],
+                      if (workoutDraft != null) ...[
+                        const SizedBox(height: 12),
+                        _AiWorkoutDraftArtifactCard(
+                          draft: workoutDraft!,
+                          onPressed:
+                              workoutDraft!.draft == null ||
+                                  onOpenWorkoutDraft == null
+                              ? null
+                              : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiFoodDraftArtifactCard extends StatelessWidget {
+  const _AiFoodDraftArtifactCard({
+    required this.draft,
+    required this.onPressed,
+  });
+
+  final AiFoodDraftArtifact draft;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final strings = context.strings;
+    final calories = draft.caloriesKcal?.round().toString() ?? '--';
+    final enabled = onPressed != null;
+    return DecoratedBox(
+      key: const ValueKey<String>('ai_food_draft_artifact_card'),
+      decoration: BoxDecoration(
+        color: enabled ? const Color(0xFFF4F9EE) : const Color(0xFFF1F3EF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: enabled ? const Color(0xFFCFE8BC) : const Color(0xFFD8DED5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              strings.aiFoodDraftCardTitle,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: const Color(0xFF315B2F),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              strings.aiFoodDraftCardSummary(draft.mealName, calories),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF4F6251),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  backgroundColor: enabled
+                      ? const Color(0xFF5FA94D)
+                      : const Color(0xFFB7BFB3),
+                  foregroundColor: Colors.white,
+                  textStyle: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                ),
+                child: Text(
+                  enabled
+                      ? strings.aiFoodDraftCardAction
+                      : strings.aiFoodDraftCardUnavailable,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiWorkoutDraftArtifactCard extends StatelessWidget {
+  const _AiWorkoutDraftArtifactCard({
+    required this.draft,
+    required this.onPressed,
+  });
+
+  final AiWorkoutDraftArtifact draft;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final strings = context.strings;
+    final enabled = onPressed != null;
+    return DecoratedBox(
+      key: const ValueKey<String>('ai_workout_draft_artifact_card'),
+      decoration: BoxDecoration(
+        color: enabled ? const Color(0xFFF4F9EE) : const Color(0xFFF1F3EF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: enabled ? const Color(0xFFCFE8BC) : const Color(0xFFD8DED5),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(
+              strings.aiWorkoutDraftCardTitle,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: const Color(0xFF315B2F),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              strings.aiWorkoutDraftCardSummary(
+                draft.recordName,
+                draft.exerciseCount,
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF4F6251),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  backgroundColor: enabled
+                      ? const Color(0xFF5FA94D)
+                      : const Color(0xFFB7BFB3),
+                  foregroundColor: Colors.white,
+                  textStyle: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                ),
+                child: Text(
+                  enabled
+                      ? strings.aiWorkoutDraftCardAction
+                      : strings.aiWorkoutDraftCardUnavailable,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AiUserMessageContent extends StatelessWidget {
+  const _AiUserMessageContent({required this.text, required this.attachments});
+
+  final String text;
+  final List<AiGatewayImageAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trimmed = text.trim();
+    final textWidget = trimmed.isEmpty
+        ? null
+        : Text(
+            trimmed,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.white,
+              height: 1.42,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+
+    if (attachments.isEmpty) {
+      return textWidget ?? const SizedBox.shrink();
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        _AiMessageImageStrip(attachments: attachments),
+        if (textWidget != null) ...<Widget>[
+          const SizedBox(height: 8),
+          textWidget,
+        ],
+      ],
+    );
+  }
+}
+
+class _AiMessageImageStrip extends StatelessWidget {
+  const _AiMessageImageStrip({required this.attachments});
+
+  final List<AiGatewayImageAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: <Widget>[
+        for (final attachment in attachments)
+          _AiMessageImageThumbnail(attachment: attachment),
+      ],
+    );
+  }
+}
+
+class _AiMessageImageThumbnail extends StatelessWidget {
+  const _AiMessageImageThumbnail({required this.attachment});
+
+  final AiGatewayImageAttachment attachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _decodeAttachmentBytes(attachment);
+    return ClipRRect(
+      key: const ValueKey<String>('ai_message_image_thumbnail'),
+      borderRadius: BorderRadius.circular(14),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.20),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: SizedBox(
+          width: 112,
+          height: 112,
+          child: bytes == null
+              ? const Icon(Icons.image_not_supported_rounded)
+              : Image.memory(
+                  bytes,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const Icon(Icons.image_not_supported_rounded),
+                ),
+        ),
+      ),
+    );
+  }
+
+  static Uint8List? _decodeAttachmentBytes(AiGatewayImageAttachment image) {
+    try {
+      return base64Decode(image.base64Data);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+class _AiAssistantLoadingBubble extends StatelessWidget {
+  const _AiAssistantLoadingBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      key: const ValueKey<String>('ai_assistant_loading_bubble'),
+      alignment: Alignment.centerLeft,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.78),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox.square(
+                dimension: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: const Color(0xFF5FA94D),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                context.strings.aiThinkingStatus,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF506052),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiMarkdownText extends StatelessWidget {
+  const _AiMarkdownText({required this.text, required this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = style ?? Theme.of(context).textTheme.bodyMedium;
+    final blocks = _markdownBlocks(text);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        for (var index = 0; index < blocks.length; index++) ...<Widget>[
+          _AiMarkdownBlockView(block: blocks[index], style: baseStyle),
+          if (index != blocks.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+enum _AiMarkdownBlockType {
+  paragraph,
+  heading,
+  unorderedList,
+  orderedList,
+  code,
+}
+
+class _AiMarkdownBlock {
+  const _AiMarkdownBlock({
+    required this.type,
+    required this.lines,
+    this.headingLevel = 0,
+  });
+
+  final _AiMarkdownBlockType type;
+  final List<String> lines;
+  final int headingLevel;
+}
+
+class _AiMarkdownBlockView extends StatelessWidget {
+  const _AiMarkdownBlockView({required this.block, required this.style});
+
+  final _AiMarkdownBlock block;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (block.type) {
+      case _AiMarkdownBlockType.paragraph:
+        return Text.rich(
+          TextSpan(children: _inlineMarkdown(block.lines.first)),
+        );
+      case _AiMarkdownBlockType.heading:
+        final headingStyle = _headingStyle(style, block.headingLevel);
+        return Text.rich(
+          TextSpan(
+            children: _inlineMarkdownSpans(block.lines.first, headingStyle),
+          ),
+        );
+      case _AiMarkdownBlockType.code:
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F4F1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Text(
+              block.lines.join('\n'),
+              style: style?.copyWith(
+                fontFamily: 'monospace',
+                color: const Color(0xFF243329),
+              ),
+            ),
+          ),
+        );
+      case _AiMarkdownBlockType.unorderedList:
+        return _AiMarkdownList(
+          items: block.lines,
+          ordered: false,
+          style: style,
+        );
+      case _AiMarkdownBlockType.orderedList:
+        return _AiMarkdownList(items: block.lines, ordered: true, style: style);
+    }
+  }
+
+  List<InlineSpan> _inlineMarkdown(String value) {
+    return _inlineMarkdownSpans(value, style);
+  }
+
+  TextStyle? _headingStyle(TextStyle? baseStyle, int level) {
+    final sizeFactor = switch (level) {
+      1 => 1.18,
+      2 => 1.10,
+      _ => 1.04,
+    };
+    return baseStyle?.copyWith(
+      fontSize: (baseStyle.fontSize ?? 16) * sizeFactor,
+      fontWeight: FontWeight.w800,
+      height: 1.34,
+    );
+  }
+}
+
+class _AiMarkdownList extends StatelessWidget {
+  const _AiMarkdownList({
+    required this.items,
+    required this.ordered,
+    required this.style,
+  });
+
+  final List<String> items;
+  final bool ordered;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        for (var index = 0; index < items.length; index++)
+          Padding(
+            padding: EdgeInsets.only(top: index == 0 ? 0 : 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                SizedBox(
+                  width: ordered ? 26 : 18,
+                  child: Text(
+                    ordered ? '${index + 1}.' : '•',
+                    style: style?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: _inlineMarkdownSpans(items[index], style),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+List<_AiMarkdownBlock> _markdownBlocks(String text) {
+  final blocks = <_AiMarkdownBlock>[];
+  final lines = text.replaceAll('\r\n', '\n').split('\n');
+  final paragraph = <String>[];
+  final code = <String>[];
+  var inCode = false;
+
+  void flushParagraph() {
+    if (paragraph.isEmpty) {
+      return;
+    }
+    blocks.add(
+      _AiMarkdownBlock(
+        type: _AiMarkdownBlockType.paragraph,
+        lines: <String>[paragraph.join('\n')],
+      ),
+    );
+    paragraph.clear();
+  }
+
+  for (final line in lines) {
+    final trimmedRight = line.trimRight();
+    if (trimmedRight.trimLeft().startsWith('```')) {
+      if (inCode) {
+        blocks.add(
+          _AiMarkdownBlock(
+            type: _AiMarkdownBlockType.code,
+            lines: List<String>.from(code),
+          ),
+        );
+        code.clear();
+        inCode = false;
+      } else {
+        flushParagraph();
+        inCode = true;
+      }
+      continue;
+    }
+    if (inCode) {
+      code.add(trimmedRight);
+      continue;
+    }
+    if (trimmedRight.trim().isEmpty) {
+      flushParagraph();
+      continue;
+    }
+    final heading = RegExp(r'^\s*(#{1,3})\s+(.+)$').firstMatch(trimmedRight);
+    if (heading != null) {
+      flushParagraph();
+      blocks.add(
+        _AiMarkdownBlock(
+          type: _AiMarkdownBlockType.heading,
+          lines: <String>[heading.group(2)!.trim()],
+          headingLevel: heading.group(1)!.length,
+        ),
+      );
+      continue;
+    }
+    final unordered = RegExp(r'^\s*[-*]\s+(.+)$').firstMatch(trimmedRight);
+    if (unordered != null) {
+      flushParagraph();
+      blocks.add(
+        _AiMarkdownBlock(
+          type: _AiMarkdownBlockType.unorderedList,
+          lines: <String>[unordered.group(1)!],
+        ),
+      );
+      continue;
+    }
+    final ordered = RegExp(r'^\s*\d+[.)]\s+(.+)$').firstMatch(trimmedRight);
+    if (ordered != null) {
+      flushParagraph();
+      blocks.add(
+        _AiMarkdownBlock(
+          type: _AiMarkdownBlockType.orderedList,
+          lines: <String>[ordered.group(1)!],
+        ),
+      );
+      continue;
+    }
+    paragraph.add(trimmedRight);
+  }
+  if (inCode) {
+    blocks.add(
+      _AiMarkdownBlock(
+        type: _AiMarkdownBlockType.code,
+        lines: List<String>.from(code),
+      ),
+    );
+  }
+  flushParagraph();
+  return _mergeAdjacentLists(blocks);
+}
+
+List<_AiMarkdownBlock> _mergeAdjacentLists(List<_AiMarkdownBlock> blocks) {
+  final merged = <_AiMarkdownBlock>[];
+  for (final block in blocks) {
+    if (merged.isNotEmpty &&
+        (block.type == _AiMarkdownBlockType.unorderedList ||
+            block.type == _AiMarkdownBlockType.orderedList) &&
+        merged.last.type == block.type) {
+      final previous = merged.removeLast();
+      merged.add(
+        _AiMarkdownBlock(
+          type: previous.type,
+          lines: <String>[...previous.lines, ...block.lines],
+        ),
+      );
+    } else {
+      merged.add(block);
+    }
+  }
+  return merged;
+}
+
+List<InlineSpan> _inlineMarkdownSpans(String value, TextStyle? baseStyle) {
+  final spans = <InlineSpan>[];
+  var index = 0;
+  while (index < value.length) {
+    final boldStart = value.indexOf('**', index);
+    final codeStart = value.indexOf('`', index);
+    final nextStarts = <int>[
+      if (boldStart >= 0) boldStart,
+      if (codeStart >= 0) codeStart,
+    ]..sort();
+    if (nextStarts.isEmpty) {
+      spans.add(TextSpan(text: value.substring(index), style: baseStyle));
+      break;
+    }
+    final next = nextStarts.first;
+    if (next > index) {
+      spans.add(TextSpan(text: value.substring(index, next), style: baseStyle));
+    }
+    if (next == boldStart) {
+      final end = value.indexOf('**', next + 2);
+      if (end < 0) {
+        spans.add(TextSpan(text: value.substring(next), style: baseStyle));
+        break;
+      }
+      spans.add(
+        TextSpan(
+          text: value.substring(next + 2, end),
+          style: baseStyle?.copyWith(fontWeight: FontWeight.w800),
+        ),
+      );
+      index = end + 2;
+    } else {
+      final end = value.indexOf('`', next + 1);
+      if (end < 0) {
+        spans.add(TextSpan(text: value.substring(next), style: baseStyle));
+        break;
+      }
+      spans.add(
+        TextSpan(
+          text: value.substring(next + 1, end),
+          style: baseStyle?.copyWith(
+            fontFamily: 'monospace',
+            backgroundColor: const Color(0xFFEAF1EA),
+            color: const Color(0xFF243329),
+          ),
+        ),
+      );
+      index = end + 1;
+    }
+  }
+  return spans;
+}
+
+class _AiErrorPill extends StatelessWidget {
+  const _AiErrorPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E8).withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE9B98B)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Icon(
+              Icons.error_outline_rounded,
+              size: 16,
+              color: Color(0xFF9A5B18),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: const Color(0xFF7A4814),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AiHistoryPanel extends StatelessWidget {
-  const _AiHistoryPanel({required this.onClose});
+  const _AiHistoryPanel({required this.controller, required this.onClose});
+
+  final AiChatController? controller;
 
   final VoidCallback onClose;
 
@@ -908,6 +2630,7 @@ class _AiHistoryPanel extends StatelessWidget {
             child: Container(
               key: const ValueKey<String>('ai_history_panel'),
               width: panelWidth,
+              height: math.max(320.0, MediaQuery.sizeOf(context).height - 140),
               margin: const EdgeInsets.fromLTRB(12, 12, 0, 96),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.90),
@@ -946,13 +2669,86 @@ class _AiHistoryPanel extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      strings.aiHistorySignedOut,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF647067),
-                        height: 1.4,
+                    if (controller == null ||
+                        (controller?.accountId ?? '').isEmpty)
+                      Text(
+                        strings.aiHistorySignedOut,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF647067),
+                          height: 1.4,
+                        ),
+                      )
+                    else ...<Widget>[
+                      Row(
+                        children: <Widget>[
+                          OutlinedButton.icon(
+                            key: const ValueKey<String>('ai_new_chat_button'),
+                            onPressed: () {
+                              controller!.startNewSession();
+                              onClose();
+                            },
+                            icon: const Icon(Icons.add_rounded),
+                            label: Text(strings.aiNewChat),
+                          ),
+                          const Spacer(),
+                          if (controller!.loadingSessions)
+                            const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      if (controller!.sessions.isEmpty)
+                        Text(
+                          strings.aiHistoryEmpty,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: const Color(0xFF647067),
+                                height: 1.4,
+                              ),
+                        )
+                      else
+                        Expanded(
+                          child: ListView.separated(
+                            itemCount: controller!.sessions.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 6),
+                            itemBuilder: (context, index) {
+                              final session = controller!.sessions[index];
+                              final selected =
+                                  session.id == controller!.selectedSessionId;
+                              return _AiHistoryTile(
+                                key: ValueKey<String>(
+                                  'ai_history_tile_${session.id}',
+                                ),
+                                title: session.title.trim().isEmpty
+                                    ? strings.aiUntitledChat
+                                    : session.title,
+                                selected: selected,
+                                onTap: () {
+                                  unawaited(
+                                    controller!.selectSession(session.id),
+                                  );
+                                  onClose();
+                                },
+                                onRename: (title) => controller!.renameSession(
+                                  session.id,
+                                  title,
+                                ),
+                                onDelete: () => _confirmDeleteSession(
+                                  context,
+                                  controller!,
+                                  session.id,
+                                  session.title.trim().isEmpty
+                                      ? strings.aiUntitledChat
+                                      : session.title,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -960,6 +2756,241 @@ class _AiHistoryPanel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _confirmDeleteSession(
+    BuildContext context,
+    AiChatController controller,
+    String sessionId,
+    String title,
+  ) async {
+    final strings = context.stringsRead;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(strings.aiDeleteChatConfirmTitle),
+          content: Text(strings.aiDeleteChatConfirmBody(title)),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              key: const ValueKey<String>('ai_confirm_delete_chat_button'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFD45D4C),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(strings.delete),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true) {
+      await controller.deleteSession(sessionId);
+    }
+  }
+}
+
+class _AiHistoryTile extends StatefulWidget {
+  const _AiHistoryTile({
+    super.key,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+  final Future<bool> Function(String title) onRename;
+  final VoidCallback onDelete;
+
+  @override
+  State<_AiHistoryTile> createState() => _AiHistoryTileState();
+}
+
+class _AiHistoryTileState extends State<_AiHistoryTile> {
+  late final TextEditingController _renameController;
+  late final FocusNode _renameFocusNode;
+  bool _renaming = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _renameController = TextEditingController(text: widget.title);
+    _renameFocusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AiHistoryTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_renaming && oldWidget.title != widget.title) {
+      _renameController.text = widget.title;
+    }
+  }
+
+  @override
+  void dispose() {
+    _renameController.dispose();
+    _renameFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _startRename() {
+    setState(() {
+      _renaming = true;
+      _renameController.text = widget.title;
+      _renameController.selection = TextSelection.collapsed(
+        offset: _renameController.text.length,
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _renameFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _cancelRename() {
+    setState(() {
+      _renaming = false;
+      _saving = false;
+      _renameController.text = widget.title;
+    });
+  }
+
+  Future<void> _submitRename() async {
+    final strings = context.stringsRead;
+    final nextTitle = _renameController.text.trim();
+    if (nextTitle.isEmpty) {
+      FitLogNotifications.error(context, strings.aiRenameChatEmpty);
+      return;
+    }
+    if (nextTitle == widget.title.trim()) {
+      _cancelRename();
+      return;
+    }
+    setState(() => _saving = true);
+    final success = await widget.onRename(nextTitle);
+    if (!mounted) {
+      return;
+    }
+    if (success) {
+      setState(() {
+        _renaming = false;
+        _saving = false;
+      });
+    } else {
+      setState(() => _saving = false);
+      FitLogNotifications.error(context, strings.aiRenameChatFailed);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = widget.selected
+        ? const Color(0xFF284A31)
+        : const Color(0xFF334137);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: widget.selected
+            ? const Color(0xFFDDF2D7).withValues(alpha: 0.82)
+            : Colors.white.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _renaming ? null : widget.onTap,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              children: <Widget>[
+                const SizedBox(width: 12),
+                Expanded(child: _buildTitle(context, textColor)),
+                IconButton(
+                  key: const ValueKey<String>('ai_rename_chat_button'),
+                  tooltip: context.strings.aiRenameChat,
+                  onPressed: _saving
+                      ? null
+                      : _renaming
+                      ? _submitRename
+                      : _startRename,
+                  icon: Icon(
+                    _renaming ? Icons.check_rounded : Icons.edit_outlined,
+                    size: 18,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey<String>('ai_delete_chat_button'),
+                  tooltip: _renaming
+                      ? context.strings.cancel
+                      : context.strings.aiDeleteChat,
+                  onPressed: _saving
+                      ? null
+                      : _renaming
+                      ? _cancelRename
+                      : widget.onDelete,
+                  icon: Icon(
+                    _renaming
+                        ? Icons.close_rounded
+                        : Icons.delete_outline_rounded,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTitle(BuildContext context, Color textColor) {
+    final titleStyle = Theme.of(context).textTheme.bodyMedium?.copyWith(
+      color: textColor,
+      fontWeight: widget.selected ? FontWeight.w800 : FontWeight.w600,
+      height: 1.2,
+    );
+    if (_renaming) {
+      return TextField(
+        key: const ValueKey<String>('ai_rename_chat_field'),
+        controller: _renameController,
+        focusNode: _renameFocusNode,
+        enabled: !_saving,
+        textInputAction: TextInputAction.done,
+        maxLength: 80,
+        minLines: 1,
+        maxLines: 2,
+        style: titleStyle,
+        cursorColor: const Color(0xFF4D9842),
+        onSubmitted: (_) => _submitRename(),
+        decoration: const InputDecoration(
+          counterText: '',
+          isDense: true,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+      );
+    }
+
+    return Text(
+      widget.title,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: titleStyle,
     );
   }
 }

@@ -21,6 +21,7 @@ class AppConstants {
   ];
 
   static const String sourceAiPaste = 'ai_paste';
+  static const String sourceAiPhoto = 'ai_photo';
   static const String sourceManual = 'manual';
 
   static final List<String> bodyParts = ExerciseCatalog.bodyParts;

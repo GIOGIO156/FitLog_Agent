@@ -1,0 +1,5 @@
+[functions.ai-chat-route]
+verify_jwt = false
+
+[functions.ai-food-photo-analyze]
+verify_jwt = false

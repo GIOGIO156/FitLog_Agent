@@ -1,5 +1,218 @@
 # Changelog
 
+## 2026-07-02 AI Photo Preview And Status Copy Polish
+
+### Changed
+
+- Changed Add Food Photo AI Analysis controls to use shorter Photo/Gallery labels, keep the camera action as an add-photo action instead of a retake state, let thumbnail taps switch the enlarged preview, and remove the duplicate bottom clear button in favor of per-thumbnail removal.
+- Changed AI Chat artifact review buttons so Food Draft and Workout Draft cards share the compact `Review and confirm` action wording.
+- Changed the AI top readiness pill to use compact `Ready`/`Off` English labels while preserving detailed gate reasons in status sheets and errors.
+- Fixed Photo AI Analysis error handling so service-side schema/provider failures return structured gateway errors instead of being mislabeled as network failures, and made the Food Draft parser tolerate common JSON wrappers and non-critical confidence formatting.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
+## 2026-07-02 Workout Draft Clarification And Photo Multi-Image
+
+### Changed
+
+- Changed Qwen workout draft prompting to allow at most one clarification turn; if the user reply is still incomplete, AI Chat should return an editable `workout_draft.v1` with missing values left null and uncertainties in notes.
+- Changed AI Gateway provider parsing to recover schema-validated Food Draft or Workout Draft JSON from provider prose or fenced JSON, preventing raw draft JSON from leaking as ordinary assistant text.
+- Changed Add Food Photo AI Analysis to accept one to three compressed JPEG/PNG/WebP images in the dedicated `ai-food-photo-analyze` workflow, matching the AI Chat three-image boundary while still returning only a Food Draft.
+
+### Validation
+
+- Ran `dart format lib test`; formatter updated Dart formatting in `app_strings.dart`, `photo_food_analysis_page.dart`, and `photo_food_analysis_page_test.dart`.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+- Local Supabase Edge Function tests could not run because `deno` is not installed on this machine.
+
+## 2026-07-02 AI Chat Draft Context And Workout Draft Artifacts
+
+### Added
+
+- Added AI Chat Workout Draft artifacts that show a summary card, rebuild the existing workout editor draft only after the user taps review, ask before replacing an unsaved workout draft, and never write an official workout record until the editor save action.
+- Added compact same-chat context for AI Chat requests, limited to recent text turns and Food Draft / Workout Draft artifact summaries so the provider can follow the current conversation without receiving raw images, base64 payloads, full business history, RAG context, or user API keys.
+- Added a `workout_draft.v1` Gateway draft contract and Flutter domain mapper that converts validated AI workout draft payloads into the existing local workout editor draft format.
+
+### Changed
+
+- Changed AI Chat draft artifact handling so historical cards can keep their visible summary even when their stored snapshot can no longer safely rebuild an editor; unavailable review actions are shown disabled instead of silently removing the card.
+- Updated README, API contract draft, roadmap, and bilingual Product/AppGuide/AgentDesign/Database docs to mark Food Draft and Workout Draft artifact cards, compact same-chat context, and the no-automatic-official-write boundary as current behavior.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all 160 tests passed.
+- Built the configured debug split APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+- Local Deno tests for Supabase Edge Functions could not run because `deno` is not installed.
+
+## 2026-07-01 Phase 4 Step 6 Multimodal Chat And AI Page Performance
+
+### Added
+
+- Added up-to-three-image AI Chat attachment support for Qwen multimodal requests, including camera/gallery selection, local image validation, request serialization, Gateway validation, Qwen `image_url` routing, and Food Draft response parsing.
+- Added AI Chat Food Draft artifact cards that keep the assistant Markdown reply readable and open the existing Food Preview confirmation flow only after the user taps review; no official food record is written until the user saves.
+- Added a Supabase `record_ai_chat_turn` RPC migration that persists validated Chat artifact snapshots in `ai_chat_messages.final_answer_json` and records accepted Chat image counts without storing image bytes or base64 payloads.
+
+### Changed
+
+- Changed the AI page background from full-screen per-frame repainting to a static painted layer animated by transform, keeping visible motion while reducing keyboard and chat interaction pressure.
+- Changed chat send completion so pending/loading UI stays visible until cloud messages finish reloading, avoiding a temporary empty "listening" state before the answer appears.
+- Changed conversation layout so the provider selector/status row moves to the top bar after chat content exists, while composer errors remain above the input area and empty-state errors appear above the provider/status row.
+- Changed AI Chat image previews to show thumbnail-only attachments with per-image removal and no filename label, matching the Chat-style upload affordance; gallery selection can now add multiple images at once up to the remaining three-image limit.
+- Changed Chat Food Draft handling so send completion no longer immediately navigates away from the AI page, avoiding the visible post-loading route flash and letting users reopen the draft from the assistant message.
+- Changed AI Chat conversation geometry so the message list starts below the top history/account/provider controls, shares the measured composer obstruction with bottom navigation and safe-area spacing, and preserves more readable text space.
+- Changed send-time scrolling so a newly sent user bubble anchors at the top of the readable chat area with the assistant loading bubble visible, while the final assistant reply does not force a second scroll.
+- Changed send-time anchoring to use a bounded active-turn fill and lock user drag during provider waiting, so the pending user/loading pair stays visible without exposing a large scrollable blank area.
+- Changed Add Food Photo AI Analysis errors to use the top notification layer and restyled the analyze action with the same floating pill plus lower shield geometry as the app navigation.
+- Changed history inline rename to use the same typography and row footprint as the displayed title, with cancel handled by the row action instead of a suffix icon that narrows the text field.
+- Updated README, API contract draft, roadmap, and bilingual Product/AppGuide/AgentDesign/Database docs for the AI Chat up-to-three-image Qwen boundary, artifact-snapshot draft confirmation rule, non-RAG scope, no long-term image storage, and chat-history persistence boundary.
+
+### Fixed
+
+- Fixed the AI page `+` attachment button still describing image attachment as unavailable after Qwen multimodal support.
+- Fixed stale design text that described AI Chat as text-only or unable to inspect images.
+- Fixed AI Chat image sends so the current runtime conversation shows the user's image thumbnail instead of text only, without storing raw images in cloud chat history.
+- Fixed AI Chat network-failure feedback so it says the message was kept for retry and appears inside the composer layout instead of behind the attachment/input area.
+- Fixed the max-image-limit notice so it uses the AI composer notice position instead of the global bottom notification, and fixed the top history/account actions so the provider/status row no longer pulls them away from the top corners.
+- Fixed AI Chat manual scrolling so long assistant text cannot slide behind the composer, and fixed the quiet background painter so the whole page repaints as one continuous slow-moving layer instead of appearing active only in exposed top/bottom regions.
+- Fixed AI Chat send-time fallback scrolling so it no longer jumps to a blank spacer page when the pending bubble has not been laid out yet.
+- Fixed assistant Markdown rendering so `#`, `##`, and `###` headings render as headings instead of leaking raw hash markers into chat replies.
+- Fixed Add Food photo-analysis network-failure copy so it says the current photo and note remain on the page, not that an app draft was saved.
+- Fixed assistant/user message spacing so a new user turn has breathing room after the previous assistant reply while each user/assistant pair stays compact.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all 156 tests passed.
+- Built the configured debug split APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+- Confirmed the required documentation tree exists, checked `git diff --check` for whitespace errors, and searched current stable docs/code for stale no-image, single-image Chat, saved-draft network copy, blank-spacer anchoring, raw Markdown-heading leakage, date-appended stable-doc headings, and replacement characters.
+- Local Deno tests for Supabase Edge Functions could not run because `deno` is not installed. Supabase CLI is available as `2.108.0`, but Edge Function deploy and any remote SQL application were not performed from this environment.
+
+## 2026-07-01 Phase 4 Step 5 AI UX And Photo Food Analysis
+
+### Added
+
+- Added local AI provider persistence so the ChatGPT/Qwen selection survives app restart without cloud sync.
+- Added inline cloud chat-session rename through the `rename_ai_chat_session` RPC, plus delete confirmation in the history UI while hiding the archive entry.
+- Added Add Food Photo AI Analysis as the first food-entry path, with camera/gallery selection, optional user note, loading overlay, a Qwen multimodal `ai-food-photo-analyze` Gateway client/function contract, and Food Draft conversion into the existing Food Preview confirmation flow.
+- Added `ai_photo` as the confirmed-source marker for records that started from photo analysis and were saved by the user.
+
+### Changed
+
+- Changed the AI status pill to show readiness only; request activity now appears in the send-button spinner and assistant loading bubble.
+- Increased the AI background's quiet-state visible motion and marked the painter as changing so the page no longer appears frozen during keyboard input, waiting, or reading.
+- Changed Add Food so external AI JSON paste is a fallback and prompt-copy is no longer the primary food-entry flow.
+- Updated README, API contract draft, roadmap, and bilingual Product/AppGuide/AgentDesign/Database docs for the implemented photo draft path, server-managed provider-key boundary, compact logging rules, and hidden chat archive UI.
+
+### Fixed
+
+- Fixed chat history deletion so it cannot soft-delete a session without user confirmation.
+- Fixed the provider selector returning to the default option after app restart.
+- Fixed stale docs that still described Add Food photo analysis as a placeholder or the active photo transport as Supabase Storage retention.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all 145 tests passed.
+- Built the configured debug split APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`; Gradle reported a Kotlin daemon incremental-cache fallback for `image_picker_android`, then successfully produced armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+- Confirmed the required documentation tree exists and searched current docs for stale photo-placeholder, prompt-copy, Storage-retention, replacement-character, and date-appended stable-doc wording; remaining placeholder/no-image hits are historical roadmap/changelog phase notes.
+- Local Deno tests for Supabase Edge Functions could not run because `deno` is not installed. Supabase CLI is available as `2.108.0`, but the SQL migration and Edge Function deploy were not applied to a remote project from this environment.
+
+## 2026-06-30 Phase 4 Steps 3 And 4 AI Chat Send And Providers
+
+### Added
+
+- Added the app-side AI chat send path with a Gateway client, cloud chat repository, runtime chat controller, pending-message state, cloud history loading, session switching, new chat, archive, soft delete, and stable error mapping.
+- Added the Step 3/4 Supabase migration for `record_ai_chat_turn`, `archive_ai_chat_session`, and `soft_delete_ai_chat_session`, keeping direct authenticated table writes closed while enabling service-owned text turn persistence.
+- Added server-side OpenAI/ChatGPT and Qwen text provider adapters for `ai-chat-route`, with provider API keys and exact model names kept in Edge Function environment configuration.
+
+### Changed
+
+- Changed AI availability so subscribed active-device users can send only when the configured backend Gateway is present, while text chat remains outside RAG, image recognition, Food Draft writeback, and official business-record writes.
+- Changed Qwen provider calls to explicitly disable thinking output for the product chat path.
+- Changed the AI background motion into two readability-oriented profiles: visible colorful flow on the empty landing state, and extremely slow low-amplitude flow while typing, waiting, or reading chat messages.
+- Changed the AI status pill to use semantic state indicators for available, waiting, gated, and unavailable states.
+- Changed chat sending to clear the composer immediately, show a pending user bubble, show an assistant loading bubble while waiting, and restore the draft if the send fails.
+- Added scoped assistant-message Markdown rendering for paragraphs, bold text, ordered/unordered lists, inline code, and code blocks while keeping user messages plain text.
+- Updated README, roadmap, API contract draft, and bilingual Product/AppGuide/AgentDesign/Database docs to mark text sending, real provider routing, and cloud chat history as implemented while preserving the remaining Agent V1 boundaries; synchronized bilingual AppGuide/AgentDesign with the current chat UI behavior.
+
+### Fixed
+
+- Fixed AI page send taps that could fail in debug because the button callback listened to localization through Provider outside a build, and made account/device preflight failures show a local AI error instead of silently doing nothing.
+- Fixed the AI animated background so it continuously repeats while the AI page is mounted, including while the keyboard is visible, without using fast processing motion during reading or waiting states.
+
+### Validation
+
+- Ran targeted AI chat controller/page tests, including keyboard-visible animation progression, quiet reading motion, status indicator, optimistic composer clearing, assistant loading, failure draft restore, and assistant Markdown coverage; then ran `flutter analyze` and `flutter test`.
+- Built the configured debug split APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+- Uploaded the Qwen provider Edge Function secrets, deployed `ai-chat-route`, confirmed unauthenticated function requests return the stable `auth_required` contract, and confirmed the configured Qwen `qwen3.7-plus` endpoint answers directly.
+- Confirmed the required documentation tree and searched stable docs for replacement characters, date-appended headings, stale root design-doc paths, and stale Step 2 current-state wording.
+- Local Deno formatting/tests for the Edge Function could not run because `deno` is not installed in this environment.
+
+## 2026-06-29 Phase 4 Step 2 Mock Gateway Skeleton
+
+### Added
+- Added the Supabase `ai-chat-route` Edge Function skeleton with stable Step 1-compatible response envelopes, server-side auth verification, subscription enforcement, active-device checks, deterministic mock provider replies, and sanitized error mapping.
+- Added `record_ai_mock_chat_turn` to persist accepted mock turns atomically, creating or reusing chat sessions, assigning deterministic user/assistant message sequences, and writing request logs plus compact debug summaries without opening direct client writes.
+- Added a follow-up service-role grant migration so the deployed Gateway can read subscription entitlement, write sanitized request/debug logs, and support service-side acceptance checks without opening direct client writes.
+- Added a narrow service-role subscription write grant so server-side entitlement setup and maintenance can upsert acceptance subscriptions without opening authenticated client writes.
+- Added function-level Supabase config so unauthenticated requests can reach the function and return the stable `auth_required` Gateway contract instead of a platform-shaped error.
+- Added Deno-side helper tests for request parsing, future-scope rejection, JWT session-claim extraction, response envelopes, and mock provider failure simulation.
+
+### Changed
+- Updated README, roadmap, API contract draft, and bilingual Product/AppGuide/AgentDesign/Database docs to mark the server-side mock Gateway as implemented while keeping AI-page sending, real providers, UI cloud history, RAG, and Food Draft writeback as later work.
+
+### Validation
+- Ran `dart format lib test`, `flutter analyze`, and `flutter test`; all completed successfully.
+- Ran deployed Supabase Edge Function acceptance against the linked dev project: verified `401/auth_required`, `403/subscription_required`, `409/device_replaced`, active subscribed mock replies, session reuse with message sequences `1..4`, service-role request/debug records, future-field rejection, cross-account session rejection, and authenticated-client denial on logs/debug tables.
+- Deno helper tests could not run locally because `deno` is not installed in this environment; the deployed-function acceptance covered the live server path.
+
+## 2026-06-29 Phase 4 Step 1 AI Chat Foundation
+
+### Added
+
+- Added the Supabase Phase 4 Step 1 AI chat foundation migration with `ai_chat_sessions`, `ai_chat_messages`, `ai_request_logs`, and `ai_debug_summaries`, including account-bound constraints, deterministic message ordering, RLS-protected chat reads, and server-only log/debug table access.
+- Added Flutter domain contract models for AI chat sessions/messages, Gateway request/response payloads, and stable Gateway error mapping without wiring AI message sending.
+- Added contract tests for text-only Gateway payloads, assistant responses, clarification handling, unsupported draft boundaries, message ordering, and stable/unknown error codes.
+
+### Changed
+
+- Updated README and bilingual Product/AppGuide/AgentDesign/Database docs to mark the Phase 4 Step 1 data/contract foundation as implemented while keeping AI Gateway, provider calls, UI chat-history persistence, RAG, and Food Draft writeback as later work.
+- Closed Phase 4 Step 1 after manual Supabase acceptance confirmed table creation, RLS, own-account chat reads, server-only log/debug access, cross-account message rejection, deterministic ordering, and soft-delete visibility.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Ran targeted `flutter test test\ai_gateway_contract_test.dart`.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+- Manually applied and accepted `202606290001_phase4_ai_chat_foundation.sql` in Supabase SQL Editor: verified the four AI tables exist, RLS is enabled on all four, only session/message tables expose authenticated `SELECT`, logs/debug tables reject authenticated reads, cross-account session/message binding fails, no sensitive log/debug columns are present, and soft-deleted sessions/messages are hidden from client reads.
+
+## 2026-06-29 Current-State Wording Cleanup
+
+### Changed
+
+- Updated user-facing AI and account copy to avoid stale Phase 1/Phase 2 wording and to describe record-summary permission as future use of necessary cloud summaries, not local SQLite history upload.
+- Updated README and bilingual Product/AppGuide/AgentDesign docs so current-state sections describe the implemented Agent shell/account/Cloud Records baseline without removing historical phase records from the roadmap or changelog.
+
+### Validation
+
+- Ran `dart format lib\core\localization\app_strings.dart`.
+- Confirmed the required documentation tree exists and searched updated docs/code for stale Phase 1/Phase 2 user-facing wording, replacement characters, date-appended stable-doc headings, and stale phase-plan paths.
+- Ran `git diff --check` with only line-ending warnings.
+- Ran `flutter analyze`.
+- Ran `flutter test`.
+
 ## 2026-06-28 Phase 3 Acceptance Closure
 
 ### Changed

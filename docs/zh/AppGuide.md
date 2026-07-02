@@ -70,16 +70,15 @@ Food 包含选中日期的正式饮食记录。
 
 Agent V1 新增：
 
-- AI Chat 确认后的 Food Draft 可以变成正式记录
-- Add Food 拍照识别可以创建 Food Draft
+- Add Food 把图片 AI 分析放在第一入口；它可以基于一到三张拍照/相册图片和可选补充说明创建 Food Draft
+- 图片 AI 分析或后续 Chat 草稿流程中由用户确认的 Food Draft 可以变成正式记录
 - AI 估算不确定时应先追问，再进入保存
 
 Food Draft UI 规则：
 
-- 在 AI Chat 内以紧凑预览卡展示草稿。
+- 当前已实现的 Add Food 图片路径会把草稿打开到现有 Food Preview 编辑页。
 - 视觉上尽量接近记录页 UI，让用户能识别字段。
-- 允许 Chat 内轻量编辑。
-- 提供保存、丢弃、打开完整编辑页操作。
+- 保存前允许编辑。
 - 只有确认后才保存。
 
 阅读更多：
@@ -105,37 +104,48 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 小型隐私/状态提示
 - 没有 quick chips
 
-当前 Phase 2 实现：
+当前 AI 页面实现：
 
 - AI tab 已经位于底部导航正中间。
-- AI 页的背景延伸到 bottom navigation 后方，底部保留轻微白色渐变 veil；可用状态使用更清晰的彩色慢流动，输入时键盘打开会暂停背景动画以降低输入卡顿，AI tab 使用玻璃态导航 pill；其它可滚动页面使用实体主题色导航 pill，并在自身内容底部预留阅读空间，不依赖 root 层整条导航底色。
+- AI 页的背景作为单个连续层延伸到整个页面和 bottom navigation 后方，底部只保留轻微白色渐变 veil。空闲首页使用更明显的彩色流动；键盘输入、等待回复和阅读已有消息时，背景仍持续流动，但切换为极慢、低幅度动效，既不会像静态图，也不会抢夺文字阅读注意力。AI tab 使用玻璃态导航 pill；其它可滚动页面使用实体主题色导航 pill，并在自身内容底部预留阅读空间，不依赖 root 层整条导航底色。
 - 页面默认是未登录不可用 shell。
-- 输入框可以输入文字，但发送按钮在 Phase 4 AI Gateway 前禁用。
-- ChatGPT/千问选择只是本地 UI 占位，不会调用 provider。
-- 账号/订阅入口在账号服务可用时打开 Phase 2 账号 sheet。中心状态文案优先读取已保存的 Cloud Profile 昵称，再回退到 auth display name。
-- Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；Phase 2 不上传历史，Phase 3 后摘要来源应改为云端 summary/context builder。
+- 输入框可以输入文字和最多三张 JPEG/PNG/WebP 图片附件；从相册选择时可以一次选入多张，最多补齐剩余额度。只有登录、联网、订阅可用、active device 有效，且已配置的 Supabase Gateway 能调用所选 provider 时，发送才可用。
+- ChatGPT/千问选择会把文本请求路由到服务端 Gateway；图片附件必须使用千问多模态路由。模型名和 provider API key 只保存在服务端。
+- ChatGPT/千问选择会保存在本机并在 App 重启后恢复；模型名和 provider API key 只保存在服务端。
+- 模型/状态 pill 只表示 readiness，并使用紧凑文案：满足发送条件时显示 `可用`，账号/Profile/订阅/网关 gate、离线或 active-device 阻止发送时显示 `不可用`。请求进行中只由发送按钮和 assistant loading 气泡表达。
+- 发送 prompt 后，输入框立即清空，用户消息立即显示为 pending 气泡；等气泡有真实布局位置后，消息列表会把它锚到顶部操作区下方的可读区域附近，并在服务端回复持久化和重新加载前显示 assistant loading 气泡。发送中的活动轮次填充不能暴露成可滚动空白，最终 assistant 回复出现后不再强制二次滚动。
+- 消息列表从顶部 history/account/provider 控件下方开始，并使用实测 composer 高度作为底部遮挡，因此手动滚动时正文不会滑到输入框后方。
+- assistant 消息支持基础 Markdown 渲染，包括段落、标题、加粗、有序/无序列表、行内代码和代码块；用户消息仍按普通文本显示。当前 Markdown 渲染不加载远程图片，也不执行链接动作。
+- 当 Chat 回复包含 Food Draft 或 Workout Draft 时，assistant 消息会显示原生 artifact 卡片和确认按钮。按钮用已保存的 snapshot 重建 Food Preview 或现有训练编辑草稿；后台不会保持一个待命草稿页面，用户在编辑页保存前也不会写正式记录。
+- Food Draft 和 Workout Draft 卡片使用同一套简短确认按钮文案 `查看并确认`，草稿类型由卡片标题说明。
+- 训练草稿最多只追问一轮；如果用户仍没有提供完整信息，Chat 应返回可编辑的不完整草稿，而不是继续追问。
+- 账号/订阅入口在账号服务可用时打开当前账号 sheet。中心状态文案优先读取已保存的 Cloud Profile 昵称，再回退到 auth display name。
+- Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；当前 chat 路径只发送紧凑同会话文本和草稿 artifact 摘要，不上传完整业务历史或 records summary，后续基于摘要的 AI workflow 应使用云端 summary/context builder。
 - 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
-- 历史入口仍是占位。
-- 尚未实现 AI Gateway、云端 chat history、RAG 或 LLM 调用。
+- 历史入口打开云端 chat history，支持新建 chat、切换 session、inline 重命名和二次确认删除；当前 UI 不暴露归档入口。
+- Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food 图片草稿流程。
+- AI 页面尚未实现 RAG、长期图片存储、自动修改目标或正式业务记录自动写入。Chat Food Draft 和 Workout Draft artifact 卡片只有在用户点击确认后才打开对应编辑页，用户保存前仍是草稿。
 
 可用状态：
 
 - 已登录、联网、已订阅：允许发送
 - 未登录：灰色不可用状态
 - 离线：灰色不可用状态
-- 未订阅：不可用状态，并解释账号/订阅情况
+- 未订阅或 Cloud Profile 未完成：橙色 gate 状态，并解释账号/Profile 情况
+- 账号、订阅和 Profile 已就绪但后端、provider 或 active-device 未完成校验：橙色准备中状态
 
-当前说明：即使账号、订阅、Cloud Profile 和 Cloud Records gate 都已就绪，发送仍要等 Phase 4 Gateway 接入后才会开放。
+当前说明：即使账号、订阅、Cloud Profile 和 Cloud Records gate 都已就绪，发送仍依赖已部署的 Supabase Edge Function、provider secrets 和 active-device 校验。
 
 不可用状态规则：
 
 - 用户可以继续编辑未完成 prompt。
 - 只有登录、联网和订阅条件全部满足时，才允许发送。
-- 未发送的输入框内容应在当前运行期内的切换 tab 和不可用状态下保留。用户删除、发送成功、退出登录或账号变化时清空。
+- 未发送的输入框内容应在当前运行期内的切换 tab 和不可用状态下保留。用户发送时输入框立即清空；如果发送失败，草稿恢复以便重试。退出登录或账号变化时清空。
 
 支持 workflow：
 
 - 食物图片/文字估算
+- 训练草稿生成
 - 用餐决策建议
 - 周复盘
 - App 规则问答
@@ -171,7 +181,9 @@ Agent V1 边界：
 
 - AI 可以在 Weekly Review 中解释近期训练模式。
 - AI 可以把训练摘要用于用餐决策上下文。
-- V1 中 AI 不应静默创建、编辑或删除训练记录。
+- AI Chat 可以生成 Workout Draft artifact，用户点击确认后打开现有训练编辑页。
+- 训练草稿追问上限是一轮；不完整信息应进入可编辑草稿，而不是在 chat 中连续追问。
+- V1 中 AI 不应静默创建、编辑或删除正式训练记录。
 
 阅读更多：
 
@@ -207,7 +219,7 @@ Agent V1 profile 模型：
 - 新注册或新登录账号没有 Cloud Profile row 时，App 会自动创建默认 Cloud Profile，并进入正常 Profile 编辑页。
 - Cloud Profile 加载/保存失败时，应显示可读提示和诊断错误码，例如 schema 不匹配、RLS 拦截、session 过期、网络失败或表缺失。
 - 订阅状态加载失败不应阻塞 Cloud Profile 已成功加载的 Profile 编辑页；AI 发送仍要等订阅状态可用且生效后才开放。
-- Profile 标题区右侧提供紧凑“订阅”入口，并用明确的已开启/未开启/加载中/异常状态徽标表达订阅状态；点开小型模糊浮层后显示当前账号 entitlement，可刷新状态，也可输入开发期内部兑换码为当前账号开启 AI 订阅。这只是 Phase 2 内部测试路径，不是生产支付流程。
+- Profile 标题区右侧提供紧凑“订阅”入口，并用明确的已开启/未开启/加载中/异常状态徽标表达订阅状态；点开小型模糊浮层后显示当前账号 entitlement，可刷新状态，也可输入开发期内部兑换码为当前账号开启 AI 订阅。这只是内部开发 entitlement 测试路径，不是生产支付流程。
 - Profile 修改会先进入本地页面草稿。昵称和当前身体资料没有卡片级保存键；已改卡片显示醒目的已修改标记，底部条贴近 Profile body 底部并向上展开，显示未保存数量和简洁字段列表；“放弃”恢复到上次保存的 Cloud Profile，“保存更改”一次性写入完整 profile snapshot。
 - 身体资料卡提供日历/新增身体记录入口；日历默认打开当天，选择当天会回到当前身体资料视图且不显示日期条，选择过去日期才会让 Profile 留在页内历史身体记录编辑态。进入后，日历按钮下方显示具体日期，中文日期使用两位年份，英文日期使用四位年份；只有体重、体脂和腰围三项高亮可编辑，年龄、身高、性别、页面其它区域和底部导航都会用更强的柔和淡化状态锁定，不额外叠加分块遮罩。已有历史记录会在日期左侧显示红色删除控件；删除必须确认，确认动作使用红色危险操作而不是绿色填充确认按钮，会刷新身体趋势，并移除本地 cache 镜像，使校准/review 读取不到该行。没有历史记录的过去日期会让三项可编辑指标保持为空。内联编辑器与指标 tile 共用卡片底色，聚焦时保持数值区高度稳定，键盘聚焦时会把当前编辑区滚到键盘上方。过去日期补记不会静默修改当前 Cloud Profile；如需把某条历史记录设为当前身体资料，必须显式确认。
 - 身体趋势卡片放在身体资料正下方，只读展示趋势，不承担记录入口。它支持体重、体脂、腰围三种折线，支持 7/14/21/28 天窗口；真实记录点按当前窗口内的真实日期间隔从左向右延伸；当前周期记录不足等状态直接写在折线图区内；点按真实记录点会在图内显示该点数值。
@@ -261,8 +273,8 @@ App 应保留隐私提示，但不应占据太多屏幕。
 UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
-- 已实现 Agent Phase 1-2 行为：居中的 AI tab、不可用 AI 页面、可编辑输入框、模型选择器、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关，以及五 tab 浮动底部导航。
+- 已实现 Agent shell/账号/AI Chat 行为：居中的 AI tab、可用性 gating 的 AI 页面、可编辑输入框、最多三张千问图片附件、本机持久化模型选择器、只表达可用性的状态 pill、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关、紧凑同会话 context、云端 chat history、文本/多模态 Gateway 发送路径、chat inline 重命名/删除确认、Chat Food Draft 和 Workout Draft artifact 卡片、Add Food 图片 AI 草稿流程，以及五 tab 浮动底部导航。
 - Phase 3 已接入 Cloud Records Foundation 和主要 hardening 链路，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、App 侧 summary 云端 upsert/恢复、本地 partial cache、Home 选中日期 summary cache 与 stale-while-revalidate、受控的近期 summary warm cache、confirmed cache 淘汰，以及 cloud-backed 导出完整性。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
-在代码实现前，不要把 AI Gateway、云端 chat history、RAG、Food Draft 写回或 LLM 调用写成已实现。账号登录、订阅状态、Cloud Profile 和 Cloud Records 都需要配置 Supabase 后才能连接真实后端测试。
+在代码实现前，不要把 RAG、超过三张的 Chat 图片附件、长期图片存储、AI 自动正式业务记录写入或 autonomous Agent action 写成已实现。AI Gateway、云端 chat history、最多三图 Chat、Chat Food Draft 和 Workout Draft artifact 卡片，以及 Add Food 图片分析需要 Supabase migrations、function 部署和 provider secrets 才能连接真实后端测试。

@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. Phase 1 added the centered AI tab and disabled AI shell. Phase 2 adds the account, subscription-status, and Cloud Profile foundation. Phase 3 connects signed-in body/food/workout official records to the cloud source of truth, adds Home selected-day summary cache with stale-while-revalidate, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, and exports from cloud official records. AI Gateway, remote model calls, cloud chat history, Food Draft writeback, and RAG are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. The implemented Agent baseline includes the centered AI tab, account state, subscription status, Cloud Profile foundation, signed-in body/food/workout official records connected to the cloud source of truth, AI Chat through server-side OpenAI/Qwen providers, Qwen multimodal chat with up to three images, cloud chat history, inline Chat Food Draft and Workout Draft artifact cards, a compact same-chat context builder, and Add Food Photo AI Analysis that creates an editable Food Draft. It also adds Home selected-day summary cache with stale-while-revalidate, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, exports from cloud official records, and writes compact AI request/debug summaries. RAG, more than three Chat images, long-term image storage, and autonomous actions are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -15,34 +15,34 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no app-internal LLM execution. Phase 1-2 implement the AI navigation entry, disabled chat shell, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Phase 3 implements the Cloud Records source-of-truth path for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening. AI Gateway and wrappers are not implemented yet.
+The current source has no on-device model execution. Remote AI calls go through Supabase Edge Functions with server-managed provider keys. The implemented Agent shell/account baseline includes the AI navigation entry, availability-gated chat page, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Cloud Records source-of-truth paths for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening are also implemented. Phase 4 Step 1 adds Supabase tables for AI chat sessions/messages, request logs, and compact debug summaries, plus Flutter contract models for AI Gateway request/response/error mapping. Phase 4 Steps 2-4 add the `ai-chat-route` Supabase Edge Function, server-owned chat-turn RPCs, AI-page Gateway client, cloud chat-history repository/controller, and server-side OpenAI/ChatGPT plus Qwen text provider routing. Phase 4 Step 5 adds local provider preference persistence, readiness-only status, inline chat rename/delete confirmation, and Add Food photo analysis through `ai-food-photo-analyze`. Phase 4 Step 6 adds AI Chat attachments with up to three images through Qwen multimodal routing, parsed Food Draft responses, Chat artifact cards that rebuild Food Preview after a user tap, smoother AI-page background motion, and stable rename/loading transitions. The current chat path also supports typed Workout Draft artifacts that rebuild the existing workout editor draft after a user tap, and it sends a compact same-chat context made from recent text and draft summaries. The implemented chat path does not run RAG, upload full record history, store image bytes long-term, or write official business records automatically.
 
 Not implemented in the current code:
 
-- AI Gateway
-- server-managed model API keys
-- remote LLM or multimodal model calls
 - embeddings
 - vector database
 - app-internal RAG
+- more than three Chat image attachments
+- record-summary/context retrieval for AI answers beyond compact same-chat text and draft summaries
 - tool calling
 - Agent loop
-- AI conversation memory
-- Agent action/debug logs
-- cloud chat history persistence
+- long-term semantic AI conversation memory
+- Agent action/debug workflows beyond compact request summaries
 - production payment provider or subscription management
 
 Existing AI-adjacent features are user-mediated, not app-internal AI:
 
 | Feature | Current behavior | App-internal AI? | Main code |
 | --- | --- | --- | --- |
-| Prompt copy | The app provides prompt text that the user can copy into an external model. | No | `PromptTemplates`, `AddFoodPage._copyPrompt` |
+| Prompt template text | The app keeps external-model guidance text for fallback copy/paste wording, but Add Food no longer exposes prompt copy as the primary flow. | No | `PromptTemplates`, `AppStrings` |
 | External AI JSON paste | The user manually pastes JSON produced outside the app. FitLog parses it locally. | No | `PasteAiResultPage`, `NutritionCalculator.parseAiFoodJson` |
 | `source = ai_paste` | Saved food records can mark that the source was an AI paste workflow. | No | `AppConstants.sourceAiPaste`, `FoodRecord.source` |
-| Photo AI Analysis | Visible placeholder entry point in Add Food. | No | `AddFoodPage` |
-| AI Chat shell | Centered AI tab with disabled background, editable composer, provider selector, history placeholder, and account/subscription status entry. It cannot send until Phase 4. | No | `AiPage`, `FitLogBottomNavBar` |
+| Photo AI Analysis | Add Food first entry. The user selects one to three camera/gallery images, can tap thumbnails to switch the enlarged preview or remove a single image from the thumbnail corner, and may add an optional note; `ai-food-photo-analyze` calls Qwen multimodal provider and returns a schema-validated Food Draft that opens Food Preview. | Server-mediated draft only | `AddFoodPage`, `PhotoFoodAnalysisPage`, `AiFoodPhotoAnalysisClient`, `ai-food-photo-analyze` |
+| AI Chat page | Centered AI tab with availability-gated background, editable composer, up to three image attachments, provider selector, cloud history sidebar, and account/subscription status entry. It can send text through OpenAI/Qwen and up to three images through Qwen only after login, subscription, active-device, and provider-configuration checks pass. Food Draft and Workout Draft responses render Chat artifact cards; tapping review rebuilds Food Preview or the existing workout editor draft and still requires user save confirmation before any official write. | Server-mediated text or draft only | `AiPage`, `AiChatController`, `SupabaseAiChatRepository`, `SupabaseAiGatewayClient`, `ai-chat-route` |
+| Phase 4 chat data/contract foundation | Supabase schema for AI chat sessions/messages, request logs, compact debug summaries, and Flutter request/response/error contract models. It does not send messages or call providers. | No | `202606290001_phase4_ai_chat_foundation.sql`, `AiGatewayRequest`, `AiGatewayResponse` |
+| Phase 4 Gateway and providers | Supabase Edge Function verifies auth, subscription, and active-device state, calls the selected server-side text or Qwen multimodal provider, accepts compact same-chat `conversation_context`, validates typed Food Draft or Workout Draft payloads, then persists the user/assistant text turn plus request log and compact debug summary through service-owned RPCs. | Server-mediated text or draft only | `ai-chat-route`, `record_ai_chat_turn`, `openai_provider.ts`, `qwen_provider.ts` |
 | Account/Profile foundation | Supabase-configured email-password sign-in, persisted auth-session recovery, registration email-code flow with local PKCE verifier storage, subscription status lookup, Cloud Profile load/save path, Profile sign-in gate, and cache display fallback. | No | `AccountController`, `AuthRepository`, `SubscriptionRepository`, `CloudProfileRepository`, `ProfilePage` |
-| User record summary permission | Per-account local setting that controls whether future AI answers may use user record summaries. It does not upload history in Phase 2; after Phase 3, summary sources should be cloud summary/context builders. | No | `AiLocalContextPermissionRepository`, `AiPage` |
+| User record summary permission | Per-account local setting that controls whether future AI answers may use user record summaries. The current text chat stores the permission only and does not upload full business history or record summaries; later summary-based AI workflows should use cloud summary/context builders. | No | `AiLocalContextPermissionRepository`, `AiPage` |
 
 ## V1 Agent Positioning
 
@@ -62,7 +62,7 @@ V1 adds:
 - scoped Structured RAG over minimal summaries
 - Document RAG over FitLog design/help documents
 - schema-validated AI outputs
-- inline draft preview cards in chat
+- inline Food Draft and Workout Draft preview cards in chat
 - user confirmation before official writes
 
 V1 does not add:
@@ -113,34 +113,37 @@ Required elements:
 - no quick chips
 - compact privacy/status hint when needed
 
-Animation states stay simple:
+Animation states stay simple and should not compete with reading:
 
 | State | Visual behavior | Product meaning |
 | --- | --- | --- |
-| Ready | Clear colorful slow flow. | AI is available and waiting. |
-| Processing | Slightly faster or more layered flow. | The request is routing, retrieving context, or generating. |
-| Needs clarification | Slower flow with input or draft card emphasis. | AI needs user-supplied missing information. |
-| Disabled | Gray, low-motion background. | User is offline, logged out, or not subscribed. Composer remains editable, but send is disabled. |
+| Empty landing | Clear colorful flow with visible motion. | The AI page is available or present and waiting for input. |
+| Input, waiting, or reading | Extremely slow, low-amplitude flow. | The user is typing, waiting for a reply, or reading messages; chat content owns attention. |
+| Disabled | Gray, low-motion background that still flows. | User is offline, logged out, or not subscribed. Composer remains editable, but send is disabled. |
 
-When messages grow into a scrollable list, the animated background remains present but should be dimmed and desaturated behind the message layer for readability.
+When messages grow into a scrollable list, the animated background remains one full-screen layer behind the whole AI page. It moves very slowly and should be dimmed and desaturated behind the message layer for readability, but it should not be split into separate moving top/bottom strips. The background should never stop entirely, including while the keyboard is open.
 
-When the keyboard is open, the background animation may pause so typing stays smooth; the visible background should remain in place rather than flashing or changing layout.
+Waiting for a provider response should be shown by chat UI, not by faster background motion. The composer clears immediately, the user message appears as a pending bubble, and after that bubble has a real layout position the message list anchors it near the top of the readable area below the top actions. A small active-turn trailing fill may be used only to make the pending user bubble plus assistant loading bubble anchor cleanly; it must not behave like a large scrollable blank region, and user drag should not be able to scroll the pending/loading pair completely out of view. The assistant loading bubble remains visible until the final assistant message is reloaded from cloud history. The assistant reply should not trigger another forced scroll after it appears.
 
 The bottom navigation should be a theme-aware floating pill. The navigation component itself must not paint a full-width background strip outside the pill; whatever appears outside the pill should come from the current page or root shell background. Non-AI tabs use an opaque theme-surface pill so page text does not show through the navigation, while the AI tab uses a glass pill so the animated background remains visible. The root shell must not shrink page bodies to create navigation space. Scrollable pages own their bottom reading padding so the final content can scroll above the floating navigation, fixed bottom CTAs use navigation clearance, and Home first-viewport layout keeps only a small nav-adjacent gap so dashboard content keeps its intended size.
 
 The AI page may keep a very light white gradient veil at the bottom. Its job is to soften the bottom light effect and system safe area, not to act as an opaque cover; future colorful animation should still remain visible beside the bottom navigation.
 
-When AI Chat gains a real scrollable message list, it must handle scroll obstruction before shipping:
+AI Chat scroll geometry must handle obstruction consistently:
 
-- The message list needs enough bottom padding for the composer, provider selector, bottom navigation, system safe area, and bottom veil.
+- The message list starts just below the top history/account/provider controls so text reading space is maximized.
+- The message list needs enough bottom padding for the measured composer height, bottom navigation, system safe area, and bottom veil.
+- Send-time anchoring must target the real pending user bubble after layout. If a fallback scroll is needed to build that bubble, it should land near the active turn, not at the bottom of an oversized blank spacer.
 - At the end of the list, the last message should rest at a normal reading distance above the composer instead of being covered by the input or navigation bar.
-- The composer and message list must not calculate bottom spacing independently; they should share one bottom-obstruction value that includes the keyboard, composer, provider selector, bottom navigation, system safe area, and veil.
+- The composer and message list must not calculate bottom spacing independently; they should share one bottom-obstruction value that includes the keyboard, measured composer height, bottom navigation, system safe area, and veil.
 - When the keyboard opens, the message list should update its bottom inset in sync with the composer so the current context and newest messages remain above the input.
 - The gap between the navigation bar and the physical screen bottom should reveal only the AI background and veil, not message text sliding underneath.
 
 The center status text and composer hint should not say the same thing. The empty state may keep a center status such as "I'm listening, RINKO", using the saved Cloud Profile nickname before auth display name. The composer hint should give a lightweight input cue, such as "Ask away with FitLog." Keyboard focus by itself should not make the center status suddenly disappear or visibly jump; only a real conversation state should make the message list become the primary surface.
 
-Unsent composer text is a current-runtime device-local draft. It should survive tab switches and disabled availability states until the user deletes it or a send succeeds. Logout or account switching should clear the draft so previous account context does not linger; drafts must not be promoted into cloud chat history until a successful send.
+Assistant messages may render basic Markdown such as paragraphs, headings, bold text, ordered/unordered lists, inline code, and code blocks. User messages stay plain text. Markdown rendering must not load remote images or execute link actions. Saveable business drafts may only come from validated Gateway draft payloads and must still go through user confirmation. When Chat returns a Food Draft or Workout Draft, the assistant message stores a lightweight artifact snapshot in `final_answer_json` and shows a native review button; tapping it rebuilds Food Preview or the existing workout editor draft locally from that snapshot instead of keeping a background draft page alive. If a stored snapshot can no longer rebuild the editor safely, the card remains visible as a disabled summary rather than disappearing.
+
+Unsent composer text is a current-runtime device-local draft. It should survive tab switches and disabled availability states until the user deletes it or sends it. The composer clears immediately on send and the text moves into a pending user bubble; if sending fails, the draft should be restored for retry. Logout or account switching should clear the draft so previous account context does not linger; drafts must not be promoted into cloud chat history until a successful send.
 
 ## Supported V1 Workflows
 
@@ -160,10 +163,30 @@ Behavior:
 1. AI extracts candidate foods, portions, cooking method, and uncertainty.
 2. If food type, meat type, portion, consumed amount, or cooking method is unclear, AI asks a follow-up question instead of forcing a confident estimate.
 3. AI returns schema-validated draft data.
-4. The app shows an inline Food Draft card in chat, matching the record-page UI style.
-5. The user may make light edits in chat.
-6. The user may save, discard, or open the full food editor.
+4. The implemented chat-image draft path shows a Chat artifact card and opens the existing Food Preview editor only after the user taps the review button.
+5. The user may edit draft fields before saving.
+6. The user may save, discard, or open the full food editor when the UI provides that path.
 7. Official food records are written only after confirmation.
+
+### Workout Draft Workflow
+
+Inputs:
+
+- text description
+- optional image context when Qwen multimodal analysis is part of the current request
+- optional user corrections
+- selected date if relevant
+
+Behavior:
+
+1. AI extracts a candidate workout record name, date, exercises, sets, cardio duration, intensity, and uncertainty.
+2. If exercise identity, load, reps, duration, or intensity is unclear, AI may ask at most one follow-up question that lists all material missing fields.
+3. If the user reply is still incomplete or says they do not know, AI returns a best-effort schema-validated Workout Draft with missing values left empty and uncertainty recorded in notes instead of asking again.
+4. AI returns schema-validated Workout Draft data.
+5. The assistant message shows a Chat artifact card and opens the existing workout editor draft only after the user taps review.
+6. If an unsaved workout editor draft already exists, the app asks before replacing that draft.
+7. The user may edit the workout draft before saving.
+8. Official workout records are written only by the normal workout editor save action.
 
 ### Meal Decision Workflow
 
@@ -220,6 +243,8 @@ Behavior:
 ## Context And RAG
 
 V1 uses scoped retrieval because many useful answers require context. For example, when a user asks why weight loss has stalled, the model needs recent intake, training, weight, and profile context before answering.
+
+The current AI Chat path implements only a compact same-chat context builder. It sends recent text turns plus Food Draft / Workout Draft artifact summaries so the model can understand the current conversation, but it does not send raw historical images, base64 payloads, full business history, or arbitrary database results. This same-chat context is not RAG.
 
 ### Structured RAG
 
@@ -281,9 +306,11 @@ V1 uses one active device per account. AI context building and AI Gateway send m
 
 By default, V1 does not provide the model with complete raw food history, complete raw workout history, complete raw body-metric history, local export archives, or local workout drafts. When record context is needed, the app should use user-visible permission or settings and send only the minimum necessary summary.
 
+The implemented image paths are narrow, not RAG. Add Food sends one to three compressed JPEG/PNG/WebP images plus an optional note to `ai-food-photo-analyze`; AI Chat can send up to three JPEG/PNG/WebP images through `ai-chat-route` when Qwen is selected. The Edge Functions forward images to Qwen multimodal capability for that request, validate structured Food Draft or Workout Draft payloads when present, and do not store original images or base64 payloads. Add Food and AI Chat request logs write the accepted `image_count`, while chat history persists text turns plus lightweight artifact snapshots and summaries for returned drafts.
+
 ## Cloud Profile
 
-Profile belongs to the account. Before login, the user has no formal profile, and the Profile page should show a login/onboarding entry instead of the local profile editor. The current Phase 2 auth entry uses a solid theme background, the no-star FitLog logo base asset with a saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right, a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, a top backend-configuration notice when needed, a static non-scrolling landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, and a registration form with email code plus password confirmation. Registration does not collect a username; nickname/display name remains a Cloud Profile field filled through Profile onboarding.
+Profile belongs to the account. Before login, the user has no formal profile, and the Profile page should show a login/onboarding entry instead of the local profile editor. The current auth entry uses a solid theme background, the no-star FitLog logo base asset with a saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right, a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, a top backend-configuration notice when needed, a static non-scrolling landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, and a registration form with email code plus password confirmation. Registration does not collect a username; nickname/display name remains a Cloud Profile field filled through Profile onboarding.
 
 Rules:
 
@@ -312,7 +339,7 @@ Because offline profile saving is disabled, V1 avoids pending-profile merge conf
 
 V1 uses subscription gating rather than user-visible per-message credits.
 
-In Phase 2, the Profile header exposes a compact `Subscription` entry button with an explicit active/inactive/loading/error status badge, not a standalone notification-like dot. The entry opens a small blurred overlay. The overlay shows the current account entitlement, refreshes subscription status, and can redeem a development internal code through the Supabase RPC `redeem_internal_subscription_code`. Redeem codes are stored server-side as hashes and update the account's `subscriptions` row only through the RPC; clients never receive a service-role key and cannot directly insert or update entitlement rows. This is an internal testing path, not a production payment or app-store subscription implementation.
+The Profile header exposes a compact `Subscription` entry button with an explicit active/inactive/loading/error status badge, not a standalone notification-like dot. The entry opens a small blurred overlay. The overlay shows the current account entitlement, refreshes subscription status, and can redeem a development internal code through the Supabase RPC `redeem_internal_subscription_code`. Redeem codes are stored server-side as hashes and update the account's `subscriptions` row only through the RPC; clients never receive a service-role key and cannot directly insert or update entitlement rows. This is an internal development entitlement test path, not a production payment or app-store subscription implementation.
 
 AI send is disabled when:
 
@@ -332,6 +359,7 @@ Default V1 recommendation:
 - Save AI sessions and final chat messages in cloud so history works across devices after login.
 - Save request/response metadata for reliability, billing audit, abuse prevention, and debugging.
 - Store compact debug summaries instead of verbose raw chain-of-thought or unrestricted tool traces.
+- For food-photo analysis, store only compact metadata such as workflow, model, image count, mime type, compressed byte length, schema validation status, and safety/error flags; do not store the original image or base64 payload by default.
 - Avoid storing full retrieved local record payloads when a compact context summary is enough.
 - Provide account deletion behavior that removes account-bound profile and chat history according to the deletion policy.
 
@@ -352,7 +380,8 @@ AI can propose writes only through typed draft objects.
 | Create food draft | Yes | Save requires confirmation |
 | Edit draft fields | Suggest or prefill | User controls final value |
 | Save official food record | No direct silent save | Yes |
-| Modify workout record | Draft or explanation only in V1 | Yes if implemented |
+| Create workout draft | Yes | Save requires confirmation through the workout editor |
+| Modify workout record | No direct silent edit | Yes through the workout editor |
 | Change profile | Explain only in V1 | Yes through Profile UI |
 | Change diet phase/mode/strategy | Explain only | Yes through Profile UI |
 | Apply carb taper | Explain/recommend only | Yes through existing review flow |
@@ -371,12 +400,13 @@ AI can propose writes only through typed draft objects.
 
 ## Code References
 
-Current Local and Phase 2 baseline:
+Current Local and Agent baseline:
 
 - App shell: `lib/main.dart`, `lib/app.dart`
-- AI shell: `lib/features/ai/ai_page.dart`
+- AI page: `lib/features/ai/ai_page.dart`, `lib/features/ai/ai_chat_controller.dart`
 - Bottom navigation: `lib/core/widgets/fitlog_bottom_nav_bar.dart`
 - Food entry and AI-adjacent paste flow: `lib/features/food/*`
+- Workout editor draft handoff: `lib/features/workout/add_workout_page.dart`, `lib/domain/models/ai_workout_draft.dart`, `lib/domain/models/workout_record_draft.dart`
 - Prompt templates: `lib/core/constants/prompt_templates.dart`
 - JSON parser: `lib/domain/services/nutrition_calculator.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
@@ -387,11 +417,13 @@ Current Local and Phase 2 baseline:
 - Repositories: `lib/data/repositories/*`
 - Account/Profile state: `lib/features/account/account_controller.dart`
 - Cloud Profile mapping: `lib/domain/services/cloud_profile_mapper.dart`
-- Supabase schema: `supabase/migrations/202606190001_phase2_account_profile.sql`
+- Supabase schema: `supabase/migrations/202606190001_phase2_account_profile.sql`, `supabase/migrations/202606260001_phase3_cloud_records.sql`, `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`
+- Supabase chat/session rename schema: `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`
+- Supabase Edge Functions: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
+- AI chat and food-photo data path: `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`, `lib/data/repositories/ai_chat_repository.dart`
+- AI Gateway contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
 
 Planned later Agent V1 surfaces:
 
-- AI Gateway client
-- context-builder services
-- chat-history repository
-- draft-card UI components
+- record-summary context-builder services
+- richer inline draft editing

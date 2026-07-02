@@ -46,11 +46,11 @@ System notifications are app-level transient feedback, not business logic.
 | Module | V1 role | Implemented baseline | V1 planned additions |
 | --- | --- | --- | --- |
 | Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, refreshes Home with stale-while-revalidate, and upserts rebuildable `daily_summaries` to the cloud. |
-| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete. | After sign-in, official records write cloud-first; receives confirmed Food Drafts from AI Chat or Add Food photo recognition. |
-| Add Food | Food creation workflow. | Manual entry, prompt copy, JSON paste, Photo AI placeholder. | Photo recognition shortcut may call AI Gateway and create Food Draft. |
-| AI | Primary Agent entry. | Phase 2 implements the centered tab, disabled AI shell, editable composer, provider selector, account/subscription status sheet, subscription/Profile availability gating, and user-record summary permission. Sending is disabled until AI Gateway is added. | AI Gateway calls, cloud chat history, food drafts, meal decisions, weekly review, and app logic Q&A. |
+| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed `ai_photo` records from Add Food Photo AI Analysis. | After sign-in, official records write cloud-first; later Chat draft workflows must keep the same user-confirmation boundary. |
+| Add Food | Food creation workflow. | Photo AI Analysis is the first entry; manual entry and external AI JSON paste remain available. | Future refinements may add more than three Chat images or richer editor-side draft refinement only with an explicit privacy and confirmation design. |
+| AI | Primary Agent entry. | The current AI page implements the centered tab, availability-gated chat page, editable composer, up to three Qwen image attachments, locally persisted provider selector, readiness-only status pill, account/subscription status sheet, subscription/Profile availability gating, user-record summary permission, compact same-chat context, Gateway client, server-side OpenAI/Qwen provider routing, Chat Food Draft and Workout Draft artifact cards, and cloud chat history with new/switch/inline rename/delete-with-confirmation. | RAG-backed meal decisions, weekly review, app logic Q&A, and richer draft editing. |
 | Workout | Official workout-record management. | Workout records, custom exercises, draft editor, calorie heuristics. | After sign-in, official records write cloud-first; V1 AI may explain or review workout context but should not silently modify records. |
-| Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; Phase 2 shows sign-in before login and saves formal profile changes through Cloud Profile when signed in. | Account deletion, production subscription management, and later AI personalization flows. |
+| Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; signed-out users see the sign-in entry, and signed-in formal profile changes save through Cloud Profile. | Account deletion, production subscription management, and later AI personalization flows. |
 | Export | User-controlled data export. | XLSX and CSV ZIP export. | After Phase 3 hardening, export loads cloud official food, workout, and body metric records before building files; local cache may accelerate but is not required for completeness. |
 
 ## AI Chat Experience
@@ -70,7 +70,7 @@ Required UI:
 - Non-AI pages use an opaque theme-surface nav pill with a same-width page-background lower shield from the pill midline to the screen bottom, so scrolling content is covered without adding a full-width strip. The AI page uses a glass nav pill without that shield so the animated background remains visible.
 - Explanation guide sheets, including the Home strategy guide and Profile current-plan method guide, open as root modal sheets. Their scrim covers and disables the bottom navigation, the sheet bottom stops 12 px above the nav pill footprint, the top keeps at least 64 px of focus space, and long guide text scrolls inside the sheet body instead of shrinking text or covering navigation.
 - The root shell does not shrink page bodies or paint a navigation-height strip. Floating-navigation geometry separates two coordinate systems: the screen-space footprint is the pill height plus `max(device bottom safe area, 12)`, while the SafeArea content-space clearance subtracts the bottom safe area already consumed by SafeArea. Home's first-viewport box uses SafeArea content height minus the nav clearance; the g/kg macro strip and energy-ratio cards stay inside that box instead of using nav reserve as internal spacing. In energy-ratio mode, the calorie card keeps its natural ring, typography, padding, and top placement; the macro card keeps its natural internal height at the bottom, and the middle space flexes. Scrollable bottom reading padding and fixed bottom controls use separate helpers. Food and Workout add CTAs are transparent overlays with their own scroll clearance; like the AI composer, they are anchored in screen coordinates to the nav pill top with the same fixed visual gap, and the AI page background extends behind navigation.
-- Full-screen animated AI background; available states use a clearer colorful slow flow, and keyboard-open input pauses background animation to reduce typing jank.
+- Full-screen animated AI background; the empty landing state uses visible colorful flow, while typing, waiting, and reading states use extremely slow low-amplitude motion so the page never freezes and the background does not compete with text.
 - Center status line using the saved Cloud Profile nickname when available.
 - Bottom composer.
 - Compact model selector near the composer for `ChatGPT` and `Qwen`.
@@ -79,27 +79,32 @@ Required UI:
 - No quick chips.
 - Compact privacy/status hint.
 
-Current Phase 2 behavior:
+Current AI page behavior:
 
 - The root navigation is `Home | Food | AI | Workout | Profile`.
 - The AI shell defaults to signed-out disabled state.
-- The composer is editable, but send is disabled until Phase 4 AI Gateway.
-- The model selector displays `ChatGPT` and `Qwen` as UI only.
-- The account/subscription entry opens a Phase 2 status sheet with sign-out and user-record summary permission. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
+- The composer is editable; send is enabled only when the user is logged in, online, subscribed, on the active device, and the Supabase Gateway provider is configured.
+- The model selector displays `ChatGPT` and `Qwen` and routes the selected provider to the server Gateway; exact model names and API keys are server-side configuration.
+- The account/subscription entry opens the current status sheet with sign-out and user-record summary permission. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
 - Supabase Auth, subscription status, and Cloud Profile access are wired when the build is configured with Supabase URL and anon key.
-- The history entry remains a placeholder.
-- No AI Gateway, LLM, RAG, chat-history persistence, or official data write occurs from the AI page.
-- Unsent composer text is a current-runtime device-local draft. Page switches and disabled states should not clear it automatically; user deletion, successful send, logout, or account switch clears it.
+- The history entry opens the cloud chat-history sidebar, supports creating a new chat, switching sessions, inline renaming through a server RPC, and soft-deleting sessions only after confirmation. The archive entry is not exposed because there is no archived-session recovery UI.
+- The AI page calls the `ai-chat-route` Edge Function for text turns and Qwen multimodal turns with up to three images, then persists accepted user/assistant message text through server-owned RPCs.
+- The model selector is stored locally on the device with `SharedPreferences`, so the last selected ChatGPT/Qwen choice survives app restart without syncing to cloud. The status pill shows readiness only with compact labels: `Ready` when sending is available and `Off` when any account, subscription, Profile, gateway, offline, or active-device gate blocks sending. In-progress sending is shown by the send-button spinner and assistant loading bubble, not by the readiness pill.
+- Sending clears the composer immediately, shows the user message as a pending bubble, shows an assistant loading bubble while waiting, and restores the draft if the send fails.
+- Assistant messages render basic Markdown for paragraphs, headings, bold text, ordered/unordered lists, inline code, and code blocks. User messages remain plain text.
+- The AI page can send up to three JPEG/PNG/WebP images through Qwen. Food Draft responses open Food Preview after user review, and Workout Draft responses open the existing workout editor draft after user review; both still require the user to save before any official record is written.
+- No RAG, long-term image storage, automatic goal change, or automatic official business-record write occurs from the AI page.
+- Unsent composer text is a current-runtime device-local draft. Page switches and disabled states should not clear it automatically; user deletion, send start, logout, or account switch clears it, and a failed send restores the attempted draft.
 
-Phase 2 may show a visually ready account/subscription/Profile state, but message sending remains locked until the Phase 4 Gateway and chat-history contract exist; Phase 3 first unifies the cloud official-record source.
+The current AI page can send text turns and up to three Qwen image attachments when all runtime gates are satisfied. It includes compact same-chat text and draft-artifact summaries in requests so the model can follow the active conversation. Cloud official records and daily summaries are already the signed-in source for later AI context, but the implemented chat path does not yet retrieve record summaries or run RAG.
 
 Availability states:
 
 | State | UI behavior |
 | --- | --- |
-| Logged in, online, subscribed | Colorful AI background; send enabled. |
-| Processing | Background becomes slightly more active; composer indicates work in progress. |
-| Needs clarification | Background slows; missing-info prompt or draft field is emphasized. |
+| Logged in, online, subscribed | Colorful AI background; send enabled; status indicator is green. |
+| Waiting for assistant | Background uses quiet low-amplitude motion; assistant loading bubble indicates work in progress. |
+| Needs clarification | Background stays quiet; missing-info prompt or draft field is emphasized. |
 | Logged out | Gray disabled AI page; send disabled; prompt can be typed but not sent. |
 | Offline | Gray disabled AI page; send disabled; profile editing is also disabled. |
 | Not subscribed | Gray or locked AI page; send disabled; top-right status explains subscription state. |
@@ -108,7 +113,7 @@ Availability states:
 
 ### Food Estimation
 
-The user can describe a meal or attach an image. AI produces a Food Draft, not an official record.
+Add Food now exposes Photo AI Analysis as the first entry. The user can take photos or choose up to three images from the gallery, tap thumbnails to switch the enlarged preview, add an optional note, and send the images to the dedicated `ai-food-photo-analyze` Gateway path. The server calls Qwen multimodal capability and returns a schema-validated Food Draft, not an official record. The draft opens in the existing Food Preview editor; only the user's Save action writes `food_records` / `food_items` with source `ai_photo`.
 
 The draft should include:
 
@@ -122,13 +127,19 @@ The draft should include:
 
 If the AI cannot identify an ingredient or portion, it should ask. For example, if meat type is unclear, it should ask what meat it is rather than guessing.
 
-The Food Draft appears inside chat as a compact preview card with UI consistent with the food-record page. It supports light editing and actions:
+The current implemented draft surfaces are Food Preview after Add Food photo analysis, Chat Food Draft artifact cards that rebuild Food Preview after the user taps review, and Chat Workout Draft artifact cards that rebuild the existing workout editor draft after the user taps review. Future richer draft surfaces should stay consistent with the corresponding record editor and support:
 
 - save
 - discard
 - open full editor
 
 Official records are created only after save confirmation.
+
+### Workout Drafts
+
+AI Chat can return a schema-validated Workout Draft when the user asks to turn a described workout into a record. The assistant shows a readable summary plus a native artifact card. Tapping review rebuilds the existing workout editor draft from the stored snapshot, asks before replacing any unsaved workout draft, and still requires the user to save in the workout editor before any official workout record is written.
+
+For Workout Drafts, AI may ask at most one clarification turn. That one turn should list all missing fields that materially affect the draft. If the user reply is still incomplete or says they do not know, AI should return a best-effort editable Workout Draft with missing numeric fields left empty and uncertainty recorded in notes instead of continuing to ask more questions.
 
 ### Meal Decision
 
@@ -256,7 +267,8 @@ AI output categories:
 | --- | --- | --- |
 | Explanation | No | No save action. |
 | Meal suggestion | No | User decides outside AI. |
-| Food Draft | Not yet | Save requires confirmation. |
+| Food Draft | Draft only | Save requires confirmation. |
+| Workout Draft | Draft only | Save requires confirmation in the workout editor. |
 | Weekly Review | No | Strategy changes must go through normal UI. |
 | App logic answer | No | No write action. |
 | Profile/diet setting suggestion | No | Change requires Profile UI confirmation. |
@@ -283,7 +295,7 @@ The copied Local baseline already implements:
 - local data clearing with confirmation
 - language switching
 
-## Implemented Agent Phase 1-2 Scope
+## Implemented Agent Scope
 
 The current Agent source now implements:
 
@@ -294,13 +306,14 @@ The current Agent source now implements:
 - Theme-aware floating bottom-navigation pill extracted into `FitLogBottomNavBar`.
 - Full-screen AI shell at `lib/features/ai/ai_page.dart`.
 - Disabled AI state with editable prompt and disabled send button.
-- ChatGPT/Qwen provider selector placeholder.
-- History placeholder entry.
+- ChatGPT/Qwen provider selector with server-side Gateway routing and server-managed model credentials.
+- Cloud chat-history entry with new chat, session switching, inline rename, and delete confirmation; archive is not exposed in the current UI.
+- Chat send path with up to three Qwen image attachments, compact same-chat context, pending user bubbles, assistant loading feedback, semantic status indicators, scoped assistant Markdown rendering, Food Draft handoff to Food Preview, and Workout Draft handoff to the workout editor draft.
 - Supabase configuration via `SUPABASE_URL` and `SUPABASE_ANON_KEY`, with local SharedPreferences-backed PKCE verifier storage for registration email codes.
-- Phase 2 account controller and repository layer for Auth, subscription status, Cloud Profile, and user-record summary permission.
+- Account controller and repository layer for Auth, subscription status, Cloud Profile, and user-record summary permission.
 - Profile auth screen with a solid theme background, no-star FitLog logo base asset, saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right with a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, top backend-configuration notice, a non-scrolling static landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, registration email code, password confirmation, no username requirement, automatic default Cloud Profile creation for accounts without a cloud row, cloud save path, and cached display fallback.
 - Persisted Supabase auth-session recovery, AI account/subscription status sheet, Profile header Subscription entry with compact blurred status refresh and internal redeem-code entitlement, user-record summary permission toggle, explicit Profile sign-out account card, and logout/account-switch composer clearing.
-- AI shell, root navigation, mapper, and account-controller tests.
+- AI shell, chat controller, Gateway contract/client, root navigation, mapper, and account-controller tests.
 
 ## V1 Non-goals
 

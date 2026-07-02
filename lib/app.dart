@@ -12,8 +12,11 @@ import 'core/theme/fitlog_theme.dart';
 import 'core/utils/date_utils.dart';
 import 'core/widgets/fitlog_bottom_nav_bar.dart';
 import 'data/db/app_database.dart';
+import 'data/remote/ai_gateway_client.dart';
+import 'data/remote/ai_food_photo_analysis_client.dart';
 import 'data/repositories/ai_local_context_permission_repository.dart';
 import 'data/repositories/active_device_repository.dart';
+import 'data/repositories/ai_chat_repository.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/cloud_profile_repository.dart';
 import 'data/repositories/custom_exercise_repository.dart';
@@ -35,6 +38,7 @@ import 'domain/services/warm_cache_coordinator.dart';
 import 'export/csv_export_service.dart';
 import 'export/xlsx_export_service.dart';
 import 'features/account/account_controller.dart';
+import 'features/ai/ai_chat_controller.dart';
 import 'features/ai/ai_page.dart';
 import 'features/food/food_log_page.dart';
 import 'features/home/home_page.dart';
@@ -70,6 +74,7 @@ class _FitLogAppState extends State<FitLogApp> {
   late final FitLogThemeController _themeController;
   late final AccountController _accountController;
   late final CloudRuntimeContext _cloudRuntimeContext;
+  late final AiChatRepository _aiChatRepository;
   StreamSubscription<supabase.AuthState>? _supabaseAuthSubscription;
 
   @override
@@ -98,6 +103,15 @@ class _FitLogAppState extends State<FitLogApp> {
             client: supabaseClient,
             runtimeContext: _cloudRuntimeContext,
           );
+    _aiChatRepository = supabaseClient == null
+        ? const NoopAiChatRepository()
+        : SupabaseAiChatRepository(
+            client: supabaseClient,
+            gatewayClient: SupabaseAiGatewayClient(supabaseClient),
+          );
+    final aiFoodPhotoAnalysisClient = supabaseClient == null
+        ? const NoopAiFoodPhotoAnalysisClient()
+        : SupabaseAiFoodPhotoAnalysisClient(supabaseClient);
     final foodRepository = supabaseClient == null
         ? FoodRepository(database)
         : CloudBackedFoodRepository(
@@ -199,6 +213,7 @@ class _FitLogAppState extends State<FitLogApp> {
       warmCacheCoordinator: warmCacheCoordinator,
       cacheMaintenanceService: cacheMaintenanceService,
       database: database,
+      aiFoodPhotoAnalysisClient: aiFoodPhotoAnalysisClient,
     );
 
     _accountController = AccountController(
@@ -247,6 +262,12 @@ class _FitLogAppState extends State<FitLogApp> {
         ),
         ChangeNotifierProvider<CloudRuntimeContext>.value(
           value: _cloudRuntimeContext,
+        ),
+        ChangeNotifierProvider<AiChatController>(
+          create: (_) => AiChatController(
+            repository: _aiChatRepository,
+            onDeviceReplaced: _cloudRuntimeContext.markDeviceReplaced,
+          ),
         ),
         ChangeNotifierProvider<RefreshNotifier>(
           create: (_) => RefreshNotifier(),
@@ -724,6 +745,7 @@ class AppServices {
     required this.warmCacheCoordinator,
     required this.cacheMaintenanceService,
     required this.database,
+    this.aiFoodPhotoAnalysisClient = const NoopAiFoodPhotoAnalysisClient(),
   });
 
   final FoodRepository foodRepository;
@@ -740,6 +762,7 @@ class AppServices {
   final WarmCacheCoordinator warmCacheCoordinator;
   final CacheMaintenanceService cacheMaintenanceService;
   final AppDatabase database;
+  final AiFoodPhotoAnalysisClient aiFoodPhotoAnalysisClient;
 
   void refreshDailySummaryCacheForDates({
     required Iterable<String> days,

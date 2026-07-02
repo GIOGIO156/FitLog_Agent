@@ -1,6 +1,6 @@
 # FitLog_Agent V1 API Contract Draft
 
-本文是 Phase 0 的工程 contract 草案，用于把 Agent V1 的接口形状、数据边界和技术选择集中到一个文件。它不是 App 运行时存储，也不是云端数据库；手机 App 安装运行后不会把用户数据写入这个 Markdown 文件。真正的账号、Profile、chat、日志和图片会由后续代码写入 Supabase/Postgres/Storage。这个文件只作为开发蓝图、接口约定和验收依据。它也不表示运行时代码已经实现；当前 App 仍是复制来的 FitLog Local 基线。
+本文是 Phase 0 的工程 contract 草案，用于把 Agent V1 的接口形状、数据边界和技术选择集中到一个文件。它不是 App 运行时存储，也不是云端数据库；手机 App 安装运行后不会把用户数据写入这个 Markdown 文件。真正的账号、Profile、chat、日志和云端记录由代码写入 Supabase/Postgres；当前 Add Food 图片分析只在请求内传输压缩图片，不默认写入 Supabase Storage。这个文件只作为开发蓝图、接口约定和验收依据；已实现状态以 README、CHANGELOG 和稳定设计文档为准。
 
 ## Phase 0 Status
 
@@ -11,7 +11,7 @@
 - 首版登录方式为 FitLog 自有邮箱密码登录 + 注册邮箱验证码；任意可接收验证码的邮箱都可用于账号创建。
 - 订阅方案为开发期内部 entitlement：种子账号和内部兑换码区分 subscribed / unsubscribed，不接真实支付 provider。
 - AI providers 锁定为 OpenAI/ChatGPT 和千问/Qwen 两种，由服务端 AI Gateway 调用；用户可在 AI Chat 输入区选择使用哪一种。
-- 图片先上传到 Supabase Storage 私有临时 bucket，再把 attachment reference 传给 AI Gateway。
+- Add Food 图片分析使用一到三张本机压缩后的 JPEG/PNG/WebP 图片，通过 `ai-food-photo-analyze` 请求体内的 base64 payload 列表传给 Edge Function；服务端只转发给 Qwen 多模态 provider，不默认保存原图、base64 或 provider raw response。
 - Agent V1 使用云端账号、订阅、Cloud Profile、Cloud Records、daily summaries、AI Gateway、chat history、request metadata 和 compact debug summaries。
 - 模型 API key 只能由服务端管理，App 内不提供用户自填 key。
 - Phase 3 Cloud Records Foundation 后，body/food/workout 正式记录以云端为 source of truth，本地 SQLite 只做 partial cache。
@@ -19,12 +19,12 @@
 - Cloud Profile 是登录后的权威 Profile，本地 profile cache 只用于展示/缓存。
 - 离线时 Profile 可展示缓存，但不能保存。
 - AI 不能静默写正式记录、修改目标、修改策略、应用 carb taper 或删除数据。
-- Food Draft 必须先进入草稿/预览/编辑/确认路径，确认后才写入正式 food records。
+- Food Draft / Workout Draft 必须先进入草稿/预览/编辑/确认路径，确认后才写入正式 records。
 - Document RAG 只检索 App 文档和稳定帮助片段；用户业务数据不进入长期向量库、semantic memory 或 GraphRAG。
 
 Phase 0 选型说明：
 
-- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / records / summary / chat / log 表、临时图片对象和 Edge Function AI Gateway，避免 Phase 2-4 同时自建 auth、数据库、storage 和 API runtime。
+- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / records / summary / chat / log 表和 Edge Function AI Gateway，避免 Phase 2-4 同时自建 auth、数据库和 API runtime；图片长期或临时对象存储仍是后续明确 retention 设计后才启用的能力。
 - 相比 Firebase，Supabase 的 Postgres 表结构更贴合 Cloud Profile、records、daily summaries、chat messages、request logs、debug summaries 和 document chunks 这些关系型数据。
 - 相比自建后端，Supabase 能更快落地 Phase 2-3，同时保留以后迁移或自托管的可能。
 - 开发期订阅只用于验证 gating 和调试账号，不代表生产支付方案已经完成；生产支付/IAP provider 是发布前商业化决策。
@@ -73,7 +73,7 @@ Locked backend mapping:
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
 | Model secrets | Supabase Edge Function secrets for OpenAI and Qwen |
-| Temporary images | Supabase Storage private temp bucket |
+| Food photo transport | Current Add Food workflow sends one to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; no default Storage persistence |
 | Document RAG index | Supabase Postgres document chunks; vector search optional only for docs |
 
 ## Common API Rules
@@ -156,15 +156,14 @@ POST /ai/chats
 GET  /ai/chats/{chat_id}/messages
 DELETE /ai/chats/{chat_id}
 POST /ai/chat/route
+POST /ai/food-photo/analyze
 POST /ai/food-estimate
 POST /ai/meal-decision
 POST /ai/weekly-review
 POST /ai/app-docs-answer
-POST /ai/attachments
-DELETE /ai/attachments/{attachment_id}
 ```
 
-`/ai/chat/route` is the product-level chat entry. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows such as Add Food photo recognition.
+`/ai/chat/route` is the product-level chat entry for text and Qwen multimodal requests with up to three images. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows. The current Add Food photo workflow is implemented by the Supabase Edge Function `ai-food-photo-analyze`; Chat image requests use the same draft-confirmation boundary and do not store original image bytes.
 
 ## Subscription Contract
 
@@ -353,29 +352,36 @@ Local cache contract:
   "message": {
     "text": "今天还能吃什么？"
   },
+  "attachments": [
+    {
+      "kind": "image",
+      "mime_type": "image/jpeg",
+      "base64_data": "...",
+      "byte_length": 512000,
+      "name": "meal.jpg"
+    }
+  ],
   "language": "zh",
-  "model_choice": "chatgpt",
+  "model_choice": "qwen",
   "workflow_hint": "auto",
   "selected_date": "2026-06-17",
   "profile_version": "profile_42",
   "device_id": "dev_...",
-  "attachments": [
-    {
-      "attachment_id": "att_...",
-      "kind": "image",
-      "mime_type": "image/jpeg",
-      "size_bytes": 512000,
-      "sha256": "hex...",
-      "upload_ref": "supabase-storage://ai-temp-attachments/acct_.../chat_.../att_....jpg"
-    }
-  ],
-  "context_objects": [
-    {
-      "type": "selected_day_summary",
-      "version": "v1",
-      "payload": {}
-    }
-  ],
+  "conversation_context": {
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "已生成饮食草稿，确认后才会保存。"
+      }
+    ],
+    "artifacts": [
+      {
+        "type": "food_draft",
+        "title": "鸡腿饭",
+        "summary": "约 610 kcal"
+      }
+    ]
+  },
   "client": {
     "app_version": "1.0.0",
     "platform": "android",
@@ -388,10 +394,14 @@ Rules:
 
 - `model_choice` can be `chatgpt` or `qwen`. UI labels can be `ChatGPT` and `千问`; backend provider ids should remain stable as `openai` and `qwen`.
 - `workflow_hint` can be `auto`, `food_logging`, `meal_decision`, `weekly_review`, or `app_logic_answer`.
-- `context_objects` must be typed summaries, not raw SQL rows by default.
+- `attachments` is optional. The current Chat route accepts up to three image attachments, only when `model_choice = qwen`.
+- Supported attachment MIME types are `image/jpeg`, `image/png`, and `image/webp`; compressed payloads above 4 MB are rejected.
+- `conversation_context` is optional and limited to compact same-chat text turns plus Food Draft / Workout Draft artifact summaries. It must not contain raw SQL rows, raw images, base64 payloads, provider secrets, or full business history.
 - For Chinese questions, Document RAG targets Chinese docs. For English questions, it targets English docs.
 - AI Gateway must reject unsupported writes unless user confirmation and schema validation have already happened.
 - The AI Gateway calls the selected provider through server-side adapters. Text, vision and structured-output model names must be environment-configured, not hard-coded in Flutter.
+- Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
+- Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
 
 ## AI Gateway Response
 
@@ -410,7 +420,18 @@ Rules:
   "workflow": "meal_decision",
   "needs_clarification": false,
   "clarification_questions": [],
-  "draft": null,
+  "draft": {
+    "schema_version": "food_draft.v1",
+    "meal_name": "鸡腿饭",
+    "total_weight_g": 420.0,
+    "calories_kcal": 610.0,
+    "protein_g": 38.0,
+    "carbs_g": 72.0,
+    "fat_g": 18.0,
+    "confidence": 0.72,
+    "estimation_notes": "基于单张图片估算，保存前请确认分量。",
+    "items": []
+  },
   "error": null,
   "debug_summary_id": "dbg_..."
 }
@@ -429,6 +450,74 @@ If clarification is needed:
 }
 ```
 
+## Food Photo Analysis Contract
+
+The current Add Food photo workflow is a dedicated Gateway surface, implemented by the Supabase Edge Function `ai-food-photo-analyze`.
+
+Request:
+
+```json
+{
+  "images": [
+    {
+      "mime_type": "image/jpeg",
+      "base64_data": "...",
+      "byte_length": 512000
+    }
+  ],
+  "language": "zh",
+  "model_choice": "qwen",
+  "device_id": "dev_...",
+  "selected_date": "2026-06-17",
+  "schema_version": "food_draft.v1",
+  "user_note": "米饭只吃了一半"
+}
+```
+
+Response:
+
+```json
+{
+  "model_choice": "qwen",
+  "model_provider": "qwen",
+  "draft": {
+    "schema_version": "food_draft.v1",
+    "meal_name": "鸡腿饭",
+    "total_weight_g": 420.0,
+    "calories_kcal": 610.0,
+    "protein_g": 38.0,
+    "carbs_g": 72.0,
+    "fat_g": 18.0,
+    "confidence": 0.68,
+    "estimation_notes": "图片估算，米饭按用户说明减半。",
+    "items": [
+      {
+        "name": "去皮鸡腿",
+        "weight_g": 160.0,
+        "calories_kcal": 260.0,
+        "protein_g": 34.0,
+        "carbs_g": 0.0,
+        "fat_g": 12.0
+      }
+    ]
+  },
+  "needs_clarification": false,
+  "clarification_questions": [],
+  "debug_summary_id": "dbg_...",
+  "error": null
+}
+```
+
+Rules:
+
+- Only authenticated, subscribed, active-device users may call the function.
+- The current implementation accepts one to three JPEG/PNG/WebP images and rejects any compressed payload above 4 MB.
+- The app may include an optional user note, but the server does not accept user-supplied provider API keys.
+- The Edge Function forwards the image to Qwen multimodal provider through server-managed secrets.
+- The function may return either a schema-validated Food Draft or clarification questions.
+- A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
+- Logs store compact metadata such as mime type, compressed byte length, image count, schema status, provider, model and latency. They must not store raw image bytes, base64 payloads, provider raw responses or provider secrets.
+
 ## Food Draft Schema
 
 Food Drafts are not official records.
@@ -437,7 +526,7 @@ Food Drafts are not official records.
 {
   "schema_version": "food_draft.v1",
   "draft_id": "draft_...",
-  "source": "ai_chat",
+  "source": "ai_photo",
   "meal_name": "鸡腿饭",
   "date": "2026-06-17",
   "total_weight_g": 520.0,
@@ -452,7 +541,7 @@ Food Drafts are not official records.
   "items": [
     {
       "name": "去皮鸡腿",
-      "estimated_weight_g": 180.0,
+      "weight_g": 180.0,
       "calories_kcal": 300.0,
       "protein_g": 38.0,
       "carbs_g": 0.0,
@@ -482,6 +571,49 @@ ai_meal_decision
 
 Existing `ai_paste` remains the external JSON paste compatibility source.
 
+## Workout Draft Schema
+
+Workout Drafts are not official records. They rebuild the existing workout editor draft only after the user taps the Chat artifact review button, and the official workout record is written only when the user saves in that editor.
+
+Workout Draft clarification is capped at one turn. If the user reply is still incomplete or explicitly unknown, the provider should return a best-effort `workout_draft.v1` with missing numeric fields set to `null`, uncertainties listed in `uncertain_fields`, and explanatory notes in `estimation_notes`; it should not continue asking more clarification turns.
+
+```json
+{
+  "schema_version": "workout_draft.v1",
+  "draft_id": "draft_...",
+  "source": "ai_chat",
+  "record_name": "散步 10 分钟",
+  "date": "2026-06-17",
+  "confidence": 0.74,
+  "estimation_notes": "用户确认强度为轻松，未提供距离或心率。",
+  "uncertain_fields": ["distance"],
+  "clarification_questions": [],
+  "exercises": [
+    {
+      "exercise_name": "散步",
+      "exercise_key": null,
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "duration_minutes": 10.0,
+      "active_duration_minutes": 10.0,
+      "cardio_intensity_basis": "low_60_plus",
+      "sets": []
+    }
+  ]
+}
+```
+
+Validation rules:
+
+- `schema_version` must be `workout_draft.v1`.
+- `record_name` and every exercise name must be non-empty.
+- A draft must contain at least one exercise.
+- Strength sets must have finite non-negative weight/reps values when present.
+- Cardio duration values must be finite and positive when present.
+- Invalid schema must not show an enabled review action.
+- Saving a draft requires explicit user confirmation in the workout editor.
+- Raw provider JSON must be parsed and rendered as a native artifact card. It must not be displayed to the user as ordinary assistant Markdown.
+
 ## Context Objects
 
 Allowed Structured RAG context objects:
@@ -508,9 +640,11 @@ Context builders must preserve deterministic calculations. LLM output cannot rep
   "account_id": "acct_...",
   "title": "今天晚饭",
   "language": "zh",
+  "last_message_at": "2026-06-17T00:00:10Z",
+  "archived_at": null,
+  "deleted_at": null,
   "created_at": "2026-06-17T00:00:00Z",
-  "updated_at": "2026-06-17T00:00:00Z",
-  "deleted_at": null
+  "updated_at": "2026-06-17T00:00:00Z"
 }
 ```
 
@@ -521,11 +655,36 @@ Context builders must preserve deterministic calculations. LLM output cannot rep
   "id": "msg_...",
   "session_id": "chat_...",
   "account_id": "acct_...",
+  "message_sequence": 1,
   "role": "user",
   "content_text": "今天还能吃什么？",
   "message_type": "text",
   "workflow_type": "meal_decision",
-  "final_answer_json": null,
+  "model_choice": "chatgpt",
+  "model_provider": "openai",
+  "request_id": "req_...",
+  "final_answer_json": {
+    "schema_version": "ai_chat_artifacts.v1",
+    "artifacts": [
+      {
+        "type": "food_draft",
+        "schema_version": "food_draft.v1",
+        "draft": {
+          "meal_name": "鸡腿饭",
+          "total_weight_g": 420.0,
+          "calories_kcal": 610.0,
+          "protein_g": 38.0,
+          "carbs_g": 72.0,
+          "fat_g": 18.0,
+          "confidence": 0.72,
+          "estimation_notes": "AI estimate; review before saving.",
+          "items": []
+        },
+        "selected_date": "2026-07-01",
+        "model_choice": "qwen"
+      }
+    ]
+  },
   "attachments_metadata": [],
   "created_at": "2026-06-17T00:00:00Z",
   "deleted_at": null
@@ -534,7 +693,13 @@ Context builders must preserve deterministic calculations. LLM output cannot rep
 
 Rules:
 
-- Chat history is cloud-stored after login.
+- Phase 4 Step 1 defines the tables and Flutter JSON contract; Phase 4 Step 2 adds the mock Gateway server path; Phase 4 Steps 3/4 add the generalized text Gateway path, server-side provider routing, and AI-page send/history wiring after auth, subscription, and active-device checks; Phase 4 Step 5 adds `rename_ai_chat_session`.
+- Chat history is cloud-stored after login once the Gateway path writes sessions and messages; the AI page reads the owning account's sessions/messages, supports inline rename through RPC, and requires confirmation before soft delete.
+- `archived_at` remains in the schema for compatibility with the earlier RPC, but the current AI page does not expose an archive entry because there is no archived-list recovery UI.
+- Messages are ordered by `message_sequence`, with `created_at` and `id` as deterministic secondary fields.
+- `ai_chat_sessions` and `ai_chat_messages` are client-readable only for the owning account and exclude soft-deleted rows.
+- Direct client writes should not bypass the Gateway subscription and active-device checks.
+- `final_answer_json` may hold lightweight validated artifact snapshots for assistant messages. These snapshots are not official records or background draft queues; the app uses them only to rebuild preview/confirmation pages when the user taps a review action.
 - It is not long-term semantic memory.
 - Old sessions are for user review and do not automatically alter future answers unless explicitly selected or referenced.
 
@@ -548,6 +713,7 @@ Rules:
   "account_id": "acct_...",
   "session_id": "chat_...",
   "workflow_type": "meal_decision",
+  "model_choice": "chatgpt",
   "model_provider": "openai",
   "model": "pending",
   "prompt_version": "prompt_v1",
@@ -566,7 +732,10 @@ Rules:
 
 ```json
 {
+  "id": "dbg_...",
   "request_id": "req_...",
+  "account_id": "acct_...",
+  "session_id": "chat_...",
   "intent": "meal_decision",
   "intent_confidence": 0.86,
   "called_tools_json": ["get_cloud_profile", "get_today_summary"],
@@ -574,34 +743,42 @@ Rules:
   "missing_dimensions_json": [],
   "safety_flags_json": [],
   "schema_validation_status": "passed",
-  "user_final_action": "read_only"
+  "user_final_action": "read_only",
+  "created_at": "2026-06-17T00:00:00Z"
 }
 ```
 
-Production logs should store compact metadata and sanitized summaries. They should not store chain-of-thought, unrestricted tool traces, full local SQLite payloads, or original images long-term by default.
+Production logs should store compact metadata and sanitized summaries. Authenticated clients should not receive direct table read policies for `ai_request_logs` or `ai_debug_summaries`. These tables should not store chain-of-thought, unrestricted tool traces, full local SQLite payloads, provider secrets, auth tokens, raw provider responses, image base64 payloads, or original images long-term by default.
 
-## Attachment Policy
+For Add Food photo analysis:
 
-Locked policy:
+- `ai_request_logs.workflow_type = food_logging`
+- `ai_request_logs.session_id = null`
+- `ai_request_logs.image_count` equals the accepted photo-analysis image count.
+- `ai_request_logs.schema_version = food_draft.v1`
+- `ai_debug_summaries.intent = food_photo_analysis`
+- `ai_debug_summaries.retrieved_dimensions_json` may include compact request metadata such as mime type, byte length, selected date and whether a user note was supplied.
+
+## Image Transport Policy
+
+Current Add Food and AI Chat policy:
 
 - Original images are not stored long-term by default.
-- Images are compressed on device before upload when possible.
-- Upload transport uses Supabase Storage private temporary bucket, not direct long-term app storage.
-- AI Gateway receives attachment references and resolves them server-side after auth and subscription checks.
-- Attachment metadata can be stored with chat messages.
-- Temporary images expire after 24 hours by default.
-- Temporary images are deleted earlier when a draft is discarded, a session is deleted, or an account is deleted.
+- Images are compressed on device before analysis.
+- Transport uses inline base64 image payloads: one to three images in `ai-food-photo-analyze`, and up to three images in `ai-chat-route`.
+- Supabase Storage is not used for the current photo-analysis path.
+- The Edge Function forwards the request-scoped image to the provider and must not write the raw image or base64 payload into logs, debug summaries or chat history.
 - Non-food or unclear images should trigger a clarification or refusal, not a forced food record.
 
-Limits for V1:
+Limits for the current image paths:
 
-- max 2 images per AI request
-- target compressed image <= 1.5 MB
-- hard reject any post-compression image > 5 MB
-- preferred compressed format: JPEG unless transparency is needed
+- `ai-food-photo-analyze`: 1 to 3 images per request
+- `ai-chat-route`: 1 to 3 images per Qwen multimodal request
+- hard reject any compressed image > 4 MB
+- supported MIME types: `image/jpeg`, `image/png`, `image/webp`
 - recommended longest edge: 1600 px
 
-The app stores only attachment metadata in chat history by default. Long-term original image libraries are out of scope for V1.
+Long-term original image libraries, Supabase Storage attachment retention, and more than three Chat images are out of scope until a separate privacy and retention design is approved.
 
 ## Document RAG Contract
 
@@ -665,7 +842,7 @@ Rules:
 | Daily summary API shape | Implemented in Phase 3 hardening: table created, app-side cloud upsert/recovery, confirmed local cache, warm cache, and eviction boundary landed |
 | Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
 | Offline Profile behavior | Locked |
-| Image upload/compression/temporary retention | Locked: Supabase Storage temp bucket, 2 images/request, target <= 1.5 MB, hard reject > 5 MB, 24h TTL |
+| Image upload/compression/temporary retention | Current Add Food path: one to three compressed JPEG/PNG/WebP inline payloads to `ai-food-photo-analyze`; current AI Chat path: up to three compressed JPEG/PNG/WebP inline image attachments to `ai-chat-route`; both hard reject each image above 4 MB and have no default Storage retention. Storage retention requires a later explicit design |
 | Document RAG strategy | Locked |
 | Structured RAG context objects | Locked |
 | Error code categories | Drafted |
