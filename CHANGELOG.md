@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-07-02 AI Chat Markdown And Copy
+
+### Added
+
+- Added selectable AI Chat message text and per-message copy actions so users can copy original user or assistant message content from the chat surface.
+
+### Changed
+
+- Changed assistant message rendering from the local hand-written Markdown parser to the maintained `flutter_markdown_plus` renderer, preserving app styling while supporting GitHub-flavored headings such as `####` without per-marker patches.
+- Kept the AI Chat Markdown boundary constrained by blocking remote Markdown image rendering and link actions.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
 ## 2026-07-02 AI Photo Preview And Status Copy Polish
 
 ### Changed

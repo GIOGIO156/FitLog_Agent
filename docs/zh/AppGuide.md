@@ -115,7 +115,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 模型/状态 pill 只表示 readiness，并使用紧凑文案：满足发送条件时显示 `可用`，账号/Profile/订阅/网关 gate、离线或 active-device 阻止发送时显示 `不可用`。请求进行中只由发送按钮和 assistant loading 气泡表达。
 - 发送 prompt 后，输入框立即清空，用户消息立即显示为 pending 气泡；等气泡有真实布局位置后，消息列表会把它锚到顶部操作区下方的可读区域附近，并在服务端回复持久化和重新加载前显示 assistant loading 气泡。发送中的活动轮次填充不能暴露成可滚动空白，最终 assistant 回复出现后不再强制二次滚动。
 - 消息列表从顶部 history/account/provider 控件下方开始，并使用实测 composer 高度作为底部遮挡，因此手动滚动时正文不会滑到输入框后方。
-- assistant 消息支持基础 Markdown 渲染，包括段落、标题、加粗、有序/无序列表、行内代码和代码块；用户消息仍按普通文本显示。当前 Markdown 渲染不加载远程图片，也不执行链接动作。
+- assistant 消息通过维护中的 GitHub-flavored Markdown 渲染器按 App 样式展示，文本可选择。用户消息仍按可选择的普通文本显示。每条文本消息气泡提供复制动作，用于复制原始消息文本。当前 Markdown 渲染不加载远程图片，也不执行链接动作。
 - 当 Chat 回复包含 Food Draft 或 Workout Draft 时，assistant 消息会显示原生 artifact 卡片和确认按钮。按钮用已保存的 snapshot 重建 Food Preview 或现有训练编辑草稿；后台不会保持一个待命草稿页面，用户在编辑页保存前也不会写正式记录。
 - Food Draft 和 Workout Draft 卡片使用同一套简短确认按钮文案 `查看并确认`，草稿类型由卡片标题说明。
 - 训练草稿最多只追问一轮；如果用户仍没有提供完整信息，Chat 应返回可编辑的不完整草稿，而不是继续追问。

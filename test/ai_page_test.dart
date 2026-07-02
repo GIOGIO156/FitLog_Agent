@@ -569,7 +569,7 @@ void main() {
     final harness = _readyAiHarness();
     harness.repository.sendHandler = (request) async {
       const assistantText =
-          '### 1. 营养方面：做减法\n\n'
+          '#### 1. 营养方面：做减法\n\n'
           '1. **回答文本问题**：处理健身相关问题\n'
           '2. `建议`：给出简要建议\n\n'
           '- 不会写入正式记录';
@@ -611,10 +611,47 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('营养方面：做减法', findRichText: true), findsOneWidget);
-    expect(find.textContaining('###', findRichText: true), findsNothing);
+    expect(find.textContaining('####', findRichText: true), findsNothing);
     expect(find.textContaining('回答文本问题', findRichText: true), findsOneWidget);
     expect(find.textContaining('**回答文本问题**', findRichText: true), findsNothing);
     expect(find.textContaining('不会写入正式记录', findRichText: true), findsOneWidget);
+  });
+
+  testWidgets('message bubbles expose a copy action', (tester) async {
+    final harness = _readyAiHarness();
+    harness.repository.sessions = <AiChatSession>[
+      _session('session_1', 'Existing chat'),
+    ];
+    harness.repository.messages['session_1'] = <AiChatMessage>[
+      _message(
+        'u1',
+        'session_1',
+        1,
+        AiChatMessageRole.user,
+        'Copy my question',
+      ),
+      _message(
+        'a1',
+        'session_1',
+        2,
+        AiChatMessageRole.assistant,
+        'Copy **this** answer',
+      ),
+    ];
+    harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+    await harness.chatController.selectSession('session_1');
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.pump();
+
+    expect(find.byTooltip('Copy message'), findsNWidgets(2));
+
+    await tester.tap(find.byTooltip('Copy message').last);
+    await tester.pump();
+
+    expect(find.text('Message copied.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('food draft response shows a review card before preview', (

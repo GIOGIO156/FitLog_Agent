@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1882,6 +1883,42 @@ class _AiBubbleSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasCopyableText = text.trim().isNotEmpty;
+    final content = isUser
+        ? _AiUserMessageContent(text: text, attachments: attachments)
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _AiMarkdownText(
+                text: text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF1A261D),
+                  height: 1.42,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (foodDraft != null) ...[
+                const SizedBox(height: 12),
+                _AiFoodDraftArtifactCard(
+                  draft: foodDraft!,
+                  onPressed: foodDraft!.draft == null || onOpenFoodDraft == null
+                      ? null
+                      : () => onOpenFoodDraft!(foodDraft!.draft!),
+                ),
+              ],
+              if (workoutDraft != null) ...[
+                const SizedBox(height: 12),
+                _AiWorkoutDraftArtifactCard(
+                  draft: workoutDraft!,
+                  onPressed:
+                      workoutDraft!.draft == null || onOpenWorkoutDraft == null
+                      ? null
+                      : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
+                ),
+              ],
+            ],
+          );
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
@@ -1898,46 +1935,55 @@ class _AiBubbleSurface extends StatelessWidget {
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            child: isUser
-                ? _AiUserMessageContent(text: text, attachments: attachments)
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      _AiMarkdownText(
-                        text: text,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF1A261D),
-                          height: 1.42,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (foodDraft != null) ...[
-                        const SizedBox(height: 12),
-                        _AiFoodDraftArtifactCard(
-                          draft: foodDraft!,
-                          onPressed:
-                              foodDraft!.draft == null ||
-                                  onOpenFoodDraft == null
-                              ? null
-                              : () => onOpenFoodDraft!(foodDraft!.draft!),
-                        ),
-                      ],
-                      if (workoutDraft != null) ...[
-                        const SizedBox(height: 12),
-                        _AiWorkoutDraftArtifactCard(
-                          draft: workoutDraft!,
-                          onPressed:
-                              workoutDraft!.draft == null ||
-                                  onOpenWorkoutDraft == null
-                              ? null
-                              : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
-                        ),
-                      ],
-                    ],
+            child: Stack(
+              children: <Widget>[
+                Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    end: hasCopyableText ? 32 : 0,
                   ),
+                  child: content,
+                ),
+                if (hasCopyableText)
+                  PositionedDirectional(
+                    top: -6,
+                    end: -6,
+                    child: _AiCopyMessageButton(text: text, isUser: isUser),
+                  ),
+              ],
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AiCopyMessageButton extends StatelessWidget {
+  const _AiCopyMessageButton({required this.text, required this.isUser});
+
+  final String text;
+  final bool isUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return IconButton(
+      key: const ValueKey<String>('ai_message_copy_button'),
+      tooltip: strings.aiCopyMessageTooltip,
+      onPressed: () {
+        unawaited(Clipboard.setData(ClipboardData(text: text)));
+        FitLogNotifications.success(context, strings.aiMessageCopied);
+      },
+      icon: const Icon(Icons.copy_all_outlined, size: 17),
+      style: IconButton.styleFrom(
+        backgroundColor: isUser
+            ? Colors.white.withValues(alpha: 0.18)
+            : const Color(0xFFEAF1EA).withValues(alpha: 0.88),
+        foregroundColor: isUser ? Colors.white : const Color(0xFF3E5B42),
+        minimumSize: const Size(30, 30),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
       ),
     );
   }
@@ -2111,7 +2157,7 @@ class _AiUserMessageContent extends StatelessWidget {
     final trimmed = text.trim();
     final textWidget = trimmed.isEmpty
         ? null
-        : Text(
+        : SelectableText(
             trimmed,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: Colors.white,
@@ -2249,317 +2295,85 @@ class _AiMarkdownText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseStyle = style ?? Theme.of(context).textTheme.bodyMedium;
-    final blocks = _markdownBlocks(text);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        for (var index = 0; index < blocks.length; index++) ...<Widget>[
-          _AiMarkdownBlockView(block: blocks[index], style: baseStyle),
-          if (index != blocks.length - 1) const SizedBox(height: 8),
-        ],
-      ],
-    );
-  }
-}
-
-enum _AiMarkdownBlockType {
-  paragraph,
-  heading,
-  unorderedList,
-  orderedList,
-  code,
-}
-
-class _AiMarkdownBlock {
-  const _AiMarkdownBlock({
-    required this.type,
-    required this.lines,
-    this.headingLevel = 0,
-  });
-
-  final _AiMarkdownBlockType type;
-  final List<String> lines;
-  final int headingLevel;
-}
-
-class _AiMarkdownBlockView extends StatelessWidget {
-  const _AiMarkdownBlockView({required this.block, required this.style});
-
-  final _AiMarkdownBlock block;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    switch (block.type) {
-      case _AiMarkdownBlockType.paragraph:
-        return Text.rich(
-          TextSpan(children: _inlineMarkdown(block.lines.first)),
-        );
-      case _AiMarkdownBlockType.heading:
-        final headingStyle = _headingStyle(style, block.headingLevel);
-        return Text.rich(
-          TextSpan(
-            children: _inlineMarkdownSpans(block.lines.first, headingStyle),
-          ),
-        );
-      case _AiMarkdownBlockType.code:
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F4F1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Text(
-              block.lines.join('\n'),
-              style: style?.copyWith(
-                fontFamily: 'monospace',
-                color: const Color(0xFF243329),
-              ),
-            ),
-          ),
-        );
-      case _AiMarkdownBlockType.unorderedList:
-        return _AiMarkdownList(
-          items: block.lines,
-          ordered: false,
-          style: style,
-        );
-      case _AiMarkdownBlockType.orderedList:
-        return _AiMarkdownList(items: block.lines, ordered: true, style: style);
-    }
-  }
-
-  List<InlineSpan> _inlineMarkdown(String value) {
-    return _inlineMarkdownSpans(value, style);
-  }
-
-  TextStyle? _headingStyle(TextStyle? baseStyle, int level) {
-    final sizeFactor = switch (level) {
-      1 => 1.18,
-      2 => 1.10,
-      _ => 1.04,
-    };
-    return baseStyle?.copyWith(
-      fontSize: (baseStyle.fontSize ?? 16) * sizeFactor,
-      fontWeight: FontWeight.w800,
-      height: 1.34,
-    );
-  }
-}
-
-class _AiMarkdownList extends StatelessWidget {
-  const _AiMarkdownList({
-    required this.items,
-    required this.ordered,
-    required this.style,
-  });
-
-  final List<String> items;
-  final bool ordered;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        for (var index = 0; index < items.length; index++)
-          Padding(
-            padding: EdgeInsets.only(top: index == 0 ? 0 : 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                SizedBox(
-                  width: ordered ? 26 : 18,
-                  child: Text(
-                    ordered ? '${index + 1}.' : '•',
-                    style: style?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: _inlineMarkdownSpans(items[index], style),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-List<_AiMarkdownBlock> _markdownBlocks(String text) {
-  final blocks = <_AiMarkdownBlock>[];
-  final lines = text.replaceAll('\r\n', '\n').split('\n');
-  final paragraph = <String>[];
-  final code = <String>[];
-  var inCode = false;
-
-  void flushParagraph() {
-    if (paragraph.isEmpty) {
-      return;
-    }
-    blocks.add(
-      _AiMarkdownBlock(
-        type: _AiMarkdownBlockType.paragraph,
-        lines: <String>[paragraph.join('\n')],
-      ),
-    );
-    paragraph.clear();
-  }
-
-  for (final line in lines) {
-    final trimmedRight = line.trimRight();
-    if (trimmedRight.trimLeft().startsWith('```')) {
-      if (inCode) {
-        blocks.add(
-          _AiMarkdownBlock(
-            type: _AiMarkdownBlockType.code,
-            lines: List<String>.from(code),
-          ),
-        );
-        code.clear();
-        inCode = false;
-      } else {
-        flushParagraph();
-        inCode = true;
-      }
-      continue;
-    }
-    if (inCode) {
-      code.add(trimmedRight);
-      continue;
-    }
-    if (trimmedRight.trim().isEmpty) {
-      flushParagraph();
-      continue;
-    }
-    final heading = RegExp(r'^\s*(#{1,3})\s+(.+)$').firstMatch(trimmedRight);
-    if (heading != null) {
-      flushParagraph();
-      blocks.add(
-        _AiMarkdownBlock(
-          type: _AiMarkdownBlockType.heading,
-          lines: <String>[heading.group(2)!.trim()],
-          headingLevel: heading.group(1)!.length,
-        ),
-      );
-      continue;
-    }
-    final unordered = RegExp(r'^\s*[-*]\s+(.+)$').firstMatch(trimmedRight);
-    if (unordered != null) {
-      flushParagraph();
-      blocks.add(
-        _AiMarkdownBlock(
-          type: _AiMarkdownBlockType.unorderedList,
-          lines: <String>[unordered.group(1)!],
-        ),
-      );
-      continue;
-    }
-    final ordered = RegExp(r'^\s*\d+[.)]\s+(.+)$').firstMatch(trimmedRight);
-    if (ordered != null) {
-      flushParagraph();
-      blocks.add(
-        _AiMarkdownBlock(
-          type: _AiMarkdownBlockType.orderedList,
-          lines: <String>[ordered.group(1)!],
-        ),
-      );
-      continue;
-    }
-    paragraph.add(trimmedRight);
-  }
-  if (inCode) {
-    blocks.add(
-      _AiMarkdownBlock(
-        type: _AiMarkdownBlockType.code,
-        lines: List<String>.from(code),
-      ),
-    );
-  }
-  flushParagraph();
-  return _mergeAdjacentLists(blocks);
-}
-
-List<_AiMarkdownBlock> _mergeAdjacentLists(List<_AiMarkdownBlock> blocks) {
-  final merged = <_AiMarkdownBlock>[];
-  for (final block in blocks) {
-    if (merged.isNotEmpty &&
-        (block.type == _AiMarkdownBlockType.unorderedList ||
-            block.type == _AiMarkdownBlockType.orderedList) &&
-        merged.last.type == block.type) {
-      final previous = merged.removeLast();
-      merged.add(
-        _AiMarkdownBlock(
-          type: previous.type,
-          lines: <String>[...previous.lines, ...block.lines],
-        ),
-      );
-    } else {
-      merged.add(block);
-    }
-  }
-  return merged;
-}
-
-List<InlineSpan> _inlineMarkdownSpans(String value, TextStyle? baseStyle) {
-  final spans = <InlineSpan>[];
-  var index = 0;
-  while (index < value.length) {
-    final boldStart = value.indexOf('**', index);
-    final codeStart = value.indexOf('`', index);
-    final nextStarts = <int>[
-      if (boldStart >= 0) boldStart,
-      if (codeStart >= 0) codeStart,
-    ]..sort();
-    if (nextStarts.isEmpty) {
-      spans.add(TextSpan(text: value.substring(index), style: baseStyle));
-      break;
-    }
-    final next = nextStarts.first;
-    if (next > index) {
-      spans.add(TextSpan(text: value.substring(index, next), style: baseStyle));
-    }
-    if (next == boldStart) {
-      final end = value.indexOf('**', next + 2);
-      if (end < 0) {
-        spans.add(TextSpan(text: value.substring(next), style: baseStyle));
-        break;
-      }
-      spans.add(
-        TextSpan(
-          text: value.substring(next + 2, end),
-          style: baseStyle?.copyWith(fontWeight: FontWeight.w800),
-        ),
-      );
-      index = end + 2;
-    } else {
-      final end = value.indexOf('`', next + 1);
-      if (end < 0) {
-        spans.add(TextSpan(text: value.substring(next), style: baseStyle));
-        break;
-      }
-      spans.add(
-        TextSpan(
-          text: value.substring(next + 1, end),
+    return MarkdownBody(
+      data: text,
+      selectable: true,
+      softLineBreak: true,
+      onTapLink: (_, _, _) {},
+      imageBuilder: (_, _, alt) {
+        final label = alt?.trim() ?? '';
+        if (label.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return SelectableText(
+          label,
           style: baseStyle?.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: const Color(0xFFEAF1EA),
-            color: const Color(0xFF243329),
+            color: const Color(0xFF5A665C),
+            fontStyle: FontStyle.italic,
           ),
-        ),
-      );
-      index = end + 1;
-    }
+        );
+      },
+      styleSheet: _aiMarkdownStyleSheet(context, baseStyle),
+    );
   }
-  return spans;
+}
+
+MarkdownStyleSheet _aiMarkdownStyleSheet(
+  BuildContext context,
+  TextStyle? baseStyle,
+) {
+  final theme = Theme.of(context);
+  final base = baseStyle ?? theme.textTheme.bodyMedium ?? const TextStyle();
+  final heading = base.copyWith(fontWeight: FontWeight.w800, height: 1.34);
+  final code = base.copyWith(
+    fontFamily: 'monospace',
+    color: const Color(0xFF243329),
+    backgroundColor: const Color(0xFFEAF1EA),
+  );
+  return MarkdownStyleSheet.fromTheme(theme).copyWith(
+    p: base,
+    pPadding: EdgeInsets.zero,
+    blockSpacing: 8,
+    h1: heading.copyWith(fontSize: (base.fontSize ?? 16) * 1.18),
+    h1Padding: EdgeInsets.zero,
+    h2: heading.copyWith(fontSize: (base.fontSize ?? 16) * 1.12),
+    h2Padding: EdgeInsets.zero,
+    h3: heading.copyWith(fontSize: (base.fontSize ?? 16) * 1.08),
+    h3Padding: EdgeInsets.zero,
+    h4: heading.copyWith(fontSize: (base.fontSize ?? 16) * 1.04),
+    h4Padding: EdgeInsets.zero,
+    h5: heading,
+    h5Padding: EdgeInsets.zero,
+    h6: heading,
+    h6Padding: EdgeInsets.zero,
+    strong: base.copyWith(fontWeight: FontWeight.w800),
+    em: base.copyWith(fontStyle: FontStyle.italic),
+    a: base.copyWith(
+      color: const Color(0xFF315B2F),
+      decoration: TextDecoration.underline,
+    ),
+    blockquote: base.copyWith(color: const Color(0xFF4F6251)),
+    blockquotePadding: const EdgeInsets.only(left: 10),
+    blockquoteDecoration: const BoxDecoration(
+      border: Border(left: BorderSide(color: Color(0xFFCFE8BC), width: 3)),
+    ),
+    code: code,
+    codeblockPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    codeblockDecoration: BoxDecoration(
+      color: const Color(0xFFF0F4F1),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    listBullet: base.copyWith(fontWeight: FontWeight.w700),
+    listIndent: 22,
+    tableHead: base.copyWith(fontWeight: FontWeight.w800),
+    tableBody: base,
+    tableBorder: TableBorder.all(color: const Color(0xFFD8E3D6)),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    img: base.copyWith(
+      color: const Color(0xFF5A665C),
+      fontStyle: FontStyle.italic,
+    ),
+  );
 }
 
 class _AiErrorPill extends StatelessWidget {

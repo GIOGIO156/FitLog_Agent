@@ -141,7 +141,7 @@ AI Chat 滚动几何必须统一处理遮挡：
 
 中心状态文案和 composer hint 不能表达同一句话。空状态可以保留中心状态，例如“我在听，RINKO”，并优先使用已保存的 Cloud Profile 昵称，再回退到 auth display name；composer hint 应提供轻量输入提示，例如“快问问 FitLog”。键盘聚焦本身不应让中心状态突然消失或明显跳动；只有进入真实对话状态后，消息列表才自然成为主体。
 
-assistant 消息可以渲染基础 Markdown，例如段落、标题、加粗、有序/无序列表、行内代码和代码块。用户消息保持普通文本。Markdown 渲染不能加载远程图片或执行链接动作。可保存业务草稿只能来自经过 Gateway 校验的 draft payload，并且仍需用户确认。Chat 返回 Food Draft 或 Workout Draft 时，assistant message 会把轻量 artifact snapshot 存在 `final_answer_json`，并展示原生确认按钮；用户点击后，App 才用 snapshot 在本地重建 Food Preview 或现有训练编辑草稿，而不是在后台保留一个待命草稿页面。如果历史 snapshot 已无法安全重建编辑页，卡片仍保留摘要，但确认按钮会变成灰色不可用。
+assistant 消息应通过维护中的 GitHub-flavored Markdown 渲染器按 App 样式展示，而不是继续维护手写 Markdown parser。assistant 文本可选择；用户消息保持可选择的普通文本；每条文本消息气泡提供复制动作，复制原始消息文本。Markdown 渲染不能加载远程图片或执行链接动作。可保存业务草稿只能来自经过 Gateway 校验的 draft payload，并且仍需用户确认。Chat 返回 Food Draft 或 Workout Draft 时，assistant message 会把轻量 artifact snapshot 存在 `final_answer_json`，并展示原生确认按钮；用户点击后，App 才用 snapshot 在本地重建 Food Preview 或现有训练编辑草稿，而不是在后台保留一个待命草稿页面。如果历史 snapshot 已无法安全重建编辑页，卡片仍保留摘要，但确认按钮会变成灰色不可用。
 
 未发送的输入框内容是当前运行期内的设备级本地草稿。它应在切换 tab 和可用状态变化时保留，直到用户删除或发送。发送时 composer 立即清空，文本进入 pending 用户气泡；如果发送失败，应恢复草稿以便重试。退出登录或切换账号时应清空，避免上一账号上下文残留；草稿只有发送成功后才能进入云端 chat history。
 
