@@ -44,6 +44,7 @@ Home 是选中日期仪表盘。
 
 - `energy_ratio` 中，kcal target/intake/remaining 是主信号。
 - `gram_per_kg` 中，宏量克数目标是主信号，kcal 是辅助信息。
+- 登录态冷启动后，Home 当前日应先渲染匹配账号的本地 cache，再等待 active-device 刷新；不应需要用户切换日期才恢复可见数据。
 - 英文界面的紧凑策略卡把策略名放在第一行，把带连字符的细节放在第二行，避免 `Carb cycle` 和 `Carb Taper` 的说明在窄屏上断得不自然。
 - Home 不应变成 AI 工作台。
 - 任何 AI 相关提示应路由到 AI tab，除非未来产品明确增加 Home 专属 AI workflow。
@@ -70,13 +71,14 @@ Food 包含选中日期的正式饮食记录。
 
 Agent V1 新增：
 
-- Add Food 把图片 AI 分析放在第一入口；它可以基于一到三张拍照/相册图片和可选补充说明创建 Food Draft
-- 图片 AI 分析或后续 Chat 草稿流程中由用户确认的 Food Draft 可以变成正式记录
+- Add Food 把 AI 食物分析放在第一入口；它可以基于纯文字食物描述创建 Food Draft，也可以使用最多三张可选拍照/相册图片和描述创建 Food Draft
+- 打开相机/相册前会保存很小的本地恢复标记，让 Android activity 重启后能尽量回到分析草稿，而不是把用户丢回空白 Home
+- AI 食物分析或后续 Chat 草稿流程中由用户确认的 Food Draft 可以变成正式记录
 - AI 估算不确定时应先追问，再进入保存
 
 Food Draft UI 规则：
 
-- 当前已实现的 Add Food 图片路径会把草稿打开到现有 Food Preview 编辑页。
+- 当前已实现的 Add Food AI 食物分析路径会把草稿打开到现有 Food Preview 编辑页。
 - 视觉上尽量接近记录页 UI，让用户能识别字段。
 - 保存前允许编辑。
 - 只有确认后才保存。
@@ -123,7 +125,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；当前 chat 路径只发送紧凑同会话文本和草稿 artifact 摘要，不上传完整业务历史或 records summary，后续基于摘要的 AI workflow 应使用云端 summary/context builder。
 - 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
 - 历史入口打开云端 chat history，支持新建 chat、切换 session、inline 重命名和二次确认删除；当前 UI 不暴露归档入口。
-- Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food 图片草稿流程。
+- Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food AI 食物分析草稿流程。
 - AI 页面尚未实现 RAG、长期图片存储、自动修改目标或正式业务记录自动写入。Chat Food Draft 和 Workout Draft artifact 卡片只有在用户点击确认后才打开对应编辑页，用户保存前仍是草稿。
 
 可用状态：
@@ -273,8 +275,8 @@ App 应保留隐私提示，但不应占据太多屏幕。
 UI 文案或文档必须区分：
 
 - 已实现 Local 行为：复制来的代码中已经存在。
-- 已实现 Agent shell/账号/AI Chat 行为：居中的 AI tab、可用性 gating 的 AI 页面、可编辑输入框、最多三张千问图片附件、本机持久化模型选择器、只表达可用性的状态 pill、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关、紧凑同会话 context、云端 chat history、文本/多模态 Gateway 发送路径、chat inline 重命名/删除确认、Chat Food Draft 和 Workout Draft artifact 卡片、Add Food 图片 AI 草稿流程，以及五 tab 浮动底部导航。
+- 已实现 Agent shell/账号/AI Chat 行为：居中的 AI tab、可用性 gating 的 AI 页面、可编辑输入框、最多三张千问图片附件、本机持久化模型选择器、只表达可用性的状态 pill、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关、紧凑同会话 context、云端 chat history、文本/多模态 Gateway 发送路径、chat inline 重命名/删除确认、Chat Food Draft 和 Workout Draft artifact 卡片、Add Food AI 食物分析草稿流程，以及五 tab 浮动底部导航。
 - Phase 3 已接入 Cloud Records Foundation 和主要 hardening 链路，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、App 侧 summary 云端 upsert/恢复、本地 partial cache、Home 选中日期 summary cache 与 stale-while-revalidate、受控的近期 summary warm cache、confirmed cache 淘汰，以及 cloud-backed 导出完整性。
 - 计划中的 Agent V1 行为：目标设计，不一定已经上线。
 
-在代码实现前，不要把 RAG、超过三张的 Chat 图片附件、长期图片存储、AI 自动正式业务记录写入或 autonomous Agent action 写成已实现。AI Gateway、云端 chat history、最多三图 Chat、Chat Food Draft 和 Workout Draft artifact 卡片，以及 Add Food 图片分析需要 Supabase migrations、function 部署和 provider secrets 才能连接真实后端测试。
+在代码实现前，不要把 RAG、超过三张的 Chat 图片附件、长期图片存储、AI 自动正式业务记录写入或 autonomous Agent action 写成已实现。AI Gateway、云端 chat history、最多三图 Chat、Chat Food Draft 和 Workout Draft artifact 卡片，以及 Add Food AI 食物分析需要 Supabase migrations、function 部署和 provider secrets 才能连接真实后端测试。

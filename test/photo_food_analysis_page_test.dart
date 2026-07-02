@@ -24,9 +24,14 @@ import 'package:fitlog_local/features/food/photo_food_analysis_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('photo analysis submit is disabled until an image is selected', (
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  testWidgets('photo analysis submit is disabled until image or description', (
     tester,
   ) async {
     final harness = _PhotoHarness();
@@ -38,6 +43,21 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     expect(submit.onPressed, isNull);
+
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+      '100g salmon',
+    );
+    await tester.pump();
+
+    final enabledSubmit = tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+    );
+    expect(enabledSubmit.onPressed, isNotNull);
   });
 
   testWidgets('selected image shows preview and enables submit', (
@@ -141,6 +161,61 @@ void main() {
       completer.complete(_successResponse());
     },
   );
+
+  testWidgets('description-only input submits without images', (tester) async {
+    final harness = _PhotoHarness();
+    harness.client.handler = (_) async => _successResponse();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+      '100g 三文鱼',
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.client.requests.single.images, isEmpty);
+    expect(harness.client.requests.single.userNote, '100g 三文鱼');
+    expect(find.text('Preview AI Result'), findsOneWidget);
+  });
+
+  testWidgets('restored photo draft keeps recovered image and note', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildPhotoTestApp(
+        harness,
+        initialNote: '100g salmon',
+        initialImages: <PickedFoodImage>[harness.picker.image],
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+      findsOneWidget,
+    );
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+    );
+    expect(find.text('100g salmon'), findsOneWidget);
+    final submit = tester.widget<FilledButton>(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+    );
+    expect(submit.onPressed, isNotNull);
+  });
 
   testWidgets('failure keeps selected image and note for retry', (
     tester,
@@ -320,7 +395,11 @@ Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
   await tester.pump();
 }
 
-Widget _buildPhotoTestApp(_PhotoHarness harness) {
+Widget _buildPhotoTestApp(
+  _PhotoHarness harness, {
+  String? initialNote,
+  List<PickedFoodImage> initialImages = const <PickedFoodImage>[],
+}) {
   return ChangeNotifierProvider<LanguageController>(
     create: (_) => LanguageController(),
     child: MultiProvider(
@@ -335,6 +414,8 @@ Widget _buildPhotoTestApp(_PhotoHarness harness) {
       child: MaterialApp(
         home: PhotoFoodAnalysisPage(
           initialDate: '2026-07-01',
+          initialNote: initialNote,
+          initialImages: initialImages,
           imagePicker: harness.picker,
           analysisClient: harness.client,
         ),

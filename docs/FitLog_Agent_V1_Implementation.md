@@ -1326,14 +1326,14 @@ confidence
 ## 16.2 入口
 
 - AI Chat；
-- Add Food -> Photo AI Analysis。
+- Add Food -> AI Food Analysis。
 
 Add Food 是唯一允许保留的业务页 AI 快捷入口，因为它直接对应饮食记录草稿。
 
 ## 16.3 用户流程
 
 ```text
-用户上传图片 / 输入补充描述
+用户输入食物描述 / 可选上传图片
         ↓
 AI 判断图片类型
         ↓

@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('Add Food promotes photo AI and keeps fallback entries', (
+  testWidgets('Add Food promotes AI food analysis and keeps fallback entries', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -19,12 +19,12 @@ void main() {
       ),
     );
 
-    expect(find.text('Photo AI Analysis'), findsOneWidget);
+    expect(find.text('AI Food Analysis'), findsOneWidget);
     expect(find.text('Copy AI Food Prompt'), findsNothing);
     expect(find.text('Paste AI Result'), findsOneWidget);
     expect(find.text('Manual Entry'), findsOneWidget);
 
-    final photoTop = tester.getTopLeft(find.text('Photo AI Analysis')).dy;
+    final photoTop = tester.getTopLeft(find.text('AI Food Analysis')).dy;
     final pasteTop = tester.getTopLeft(find.text('Paste AI Result')).dy;
     final manualTop = tester.getTopLeft(find.text('Manual Entry')).dy;
 

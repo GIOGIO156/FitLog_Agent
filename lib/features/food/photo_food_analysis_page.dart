@@ -20,6 +20,7 @@ import '../../domain/models/cloud_runtime_context.dart';
 import '../account/account_controller.dart';
 import 'food_image_picker.dart';
 import 'food_preview_page.dart';
+import 'photo_food_analysis_recovery.dart';
 
 const int _maxPhotoAnalysisImageBytes = 4 * 1024 * 1024;
 const int _maxPhotoAnalysisImages = 3;
@@ -33,11 +34,15 @@ class PhotoFoodAnalysisPage extends StatefulWidget {
   const PhotoFoodAnalysisPage({
     super.key,
     this.initialDate,
+    this.initialNote,
+    this.initialImages = const <PickedFoodImage>[],
     this.imagePicker,
     this.analysisClient,
   });
 
   final String? initialDate;
+  final String? initialNote;
+  final List<PickedFoodImage> initialImages;
   final FoodImagePicker? imagePicker;
   final AiFoodPhotoAnalysisClient? analysisClient;
 
@@ -56,12 +61,30 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   void initState() {
     super.initState();
     _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
+    _images = List<PickedFoodImage>.unmodifiable(
+      widget.initialImages.take(_maxPhotoAnalysisImages),
+    );
+    _selectedImageIndex = _images.isEmpty ? 0 : _images.length - 1;
+    _noteController.text = widget.initialNote ?? '';
+    _noteController.addListener(_handleNoteChanged);
   }
 
   @override
   void dispose() {
+    _noteController.removeListener(_handleNoteChanged);
     _noteController.dispose();
     super.dispose();
+  }
+
+  String get _analysisDate => widget.initialDate ?? DateUtilsX.todayKey();
+
+  bool get _hasAnalyzableInput =>
+      _images.isNotEmpty || _noteController.text.trim().isNotEmpty;
+
+  void _handleNoteChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _pickImage(FoodImageSource source) async {
@@ -71,10 +94,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
       return;
     }
     try {
+      await PhotoFoodAnalysisRecoveryStore.savePending(
+        initialDate: widget.initialDate,
+        note: _noteController.text,
+      );
       final pickedImages = await _imagePicker.pickMultiple(
         source,
         limit: _maxPhotoAnalysisImages - _images.length,
       );
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
       if (!mounted || pickedImages.isEmpty) {
         return;
       }
@@ -91,6 +119,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         _showError(validationError);
       }
     } catch (_) {
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
       if (!mounted) {
         return;
       }
@@ -118,7 +147,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   Future<void> _analyze() async {
     final strings = context.stringsRead;
     final images = _images;
-    if (images.isEmpty) {
+    final userNote = _noteController.text.trim();
+    if (images.isEmpty && userNote.isEmpty) {
       _showError(strings.photoAiPickImageFirst);
       return;
     }
@@ -159,8 +189,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
       language: strings.isChinese ? 'zh' : 'en',
       modelChoice: AiGatewayModelChoice.qwen,
       deviceId: deviceId!,
-      selectedDate: widget.initialDate ?? DateUtilsX.todayKey(),
-      userNote: _noteController.text,
+      selectedDate: _analysisDate,
+      userNote: userNote,
       client: const <String, dynamic>{
         'platform': 'flutter',
         'app_version': 'phase4',
@@ -187,9 +217,9 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     }
 
     final record = draft.toFoodRecord(
-      date: widget.initialDate ?? DateUtilsX.todayKey(),
+      date: _analysisDate,
       modelProvider: response.modelProvider,
-      userNote: _noteController.text,
+      userNote: userNote,
     );
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -278,7 +308,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final canSubmit = _images.isNotEmpty && !_analyzing;
+    final canSubmit = _hasAnalyzableInput && !_analyzing;
     return Scaffold(
       appBar: AppBar(title: Text(strings.photoAiAnalysis)),
       body: Stack(

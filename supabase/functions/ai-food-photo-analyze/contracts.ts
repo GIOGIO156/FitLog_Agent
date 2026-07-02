@@ -85,7 +85,8 @@ export function parsePhotoAnalysisRequest(
     }
   }
 
-  const images = parseImages(body);
+  const userNote = nullableString(body.user_note);
+  const images = parseImages(body, userNote);
 
   const language = stringOrEmpty(body.language).trim();
   if (language !== "zh" && language !== "en") {
@@ -113,7 +114,7 @@ export function parsePhotoAnalysisRequest(
     deviceId,
     selectedDate,
     schemaVersion: "food_draft.v1",
-    userNote: nullableString(body.user_note),
+    userNote,
   };
 }
 
@@ -236,7 +237,7 @@ export function errorMessageForCode(code: PhotoGatewayErrorCode): string {
     case "provider_failure":
       return "The AI Gateway could not complete the request.";
     case "record_schema_mismatch":
-      return "The AI photo request or draft schema is not supported.";
+      return "The AI food analysis request or draft schema is not supported.";
   }
 }
 
@@ -258,7 +259,15 @@ export function stripImageDataForDebug(request: PhotoAnalysisRequest | null) {
   if (request === null) {
     return [];
   }
+  if (request.images.length === 0) {
+    return [{
+      input_kind: "text",
+      selected_date: request.selectedDate,
+      has_user_note: request.userNote !== null,
+    }];
+  }
   return request.images.map((image) => ({
+    input_kind: "image",
     mime_type: image.mimeType,
     byte_length: image.byteLength,
     selected_date: request.selectedDate,
@@ -309,18 +318,21 @@ function foodDraftItems(value: unknown): FoodDraftItem[] {
 
 function systemPrompt(language: PhotoLanguage): string {
   return language === "zh"
-    ? "你是 FitLog 的食物图片分析助手。你只能根据本次请求的一到三张图片和用户补充说明生成可编辑食物草稿，不能写入正式记录，不能修改目标，不能调用 RAG。输出必须是严格 JSON。"
-    : "You are FitLog's food photo analysis assistant. Use only the one to three images in this request and the user's note to create an editable food draft. Do not write official records, change goals, or use RAG. Output strict JSON only.";
+    ? "你是 FitLog 的 AI 食物分析助手。你只能根据本次请求的用户描述和零到三张图片生成可编辑食物草稿，不能写入正式记录，不能修改目标，不能调用 RAG。输出必须是严格 JSON。"
+    : "You are FitLog's AI food analysis assistant. Use only the user's description and zero to three images in this request to create an editable food draft. Do not write official records, change goals, or use RAG. Output strict JSON only.";
 }
 
 function userPrompt(request: PhotoAnalysisRequest): string {
   const note = request.userNote === null
     ? ""
     : `\nUser note: ${request.userNote}`;
+  const clarificationInstruction = request.images.length === 0
+    ? "If the description is too unclear to estimate safely, set needs_clarification true, draft null, and include short clarification_questions."
+    : "If the image or description is too unclear, set needs_clarification true, draft null, and include short clarification_questions.";
   return [
     "Return JSON with this shape:",
     '{"needs_clarification":false,"clarification_questions":[],"draft":{"meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}',
-    "If the image is too unclear, set needs_clarification true, draft null, and include short clarification_questions.",
+    clarificationInstruction,
     "Use finite non-negative numbers. Estimate honestly and keep notes brief.",
     `Image count: ${request.images.length}`,
     `Selected date: ${request.selectedDate}`,
@@ -328,14 +340,23 @@ function userPrompt(request: PhotoAnalysisRequest): string {
   ].join("\n");
 }
 
-function parseImages(body: Record<string, unknown>): PhotoAnalysisImage[] {
+function parseImages(
+  body: Record<string, unknown>,
+  userNote: string | null,
+): PhotoAnalysisImage[] {
   const rawImages = Array.isArray(body.images)
     ? body.images
     : body.image === undefined
     ? []
     : [body.image];
-  if (rawImages.length === 0 || rawImages.length > maxImages) {
+  if (rawImages.length > maxImages) {
     throw new PhotoGatewayRequestError("record_schema_mismatch");
+  }
+  if (rawImages.length === 0) {
+    if (userNote === null) {
+      throw new PhotoGatewayRequestError("record_schema_mismatch");
+    }
+    return [];
   }
   return rawImages.map((item) => {
     const image = objectOrThrow(item);

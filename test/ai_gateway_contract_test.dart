@@ -275,7 +275,7 @@ void main() {
     });
   });
 
-  group('AI food photo contract', () {
+  group('AI food analysis contract', () {
     test('serializes the photo analysis request without future extras', () {
       const request = AiFoodPhotoAnalysisRequest(
         images: <AiFoodPhotoImagePayload>[
@@ -307,6 +307,22 @@ void main() {
       expect((images.first as Map<String, dynamic>)['byte_length'], 128);
     });
 
+    test('serializes a text-only food analysis request', () {
+      const request = AiFoodPhotoAnalysisRequest(
+        images: <AiFoodPhotoImagePayload>[],
+        language: 'zh',
+        deviceId: 'device-a',
+        selectedDate: '2026-07-01',
+        userNote: '100g 三文鱼',
+      );
+
+      final json = request.toJson();
+
+      expect(json['images'], isEmpty);
+      expect(json['user_note'], '100g 三文鱼');
+      expect(json['official_record_write'], isNull);
+    });
+
     test('parses a valid food draft response', () {
       final response = AiFoodPhotoAnalysisResponse.fromJson(<String, dynamic>{
         'model_choice': 'qwen',
@@ -335,7 +351,7 @@ void main() {
       );
     });
 
-    test('converts a draft to an AI photo FoodRecord', () {
+    test('converts a draft to an AI food analysis FoodRecord', () {
       final draft = AiFoodDraft.fromJson(_validDraftJson());
 
       final record = draft.toFoodRecord(

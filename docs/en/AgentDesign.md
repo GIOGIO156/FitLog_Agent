@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. The implemented Agent baseline includes the centered AI tab, account state, subscription status, Cloud Profile foundation, signed-in body/food/workout official records connected to the cloud source of truth, AI Chat through server-side OpenAI/Qwen providers, Qwen multimodal chat with up to three images, cloud chat history, inline Chat Food Draft and Workout Draft artifact cards, a compact same-chat context builder, and Add Food Photo AI Analysis that creates an editable Food Draft. It also adds Home selected-day summary cache with stale-while-revalidate, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, exports from cloud official records, and writes compact AI request/debug summaries. RAG, more than three Chat images, long-term image storage, and autonomous actions are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. The implemented Agent baseline includes the centered AI tab, account state, subscription status, Cloud Profile foundation, signed-in body/food/workout official records connected to the cloud source of truth, AI Chat through server-side OpenAI/Qwen providers, Qwen multimodal chat with up to three images, cloud chat history, inline Chat Food Draft and Workout Draft artifact cards, a compact same-chat context builder, and Add Food AI Food Analysis that creates an editable Food Draft from a text description and up to three optional images. It also adds Home selected-day summary cache with stale-while-revalidate, first-render account-bound cache binding after signed-in recovery, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, exports from cloud official records, and writes compact AI request/debug summaries. RAG, more than three Chat images, long-term image storage, and autonomous actions are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -15,7 +15,7 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no on-device model execution. Remote AI calls go through Supabase Edge Functions with server-managed provider keys. The implemented Agent shell/account baseline includes the AI navigation entry, availability-gated chat page, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Cloud Records source-of-truth paths for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening are also implemented. Phase 4 Step 1 adds Supabase tables for AI chat sessions/messages, request logs, and compact debug summaries, plus Flutter contract models for AI Gateway request/response/error mapping. Phase 4 Steps 2-4 add the `ai-chat-route` Supabase Edge Function, server-owned chat-turn RPCs, AI-page Gateway client, cloud chat-history repository/controller, and server-side OpenAI/ChatGPT plus Qwen text provider routing. Phase 4 Step 5 adds local provider preference persistence, readiness-only status, inline chat rename/delete confirmation, and Add Food photo analysis through `ai-food-photo-analyze`. Phase 4 Step 6 adds AI Chat attachments with up to three images through Qwen multimodal routing, parsed Food Draft responses, Chat artifact cards that rebuild Food Preview after a user tap, smoother AI-page background motion, and stable rename/loading transitions. The current chat path also supports typed Workout Draft artifacts that rebuild the existing workout editor draft after a user tap, and it sends a compact same-chat context made from recent text and draft summaries. The implemented chat path does not run RAG, upload full record history, store image bytes long-term, or write official business records automatically.
+The current source has no on-device model execution. Remote AI calls go through Supabase Edge Functions with server-managed provider keys. The implemented Agent shell/account baseline includes the AI navigation entry, availability-gated chat page, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Cloud Records source-of-truth paths for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening are also implemented. Phase 4 Step 1 adds Supabase tables for AI chat sessions/messages, request logs, and compact debug summaries, plus Flutter contract models for AI Gateway request/response/error mapping. Phase 4 Steps 2-4 add the `ai-chat-route` Supabase Edge Function, server-owned chat-turn RPCs, AI-page Gateway client, cloud chat-history repository/controller, and server-side OpenAI/ChatGPT plus Qwen text provider routing. Phase 4 Step 5 adds local provider preference persistence, readiness-only status, inline chat rename/delete confirmation, and Add Food AI food analysis through `ai-food-photo-analyze`. Phase 4 Step 6 adds AI Chat attachments with up to three images through Qwen multimodal routing, parsed Food Draft responses, Chat artifact cards that rebuild Food Preview after a user tap, smoother AI-page background motion, and stable rename/loading transitions. The current Add Food analysis path accepts text-only food descriptions or up to three optional images, and it stores a tiny local picker-recovery marker before launching camera/gallery so Android activity restarts can restore the draft. The current chat path also supports typed Workout Draft artifacts that rebuild the existing workout editor draft after a user tap, and it sends a compact same-chat context made from recent text and draft summaries. The implemented chat path does not run RAG, upload full record history, store image bytes long-term, or write official business records automatically.
 
 Not implemented in the current code:
 
@@ -37,7 +37,7 @@ Existing AI-adjacent features are user-mediated, not app-internal AI:
 | Prompt template text | The app keeps external-model guidance text for fallback copy/paste wording, but Add Food no longer exposes prompt copy as the primary flow. | No | `PromptTemplates`, `AppStrings` |
 | External AI JSON paste | The user manually pastes JSON produced outside the app. FitLog parses it locally. | No | `PasteAiResultPage`, `NutritionCalculator.parseAiFoodJson` |
 | `source = ai_paste` | Saved food records can mark that the source was an AI paste workflow. | No | `AppConstants.sourceAiPaste`, `FoodRecord.source` |
-| Photo AI Analysis | Add Food first entry. The user selects one to three camera/gallery images, can tap thumbnails to switch the enlarged preview or remove a single image from the thumbnail corner, and may add an optional note; `ai-food-photo-analyze` calls Qwen multimodal provider and returns a schema-validated Food Draft that opens Food Preview. | Server-mediated draft only | `AddFoodPage`, `PhotoFoodAnalysisPage`, `AiFoodPhotoAnalysisClient`, `ai-food-photo-analyze` |
+| AI Food Analysis | Add Food first entry. The user can submit a text-only food description or add up to three optional camera/gallery images, tap thumbnails to switch the enlarged preview or remove a single image, and keep a local recovery marker while the system picker is open; `ai-food-photo-analyze` calls Qwen and returns a schema-validated Food Draft that opens Food Preview. | Server-mediated draft only | `AddFoodPage`, `PhotoFoodAnalysisPage`, `AiFoodPhotoAnalysisClient`, `ai-food-photo-analyze` |
 | AI Chat page | Centered AI tab with availability-gated background, editable composer, up to three image attachments, provider selector, cloud history sidebar, and account/subscription status entry. It can send text through OpenAI/Qwen and up to three images through Qwen only after login, subscription, active-device, and provider-configuration checks pass. Food Draft and Workout Draft responses render Chat artifact cards; tapping review rebuilds Food Preview or the existing workout editor draft and still requires user save confirmation before any official write. | Server-mediated text or draft only | `AiPage`, `AiChatController`, `SupabaseAiChatRepository`, `SupabaseAiGatewayClient`, `ai-chat-route` |
 | Phase 4 chat data/contract foundation | Supabase schema for AI chat sessions/messages, request logs, compact debug summaries, and Flutter request/response/error contract models. It does not send messages or call providers. | No | `202606290001_phase4_ai_chat_foundation.sql`, `AiGatewayRequest`, `AiGatewayResponse` |
 | Phase 4 Gateway and providers | Supabase Edge Function verifies auth, subscription, and active-device state, calls the selected server-side text or Qwen multimodal provider, accepts compact same-chat `conversation_context`, validates typed Food Draft or Workout Draft payloads, then persists the user/assistant text turn plus request log and compact debug summary through service-owned RPCs. | Server-mediated text or draft only | `ai-chat-route`, `record_ai_chat_turn`, `openai_provider.ts`, `qwen_provider.ts` |
@@ -88,14 +88,14 @@ The primary Agent entry is the new AI tab in the center of the bottom navigation
 Home | Food | AI | Workout | Profile
 ```
 
-The AI page is a simple full-screen chat surface. It is not a quick-chip workbench. Apart from the Add Food photo-recognition path, other Agent workflows should start from the AI page.
+The AI page is a simple full-screen chat surface. It is not a quick-chip workbench. Apart from the Add Food AI food analysis path, other Agent workflows should start from the AI page.
 
 Allowed entry points:
 
 | Entry | Purpose | Boundary |
 | --- | --- | --- |
 | AI Chat tab | Main Agent entry for food estimation, meal advice, weekly review, and app logic Q&A. | Requires login, network, and active subscription to send. |
-| Add Food photo recognition | Shortcut for food image analysis inside the Food flow. | Still produces a draft; user confirms before save. |
+| Add Food AI food analysis | Shortcut for text or image-based food estimation inside the Food flow. | Still produces a draft; user confirms before save. |
 | Existing external JSON paste | Local compatibility workflow. | User-mediated external AI, not Agent V1. |
 
 ## AI Page Behavior
@@ -152,7 +152,7 @@ Unsent composer text is a current-runtime device-local draft. It should survive 
 Inputs:
 
 - text description
-- food photo
+- optional food photos
 - optional user corrections
 - cloud profile
 - selected date if relevant
@@ -163,7 +163,7 @@ Behavior:
 1. AI extracts candidate foods, portions, cooking method, and uncertainty.
 2. If food type, meat type, portion, consumed amount, or cooking method is unclear, AI asks a follow-up question instead of forcing a confident estimate.
 3. AI returns schema-validated draft data.
-4. The implemented chat-image draft path shows a Chat artifact card and opens the existing Food Preview editor only after the user taps the review button.
+4. The dedicated Add Food AI food analysis path opens the existing Food Preview editor after a schema-validated response; the implemented Chat image draft path shows a Chat artifact card and opens Food Preview only after the user taps the review button.
 5. The user may edit draft fields before saving.
 6. The user may save, discard, or open the full food editor when the UI provides that path.
 7. Official food records are written only after confirmation.
@@ -306,7 +306,7 @@ V1 uses one active device per account. AI context building and AI Gateway send m
 
 By default, V1 does not provide the model with complete raw food history, complete raw workout history, complete raw body-metric history, local export archives, or local workout drafts. When record context is needed, the app should use user-visible permission or settings and send only the minimum necessary summary.
 
-The implemented image paths are narrow, not RAG. Add Food sends one to three compressed JPEG/PNG/WebP images plus an optional note to `ai-food-photo-analyze`; AI Chat can send up to three JPEG/PNG/WebP images through `ai-chat-route` when Qwen is selected. The Edge Functions forward images to Qwen multimodal capability for that request, validate structured Food Draft or Workout Draft payloads when present, and do not store original images or base64 payloads. Add Food and AI Chat request logs write the accepted `image_count`, while chat history persists text turns plus lightweight artifact snapshots and summaries for returned drafts.
+The implemented food analysis and image paths are narrow, not RAG. Add Food sends a text description and zero to three compressed JPEG/PNG/WebP images to `ai-food-photo-analyze`; AI Chat can send up to three JPEG/PNG/WebP images through `ai-chat-route` when Qwen is selected. The Edge Functions forward only the current request input to Qwen, validate structured Food Draft or Workout Draft payloads when present, and do not store original images or base64 payloads. Add Food and AI Chat request logs write the accepted `image_count` including `0` for text-only food analysis, while chat history persists text turns plus lightweight artifact snapshots and summaries for returned drafts.
 
 ## Cloud Profile
 
@@ -359,7 +359,7 @@ Default V1 recommendation:
 - Save AI sessions and final chat messages in cloud so history works across devices after login.
 - Save request/response metadata for reliability, billing audit, abuse prevention, and debugging.
 - Store compact debug summaries instead of verbose raw chain-of-thought or unrestricted tool traces.
-- For food-photo analysis, store only compact metadata such as workflow, model, image count, mime type, compressed byte length, schema validation status, and safety/error flags; do not store the original image or base64 payload by default.
+- For Add Food AI food analysis, store only compact metadata such as workflow, model, image count, optional input kind, mime type, compressed byte length, note presence, schema validation status, and safety/error flags; do not store the original image, base64 payload, or full free-text note by default.
 - Avoid storing full retrieved local record payloads when a compact context summary is enough.
 - Provide account deletion behavior that removes account-bound profile and chat history according to the deletion policy.
 
@@ -420,7 +420,7 @@ Current Local and Agent baseline:
 - Supabase schema: `supabase/migrations/202606190001_phase2_account_profile.sql`, `supabase/migrations/202606260001_phase3_cloud_records.sql`, `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`
 - Supabase chat/session rename schema: `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`
 - Supabase Edge Functions: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
-- AI chat and food-photo data path: `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`, `lib/data/repositories/ai_chat_repository.dart`
+- AI chat and AI food analysis data path: `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`, `lib/data/repositories/ai_chat_repository.dart`
 - AI Gateway contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
 
 Planned later Agent V1 surfaces:

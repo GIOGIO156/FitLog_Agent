@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-02 Startup Cache And AI Food Analysis Recovery
+
+### Added
+
+- Added Add Food AI Food Analysis support for text-only food descriptions while keeping up to three optional camera/gallery images and the existing Food Preview confirmation boundary.
+- Added a small local picker-recovery marker and lost-data recovery path so Android camera/gallery activity restarts can reopen the AI food analysis draft instead of dropping the user back to Home.
+
+### Changed
+
+- Changed signed-in startup hydration so Home, Food, and Workout bind local record repositories to the recovered auth-session account before active-device runtime refresh, allowing current-day local cache reads to render without a manual date switch.
+- Changed the `ai-food-photo-analyze` contract, Qwen prompt, request logging, and debug metadata to support text-only requests with `image_count = 0` while still avoiding raw image/base64/full-note retention.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test\photo_food_analysis_page_test.dart test\add_food_page_test.dart test\ai_gateway_contract_test.dart`; targeted AI food analysis tests passed.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+- Deployed the updated `ai-food-photo-analyze` Supabase Edge Function to project `dyacqajcinjwrkbngeif` so text-only requests reach the new server contract.
+- Local Supabase Edge Function Deno tests could not run because `deno` is not installed on this machine.
+
 ## 2026-07-02 AI Chat Markdown And Copy
 
 ### Added

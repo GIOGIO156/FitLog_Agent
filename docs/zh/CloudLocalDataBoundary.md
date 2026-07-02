@@ -8,7 +8,7 @@
 
 ## 适用范围
 
-这些规则适用于 Phase 3 Cloud Records Foundation 及其后的登录态 Agent 构建。当前工程已落地 root auth gate、active-device claim/assert、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 confirmed cache 元数据、cloud-backed repository、登录冷启动后台账号恢复、Home 选中日期 daily summary confirmed cache 和 stale-while-revalidate 后台重算、App 侧 `daily_summaries` 云端 upsert/读取恢复、受控的近期 summary warm cache、confirmed cache 淘汰，以及基于云端正式 records 的导出完整性 hardening。更精细的 Body Trends partial-state polish 和完整 repair 面板可以后续继续做，但 Phase 3 主 cloud/local hardening 链路不再被这些事项阻塞。
+这些规则适用于 Phase 3 Cloud Records Foundation 及其后的登录态 Agent 构建。当前工程已落地 root auth gate、active-device claim/assert、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 confirmed cache 元数据、cloud-backed repository、登录冷启动后台账号恢复、首屏本地记录读取前的 auth-session 账号绑定、Home 选中日期 daily summary confirmed cache 和 stale-while-revalidate 后台重算、App 侧 `daily_summaries` 云端 upsert/读取恢复、受控的近期 summary warm cache、confirmed cache 淘汰，以及基于云端正式 records 的导出完整性 hardening。更精细的 Body Trends partial-state polish 和完整 repair 面板可以后续继续做，但 Phase 3 主 cloud/local hardening 链路不再被这些事项阻塞。
 
 未登录前的 Local 风格行为仍以本地为主。Phase 3 不实现离线正式写入队列、完整双向同步、旧本机历史自动迁移，也不实现复杂跨设备合并 UI。
 
@@ -17,7 +17,7 @@
 - 登录后的正式身体、饮食和训练数据以云端 records 为权威。
 - 本地 SQLite 是 partial cache、草稿、运行期加速层和已确认 UI read model。
 - 本地 cache 不是完整云端镜像，AI、导出、修复和跨设备正确性不能依赖本地 cache 完整性。
-- 只要存在账号绑定的已确认 cache，页面应先用本地数据打开，不等待 Supabase session 恢复或云端刷新。
+- 只要存在账号绑定的已确认 cache，且已知道当前登录 auth 账号，页面应先用本地数据打开，不等待 active-device 恢复或云端刷新。
 - 本地 cache 淘汰不能导致用户正式数据丢失。
 - AI 可以生成草稿、解释和复盘，但正式数据修改仍必须用户确认并云端写入成功。
 
@@ -147,6 +147,7 @@
 
 - 启动时不得为了首屏渲染强制拉取完整云端历史。
 - 启动时不得为了 cache-backed 页面强制完整重拉最近 30 天。
+- 已恢复登录态并进入五栏时，App 必须先把 Food、Workout 和 Profile repositories 绑定到 auth session 中的账号 id，再等待 active-device 运行期上下文 claim 或刷新完成。这样 Home、Food、Workout 首次渲染当前日期时可以读取匹配账号的本地 cache，不会先显示空白记录并且只有切换日期后才恢复。
 - 首屏必需数据不属于 warm cache。如果没有匹配的已确认 Home cache，第一次登录后的 Home 首次渲染可以等待一个很小的首屏数据包：账号/Cloud Profile 基础状态、选中日期 Home summary/read model，以及默认可见展示面必需的数据。App 不应先渲染空 Home，再在用户注视下替换成真实 Home。
 - 如果存在匹配的已确认 Home cache，应立即渲染并在后台校验云端。云端数据一致时不应可见刷新 Home；云端数据变化时，也只更新受影响数值，不做整页 loading reset。
 - 如果存在匹配的本地 cache，Supabase session 恢复、订阅刷新、Cloud Profile 刷新和当前可见窗口 Cloud Records 刷新应在后台进行。
@@ -355,7 +356,7 @@ AI：
 - Warm cache 与淘汰：`lib/domain/services/warm_cache_coordinator.dart` 在五栏 shell 稳定渲染后预热最近 30 天 summaries；`lib/domain/services/cache_maintenance_service.dart` 淘汰旧的 cloud-confirmed 本地 cache，不删除云端正式 records。
 - 写入/read-model 协调：当前写入成功后由 cloud-backed repository 更新本地 confirmed cache，页面通过 `RefreshNotifier` 刷新，food/workout/Profile 成功写入后会调度受影响日期 summary cache 和云端 projection 刷新。
 - 导出正确性：`lib/export/export_table_builder.dart` 在生成 CSV/XLSX 前通过 cloud-backed all-record loaders 补齐 food、workout 和 body metric 正式记录，并包含 Body Metrics 表。
-- Root auth gate 和 cache-backed 页面：`lib/app.dart`、`profile_page.dart`、`home_page.dart`、`food_log_page.dart`、`workout_log_page.dart`。
+- Root auth gate、首屏账号绑定和 cache-backed 页面：`lib/app.dart`、`profile_page.dart`、`home_page.dart`、`food_log_page.dart`、`workout_log_page.dart`。
 - 账号状态机、Cloud Profile 展示 cache、订阅展示 cache、后台恢复和刷新退避：`lib/features/account/account_controller.dart`。
 - Active device claim / guard：Supabase RPC `claim_active_device`、`assert_active_device`、`release_active_device`，Flutter repository 在 `lib/data/repositories/active_device_repository.dart`，运行时状态在 `lib/domain/models/cloud_runtime_context.dart`。
 - Profile gate 必须把 `offline_readonly` 和“已有 matching cache 的 refresh error”当成可展示状态，不能整页错误覆盖。
@@ -397,6 +398,7 @@ AI：
 - 新设备登录后会 claim active device；旧设备下一次云端交互收到 `device_replaced` 时会停止正式写入并回到登录/接管路径。
 - 已配置构建应恢复有效的本地 Supabase session，除非用户主动退出、Android app data 被清除、包名/签名变化导致必须重装，或 session 本身不可恢复。
 - 有 confirmed cache 的冷启动会立即渲染 Home。
+- 进程被杀后冷启动会先绑定当前账号 cache，再等待 active-device 刷新，因此 Home/Food/Workout 不会先显示空白当前日并且只有切换日期后才恢复。
 - 没有 cache 的第一次登录 Home 首屏会等待选中日期 summary/read model，不先渲染空 Home 再在用户注视下刷新。
 - 后台刷新期间的 `auth_required` 不会把 cached Home 替换成整页错误。
 - 可选校准/自检历史窗口失败时，不会把选中日期 Home summary 替换成整页错误。

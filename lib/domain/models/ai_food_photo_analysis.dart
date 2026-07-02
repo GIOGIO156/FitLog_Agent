@@ -164,7 +164,7 @@ class AiFoodDraft {
     final noteParts = <String>[
       if (estimationNotes.trim().isNotEmpty) estimationNotes.trim(),
       if ((modelProvider ?? '').trim().isNotEmpty)
-        'AI photo estimate via ${modelProvider!.trim()}',
+        'AI food estimate via ${modelProvider!.trim()}',
       if ((userNote ?? '').trim().isNotEmpty) 'User note: ${userNote!.trim()}',
     ];
     return FoodRecord(

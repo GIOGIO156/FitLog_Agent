@@ -40,7 +40,10 @@ import 'export/xlsx_export_service.dart';
 import 'features/account/account_controller.dart';
 import 'features/ai/ai_chat_controller.dart';
 import 'features/ai/ai_page.dart';
+import 'features/food/food_image_picker.dart';
 import 'features/food/food_log_page.dart';
+import 'features/food/photo_food_analysis_page.dart';
+import 'features/food/photo_food_analysis_recovery.dart';
 import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/workout/workout_log_page.dart';
@@ -532,7 +535,7 @@ class _RootShell extends StatefulWidget {
   State<_RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<_RootShell> {
+class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   late final List<Widget> _pages = const <Widget>[
     HomePage(),
     FoodLogPage(),
@@ -541,11 +544,47 @@ class _RootShellState extends State<_RootShell> {
     ProfilePage(),
   ];
   String? _lastBackgroundAccountId;
+  String? _lastRecordHydrationKey;
+  bool _recordHydrationRefreshScheduled = false;
+  bool _restoringLostPhotoAnalysis = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_restoreLostPhotoAnalysisIfNeeded());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) {
+      return;
+    }
+    _scheduleSelectedDateHydrationRefresh();
+    unawaited(_restoreLostPhotoAnalysisIfNeeded());
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final accountId = context.watch<AccountController>().authSession.accountId;
+    final accountController = context.watch<AccountController>();
+    final runtimeContext = context.watch<CloudRuntimeContext>();
+    final accountId = accountController.authSession.accountId;
+    _bindLocalRecordAccount(accountId);
+    _scheduleHydrationRefreshWhenContextChanges(
+      accountId: accountId,
+      runtimeContext: runtimeContext,
+    );
     if ((accountId ?? '').isEmpty || accountId == _lastBackgroundAccountId) {
       return;
     }
@@ -555,6 +594,81 @@ class _RootShellState extends State<_RootShell> {
       services.warmCacheCoordinator.warmRecentWindow(accountId: accountId),
     );
     unawaited(services.cacheMaintenanceService.pruneForAccount(accountId));
+  }
+
+  void _bindLocalRecordAccount(String? accountId) {
+    final services = context.read<AppServices>();
+    services.foodRepository.setActiveAccountId(accountId);
+    services.workoutRepository.setActiveAccountId(accountId);
+    services.profileRepository.setActiveAccountId(accountId);
+  }
+
+  void _scheduleHydrationRefreshWhenContextChanges({
+    required String? accountId,
+    required CloudRuntimeContext runtimeContext,
+  }) {
+    final key = [
+      accountId ?? '',
+      runtimeContext.accountId ?? '',
+      runtimeContext.deviceId ?? '',
+      runtimeContext.sessionId ?? '',
+      runtimeContext.deviceReplaced ? 'replaced' : 'active',
+    ].join('|');
+    if (key == _lastRecordHydrationKey) {
+      return;
+    }
+    _lastRecordHydrationKey = key;
+    _scheduleSelectedDateHydrationRefresh();
+  }
+
+  void _scheduleSelectedDateHydrationRefresh() {
+    if (_recordHydrationRefreshScheduled) {
+      return;
+    }
+    _recordHydrationRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recordHydrationRefreshScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      context.read<RefreshNotifier>().markDataChanged();
+    });
+  }
+
+  Future<void> _restoreLostPhotoAnalysisIfNeeded() async {
+    if (_restoringLostPhotoAnalysis) {
+      return;
+    }
+    _restoringLostPhotoAnalysis = true;
+    try {
+      final draft = await PhotoFoodAnalysisRecoveryStore.loadPending();
+      if (draft == null) {
+        return;
+      }
+      final images = await ImagePickerFoodImagePicker().retrieveLostImages(
+        limit: 3,
+      );
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
+      if (!mounted || (images.isEmpty && draft.note.trim().isEmpty)) {
+        return;
+      }
+      final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => PhotoFoodAnalysisPage(
+            initialDate: draft.initialDate,
+            initialNote: draft.note,
+            initialImages: images,
+          ),
+        ),
+      );
+      if (saved == true && mounted) {
+        context.read<RefreshNotifier>().markDataChanged();
+      }
+    } catch (_) {
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
+    } finally {
+      _restoringLostPhotoAnalysis = false;
+    }
   }
 
   @override

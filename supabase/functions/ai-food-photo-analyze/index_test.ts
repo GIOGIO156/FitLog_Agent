@@ -36,7 +36,22 @@ Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported image
   assertEquals(parsed.userNote, "米饭吃了一半");
 });
 
-Deno.test("parsePhotoAnalysisRequest rejects missing, oversized, and unsupported images", () => {
+Deno.test("parsePhotoAnalysisRequest accepts text-only food descriptions", () => {
+  const parsed = parsePhotoAnalysisRequest({
+    images: [],
+    language: "zh",
+    model_choice: "qwen",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v1",
+    user_note: "100g 三文鱼",
+  });
+
+  assertEquals(parsed.images.length, 0);
+  assertEquals(parsed.userNote, "100g 三文鱼");
+});
+
+Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported input", () => {
   assertThrowsRequest(() =>
     parsePhotoAnalysisRequest({
       language: "zh",
@@ -120,6 +135,25 @@ Deno.test("buildQwenVisionRequestBody uses an image_url data URL only in provide
   assertEquals(body.enable_thinking, false);
 });
 
+Deno.test("buildQwenVisionRequestBody supports text-only provider requests", () => {
+  const request = parsePhotoAnalysisRequest({
+    images: [],
+    language: "zh",
+    model_choice: "qwen",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v1",
+    user_note: "100g 三文鱼",
+  });
+
+  const body = buildQwenVisionRequestBody({ request, model: "qwen-vl" });
+  const json = JSON.stringify(body);
+
+  assert(json.includes("100g 三文鱼"));
+  assert(json.includes("Image count: 0"));
+  assertEquals(json.includes("data:image/"), false);
+});
+
 Deno.test("parseProviderFoodDraftBody accepts valid and fenced JSON", () => {
   const json = JSON.stringify({
     needs_clarification: false,
@@ -198,6 +232,24 @@ Deno.test("stripImageDataForDebug keeps only compact image metadata", () => {
   assert(debug.includes("128"));
   assert(debug.includes("image/png"));
   assertEquals(debug.includes("secret-base64"), false);
+});
+
+Deno.test("stripImageDataForDebug keeps compact text-only metadata", () => {
+  const request = parsePhotoAnalysisRequest({
+    images: [],
+    language: "zh",
+    model_choice: "qwen",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v1",
+    user_note: "100g 三文鱼",
+  });
+
+  const debug = JSON.stringify(stripImageDataForDebug(request));
+
+  assert(debug.includes("text"));
+  assert(debug.includes("2026-07-01"));
+  assert(debug.includes("has_user_note"));
 });
 
 function validDraft() {

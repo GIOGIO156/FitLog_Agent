@@ -1,6 +1,6 @@
 # FitLog_Agent V1 API Contract Draft
 
-本文是 Phase 0 的工程 contract 草案，用于把 Agent V1 的接口形状、数据边界和技术选择集中到一个文件。它不是 App 运行时存储，也不是云端数据库；手机 App 安装运行后不会把用户数据写入这个 Markdown 文件。真正的账号、Profile、chat、日志和云端记录由代码写入 Supabase/Postgres；当前 Add Food 图片分析只在请求内传输压缩图片，不默认写入 Supabase Storage。这个文件只作为开发蓝图、接口约定和验收依据；已实现状态以 README、CHANGELOG 和稳定设计文档为准。
+本文是 Phase 0 的工程 contract 草案，用于把 Agent V1 的接口形状、数据边界和技术选择集中到一个文件。它不是 App 运行时存储，也不是云端数据库；手机 App 安装运行后不会把用户数据写入这个 Markdown 文件。真正的账号、Profile、chat、日志和云端记录由代码写入 Supabase/Postgres；当前 Add Food AI 食物分析只在请求内传输文字描述和可选压缩图片，不默认写入 Supabase Storage。这个文件只作为开发蓝图、接口约定和验收依据；已实现状态以 README、CHANGELOG 和稳定设计文档为准。
 
 ## Phase 0 Status
 
@@ -11,7 +11,7 @@
 - 首版登录方式为 FitLog 自有邮箱密码登录 + 注册邮箱验证码；任意可接收验证码的邮箱都可用于账号创建。
 - 订阅方案为开发期内部 entitlement：种子账号和内部兑换码区分 subscribed / unsubscribed，不接真实支付 provider。
 - AI providers 锁定为 OpenAI/ChatGPT 和千问/Qwen 两种，由服务端 AI Gateway 调用；用户可在 AI Chat 输入区选择使用哪一种。
-- Add Food 图片分析使用一到三张本机压缩后的 JPEG/PNG/WebP 图片，通过 `ai-food-photo-analyze` 请求体内的 base64 payload 列表传给 Edge Function；服务端只转发给 Qwen 多模态 provider，不默认保存原图、base64 或 provider raw response。
+- Add Food AI 食物分析使用文字描述和零到三张本机压缩后的 JPEG/PNG/WebP 图片，通过 `ai-food-photo-analyze` 请求体传给 Edge Function；服务端只转发给 Qwen provider，不默认保存原图、base64、完整自由文本说明或 provider raw response。
 - Agent V1 使用云端账号、订阅、Cloud Profile、Cloud Records、daily summaries、AI Gateway、chat history、request metadata 和 compact debug summaries。
 - 模型 API key 只能由服务端管理，App 内不提供用户自填 key。
 - Phase 3 Cloud Records Foundation 后，body/food/workout 正式记录以云端为 source of truth，本地 SQLite 只做 partial cache。
@@ -73,7 +73,7 @@ Locked backend mapping:
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
 | Model secrets | Supabase Edge Function secrets for OpenAI and Qwen |
-| Food photo transport | Current Add Food workflow sends one to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; no default Storage persistence |
+| Food analysis transport | Current Add Food workflow sends a text description and zero to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; no default Storage persistence |
 | Document RAG index | Supabase Postgres document chunks; vector search optional only for docs |
 
 ## Common API Rules
@@ -163,7 +163,7 @@ POST /ai/weekly-review
 POST /ai/app-docs-answer
 ```
 
-`/ai/chat/route` is the product-level chat entry for text and Qwen multimodal requests with up to three images. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows. The current Add Food photo workflow is implemented by the Supabase Edge Function `ai-food-photo-analyze`; Chat image requests use the same draft-confirmation boundary and do not store original image bytes.
+`/ai/chat/route` is the product-level chat entry for text and Qwen multimodal requests with up to three images. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows. The current Add Food AI food analysis workflow is implemented by the Supabase Edge Function `ai-food-photo-analyze`; it accepts text-only requests or text plus up to three optional images. Chat image requests use the same draft-confirmation boundary and do not store original image bytes.
 
 ## Subscription Contract
 
@@ -450,9 +450,9 @@ If clarification is needed:
 }
 ```
 
-## Food Photo Analysis Contract
+## AI Food Analysis Contract
 
-The current Add Food photo workflow is a dedicated Gateway surface, implemented by the Supabase Edge Function `ai-food-photo-analyze`.
+The current Add Food AI food analysis workflow is a dedicated Gateway surface, implemented by the Supabase Edge Function `ai-food-photo-analyze`.
 
 Request:
 
@@ -470,7 +470,7 @@ Request:
   "device_id": "dev_...",
   "selected_date": "2026-06-17",
   "schema_version": "food_draft.v1",
-  "user_note": "米饭只吃了一半"
+  "user_note": "100g 三文鱼，米饭只吃了一半"
 }
 ```
 
@@ -511,12 +511,12 @@ Response:
 Rules:
 
 - Only authenticated, subscribed, active-device users may call the function.
-- The current implementation accepts one to three JPEG/PNG/WebP images and rejects any compressed payload above 4 MB.
-- The app may include an optional user note, but the server does not accept user-supplied provider API keys.
-- The Edge Function forwards the image to Qwen multimodal provider through server-managed secrets.
+- The current implementation accepts a non-empty text description with zero to three optional JPEG/PNG/WebP images and rejects any compressed payload above 4 MB.
+- The server rejects an empty request that has neither images nor a text description, and it does not accept user-supplied provider API keys.
+- The Edge Function forwards the request-scoped text and optional images to Qwen through server-managed secrets.
 - The function may return either a schema-validated Food Draft or clarification questions.
 - A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
-- Logs store compact metadata such as mime type, compressed byte length, image count, schema status, provider, model and latency. They must not store raw image bytes, base64 payloads, provider raw responses or provider secrets.
+- Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, schema status, provider, model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
 
 ## Food Draft Schema
 
@@ -750,11 +750,11 @@ Rules:
 
 Production logs should store compact metadata and sanitized summaries. Authenticated clients should not receive direct table read policies for `ai_request_logs` or `ai_debug_summaries`. These tables should not store chain-of-thought, unrestricted tool traces, full local SQLite payloads, provider secrets, auth tokens, raw provider responses, image base64 payloads, or original images long-term by default.
 
-For Add Food photo analysis:
+For Add Food AI food analysis:
 
 - `ai_request_logs.workflow_type = food_logging`
 - `ai_request_logs.session_id = null`
-- `ai_request_logs.image_count` equals the accepted photo-analysis image count.
+- `ai_request_logs.image_count` equals the accepted image count, including `0` for text-only food analysis.
 - `ai_request_logs.schema_version = food_draft.v1`
 - `ai_debug_summaries.intent = food_photo_analysis`
 - `ai_debug_summaries.retrieved_dimensions_json` may include compact request metadata such as mime type, byte length, selected date and whether a user note was supplied.
@@ -765,14 +765,14 @@ Current Add Food and AI Chat policy:
 
 - Original images are not stored long-term by default.
 - Images are compressed on device before analysis.
-- Transport uses inline base64 image payloads: one to three images in `ai-food-photo-analyze`, and up to three images in `ai-chat-route`.
-- Supabase Storage is not used for the current photo-analysis path.
-- The Edge Function forwards the request-scoped image to the provider and must not write the raw image or base64 payload into logs, debug summaries or chat history.
-- Non-food or unclear images should trigger a clarification or refusal, not a forced food record.
+- Transport uses inline JSON payloads: text plus zero to three images in `ai-food-photo-analyze`, and up to three images in `ai-chat-route`.
+- Supabase Storage is not used for the current Add Food analysis path.
+- The Edge Function forwards only the current request-scoped text and optional images to the provider and must not write raw images, base64 payloads, or full free-text notes into logs, debug summaries, or chat history.
+- Non-food, insufficient text, or unclear images should trigger a clarification or refusal, not a forced food record.
 
 Limits for the current image paths:
 
-- `ai-food-photo-analyze`: 1 to 3 images per request
+- `ai-food-photo-analyze`: text description plus 0 to 3 optional images per request
 - `ai-chat-route`: 1 to 3 images per Qwen multimodal request
 - hard reject any compressed image > 4 MB
 - supported MIME types: `image/jpeg`, `image/png`, `image/webp`
@@ -842,7 +842,7 @@ Rules:
 | Daily summary API shape | Implemented in Phase 3 hardening: table created, app-side cloud upsert/recovery, confirmed local cache, warm cache, and eviction boundary landed |
 | Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
 | Offline Profile behavior | Locked |
-| Image upload/compression/temporary retention | Current Add Food path: one to three compressed JPEG/PNG/WebP inline payloads to `ai-food-photo-analyze`; current AI Chat path: up to three compressed JPEG/PNG/WebP inline image attachments to `ai-chat-route`; both hard reject each image above 4 MB and have no default Storage retention. Storage retention requires a later explicit design |
+| Image upload/compression/temporary retention | Current Add Food path: text plus zero to three optional compressed JPEG/PNG/WebP inline payloads to `ai-food-photo-analyze`; current AI Chat path: up to three compressed JPEG/PNG/WebP inline image attachments to `ai-chat-route`; both hard reject each image above 4 MB and have no default Storage retention. Storage retention requires a later explicit design |
 | Document RAG strategy | Locked |
 | Structured RAG context objects | Locked |
 | Error code categories | Drafted |

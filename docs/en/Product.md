@@ -21,6 +21,7 @@ Write official data only after the user confirms.
 - Phase 3 Cloud Records Foundation connects signed-in body/food/workout official records to the cloud source of truth.
 - Local SQLite is partial cache, draft storage, and runtime acceleration; it is not a full-history mirror.
 - Detailed cloud/local read, write, cache, refresh, conflict, and repair rules live in `CloudLocalDataBoundary.md`.
+- Signed-in startup should bind local record caches to the recovered auth account before active-device refresh finishes, so current-day Home/Food/Workout data can render from matching local cache.
 - V1 uses one active device per account with last-login-wins behavior; it does not promise realtime multi-device sync.
 - Use cloud services for account, subscription, Cloud Profile, Cloud Records, daily summaries, AI Gateway, chat history, and AI audit needs.
 - Treat the Cloud Profile as account-bound user information after login.
@@ -46,8 +47,8 @@ System notifications are app-level transient feedback, not business logic.
 | Module | V1 role | Implemented baseline | V1 planned additions |
 | --- | --- | --- | --- |
 | Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, refreshes Home with stale-while-revalidate, and upserts rebuildable `daily_summaries` to the cloud. |
-| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed `ai_photo` records from Add Food Photo AI Analysis. | After sign-in, official records write cloud-first; later Chat draft workflows must keep the same user-confirmation boundary. |
-| Add Food | Food creation workflow. | Photo AI Analysis is the first entry; manual entry and external AI JSON paste remain available. | Future refinements may add more than three Chat images or richer editor-side draft refinement only with an explicit privacy and confirmation design. |
+| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed `ai_photo` records from Add Food AI Food Analysis. | After sign-in, official records write cloud-first; later Chat draft workflows must keep the same user-confirmation boundary. |
+| Add Food | Food creation workflow. | AI Food Analysis is the first entry; it accepts a text-only food description or up to three optional images, while manual entry and external AI JSON paste remain available. | Future refinements may add more than three Chat images or richer editor-side draft refinement only with an explicit privacy and confirmation design. |
 | AI | Primary Agent entry. | The current AI page implements the centered tab, availability-gated chat page, editable composer, selectable/copyable message bubbles, up to three Qwen image attachments, locally persisted provider selector, readiness-only status pill, account/subscription status sheet, subscription/Profile availability gating, user-record summary permission, compact same-chat context, Gateway client, server-side OpenAI/Qwen provider routing, Chat Food Draft and Workout Draft artifact cards, and cloud chat history with new/switch/inline rename/delete-with-confirmation. | RAG-backed meal decisions, weekly review, app logic Q&A, and richer draft editing. |
 | Workout | Official workout-record management. | Workout records, custom exercises, draft editor, calorie heuristics. | After sign-in, official records write cloud-first; V1 AI may explain or review workout context but should not silently modify records. |
 | Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; signed-out users see the sign-in entry, and signed-in formal profile changes save through Cloud Profile. | Account deletion, production subscription management, and later AI personalization flows. |
@@ -113,7 +114,7 @@ Availability states:
 
 ### Food Estimation
 
-Add Food now exposes Photo AI Analysis as the first entry. The user can take photos or choose up to three images from the gallery, tap thumbnails to switch the enlarged preview, add an optional note, and send the images to the dedicated `ai-food-photo-analyze` Gateway path. The server calls Qwen multimodal capability and returns a schema-validated Food Draft, not an official record. The draft opens in the existing Food Preview editor; only the user's Save action writes `food_records` / `food_items` with source `ai_photo`.
+Add Food now exposes AI Food Analysis as the first entry. The user can type a food description by itself, or add up to three optional camera/gallery images, tap thumbnails to switch the enlarged preview, and send the input to the dedicated `ai-food-photo-analyze` Gateway path. Before launching the system camera/gallery picker, the app stores a small recovery marker so an Android activity restart can reopen the analysis draft instead of dropping the user back to an empty Home state. The server calls Qwen with the text and any images, returns a schema-validated Food Draft, not an official record. The draft opens in the existing Food Preview editor; only the user's Save action writes `food_records` / `food_items` with source `ai_photo`.
 
 The draft should include:
 
@@ -127,7 +128,7 @@ The draft should include:
 
 If the AI cannot identify an ingredient or portion, it should ask. For example, if meat type is unclear, it should ask what meat it is rather than guessing.
 
-The current implemented draft surfaces are Food Preview after Add Food photo analysis, Chat Food Draft artifact cards that rebuild Food Preview after the user taps review, and Chat Workout Draft artifact cards that rebuild the existing workout editor draft after the user taps review. Future richer draft surfaces should stay consistent with the corresponding record editor and support:
+The current implemented draft surfaces are Food Preview after Add Food AI food analysis, Chat Food Draft artifact cards that rebuild Food Preview after the user taps review, and Chat Workout Draft artifact cards that rebuild the existing workout editor draft after the user taps review. Future richer draft surfaces should stay consistent with the corresponding record editor and support:
 
 - save
 - discard

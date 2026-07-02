@@ -44,6 +44,7 @@ Behavior:
 
 - In `energy_ratio`, kcal target/intake/remaining is the primary signal.
 - In `gram_per_kg`, macro gram targets are primary and kcal is auxiliary.
+- After signed-in cold start, current-day Home should render matching account-bound local cache before active-device refresh completes; it should not require a date switch to recover visible data.
 - In English, compact strategy cards render the strategy name on the first line and the hyphen-prefixed detail on the second line, so `Carb cycle` and `Carb Taper` details do not wrap awkwardly on narrow screens.
 - Home should not become an AI workbench.
 - Any AI-related prompt should route to the AI tab unless the product later explicitly adds a Home-specific AI workflow.
@@ -70,13 +71,14 @@ Existing Local capabilities:
 
 Agent V1 additions:
 
-- Add Food places Photo AI Analysis first; it can create a Food Draft from one to three camera/gallery images plus an optional note
-- confirmed Food Drafts from Photo AI Analysis or later Chat draft flows can become official records
+- Add Food places AI Food Analysis first; it can create a Food Draft from a text-only food description or from up to three optional camera/gallery images plus description
+- camera/gallery launches keep a small local recovery marker so Android activity restarts can reopen the analysis draft instead of dumping the user back to an empty Home state
+- confirmed Food Drafts from AI Food Analysis or later Chat draft flows can become official records
 - uncertain AI estimates should ask follow-up questions before saving
 
 Food Draft UI rules:
 
-- For the implemented Add Food photo path, open the draft in the existing Food Preview editor.
+- For the implemented Add Food AI food analysis path, open the draft in the existing Food Preview editor.
 - Match the record-page UI style closely enough that users recognize the fields.
 - Allow editing before save.
 - Save only after confirmation.
@@ -123,7 +125,7 @@ Current AI page implementation:
 - The sheet shows account/subscription state, sign-out, backend configuration warnings, and user-record summary permission. The current chat path sends only compact same-chat text plus draft artifact summaries; it does not upload full business history or record summaries. Later summary-based AI workflows should use cloud summary/context builders.
 - Supabase Auth, subscription status, and Cloud Profile access are wired when the app is built or run with Supabase configuration.
 - The history entry opens cloud chat history and supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed in the current UI.
-- Phase 4 adds AI-page send wiring, server-side provider routing for OpenAI/ChatGPT and Qwen, Qwen multimodal chat with up to three images, compact same-chat context, cloud message persistence, request logs, compact debug summaries, Chat Food Draft and Workout Draft artifact cards, and the dedicated Add Food photo draft flow.
+- Phase 4 adds AI-page send wiring, server-side provider routing for OpenAI/ChatGPT and Qwen, Qwen multimodal chat with up to three images, compact same-chat context, cloud message persistence, request logs, compact debug summaries, Chat Food Draft and Workout Draft artifact cards, and the dedicated Add Food AI food analysis draft flow.
 - No RAG, long-term image storage, automatic goal change, or automatic official business-record write is implemented from the AI page. Chat Food Draft and Workout Draft artifact cards open the corresponding editor only after the user taps review and remain drafts until the user saves.
 
 Availability:
@@ -273,8 +275,8 @@ Avoid large explanatory blocks in normal task flows.
 When writing UI copy or documentation, keep these states separate:
 
 - Implemented Local behavior: already present in the copied codebase.
-- Implemented Agent shell/account/AI Chat behavior: the centered AI tab, availability-gated AI page, editable composer, up to three Qwen image attachments, locally persisted provider selector, readiness-only status pill, account/subscription status sheet, Cloud Profile Profile gate, user-record summary permission, compact same-chat context, cloud chat history, text/multimodal Gateway send path, inline chat rename/delete confirmation, Chat Food Draft and Workout Draft artifact cards, Add Food Photo AI Analysis draft flow, and floating five-tab bottom navigation.
+- Implemented Agent shell/account/AI Chat behavior: the centered AI tab, availability-gated AI page, editable composer, up to three Qwen image attachments, locally persisted provider selector, readiness-only status pill, account/subscription status sheet, Cloud Profile Profile gate, user-record summary permission, compact same-chat context, cloud chat history, text/multimodal Gateway send path, inline chat rename/delete confirmation, Chat Food Draft and Workout Draft artifact cards, Add Food AI Food Analysis draft flow, and floating five-tab bottom navigation.
 - Phase 3 has connected the Cloud Records Foundation and its main hardening chain, including `body_metric_logs`, cloud official food/workout records, the `daily_summaries` table, app-side summary cloud upsert/recovery, local partial cache, Home selected-day summary cache with stale-while-revalidate, bounded recent-summary warm cache, confirmed-cache eviction, and cloud-backed export completeness.
 - Planned Agent V1 behavior: documented target, not necessarily shipped yet.
 
-Do not describe RAG, more than three Chat image attachments, long-term image storage, automatic official AI business-record writes, or autonomous Agent actions as implemented until code exists. AI Gateway, cloud chat history, up-to-three-image chat, Chat Food Draft and Workout Draft artifact cards, and Add Food photo analysis require Supabase migrations, function deployment, and provider secrets to test against a real backend.
+Do not describe RAG, more than three Chat image attachments, long-term image storage, automatic official AI business-record writes, or autonomous Agent actions as implemented until code exists. AI Gateway, cloud chat history, up-to-three-image chat, Chat Food Draft and Workout Draft artifact cards, and Add Food AI food analysis require Supabase migrations, function deployment, and provider secrets to test against a real backend.

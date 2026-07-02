@@ -38,7 +38,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - 本地饮食记录、饮食 item、训练记录、训练 set、体重记录。
 - 手动饮食录入。
 - 外部 AI JSON 粘贴和本地解析，作为 Add Food 的次级 fallback。
-- Add Food 图片 AI 分析：拍照/相册选择、补充说明、loading overlay、`ai-food-photo-analyze`、Qwen 多模态 Food Draft、Food Preview 确认保存。
+- Add Food AI 食物分析：纯文字描述、可选拍照/相册图片、loading overlay、`ai-food-photo-analyze`、Qwen Food Draft、Food Preview 确认保存。
 - 本地训练记录、训练草稿、自定义动作、训练热量估算。
 - `energy_ratio`。
 - `gram_per_kg`。
@@ -55,7 +55,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - Document RAG。
 - Chat 页超过三张图片附件或长期图片存储。
 - Chat 内 Food Draft 展示/轻量编辑。
-- AI 自动写入正式 food record；当前 Add Food 图片 Draft 仍必须进入 Food Preview 并由用户保存。
+- AI 自动写入正式 food record；当前 Add Food AI 食物分析 Draft 仍必须进入 Food Preview 并由用户保存。
 
 ## 3. V1 完整落地定义
 
@@ -193,7 +193,7 @@ AI 行为原则：
 - 后端方案：Supabase。
   - Auth 使用 Supabase Auth。
   - 云端数据库使用 Supabase Postgres。
-  - 当前 Add Food 图片分析使用一到三图 inline base64 请求体，不默认写入 Supabase Storage；临时图片对象存储需要后续单独隐私和 retention 设计。
+  - 当前 Add Food AI 食物分析使用文字描述和零到三张可选图片的 inline base64 请求体，不默认写入 Supabase Storage；临时图片对象存储需要后续单独隐私和 retention 设计。
   - AI Gateway 使用 Supabase Edge Functions。
 - 登录方式：FitLog 自有邮箱验证码 / OTP 注册登录。
   - 任意可接收验证码的邮箱都可创建账号。
@@ -211,8 +211,8 @@ AI 行为原则：
   - Flutter App 不保存模型 key。
   - 具体文本、vision 和 structured output 模型名由服务端环境配置控制。
   - API key 创建位置和具体模型名到 Phase 4 接 AI Gateway 时再按官方后台说明填写。
-- 图片策略：当前 Add Food 图片分析使用 App 压缩后的一到三张 JPEG/PNG/WebP，通过 `ai-food-photo-analyze` 请求体传给 Edge Function。
-  - 每次 Add Food 图片分析请求 1 到 3 张图片。
+- 图片策略：当前 Add Food AI 食物分析使用文字描述和 App 压缩后的零到三张可选 JPEG/PNG/WebP，通过 `ai-food-photo-analyze` 请求体传给 Edge Function。
+  - 每次 Add Food AI 食物分析请求可以是纯文字，也可以包含零到三张可选图片。
   - 压缩后仍超过 4 MB 则拒绝。
   - 推荐最长边 1600 px。
   - 原图、base64 payload 和 provider raw response 不写入 logs/debug summaries/chat history。
@@ -244,7 +244,7 @@ AI 行为原则：
    - Phase 2 使用 Supabase Auth + Postgres 实现账号、Cloud Profile 和开发 entitlement。
    - Phase 3 使用 Supabase Postgres 表和 API 承载正式记录、summary 与 partial cache contract。
    - Phase 4 使用 Supabase Edge Functions 承载 AI Gateway。
-   - Step 5 使用 inline payload 承载 Add Food 图片分析；Phase 6 如需 Supabase Storage 短期图片对象，必须先补隐私和 retention 设计。
+   - Step 5 使用 inline payload 承载 Add Food AI 食物分析；Phase 6 如需 Supabase Storage 短期图片对象，必须先补隐私和 retention 设计。
 
 2. 确认登录方式。
    - 已锁定 FitLog 自有邮箱密码登录 + 注册邮箱验证码。
@@ -1494,7 +1494,7 @@ App 测试：
 
 本阶段仍然不引入 RAG、不默认读取完整 food/workout/body 原始历史、不让 Chat 文本路径生成可保存 Food Draft、不自动写正式业务数据。
 
-当前进度：Phase 4 Steps 3/4 已完成文本 Chat 闭环，新增 AI 页面 Gateway client、云端 history 读取/切换/新建/软删除、`record_ai_chat_turn`/`archive_ai_chat_session`/`soft_delete_ai_chat_session` RPC、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、request log 和 compact debug summary 写入；Phase 4 Step 5 进一步完成 status pill 可用性语义、本机模型选择持久化、history inline 重命名与删除确认、隐藏 archive 入口，以及 Add Food 图片 AI 分析到 Food Preview 的草稿确认链路；Phase 4 Step 6 新增 AI Chat 千问最多三张图片附件、Qwen 多模态 route、Food Draft artifact 卡片、点击后重建 Food Preview、AI 页背景性能优化和 loading/rename 体验修复；后续补齐了紧凑同会话 context、Workout Draft artifact 卡片、点击后重建现有训练编辑草稿、训练草稿最多一次追问，以及 Add Food 图片分析最多三张图片。本阶段仍不接入 RAG、长期图片存储、长期草稿队列或 AI 自动正式业务数据写入。
+当前进度：Phase 4 Steps 3/4 已完成文本 Chat 闭环，新增 AI 页面 Gateway client、云端 history 读取/切换/新建/软删除、`record_ai_chat_turn`/`archive_ai_chat_session`/`soft_delete_ai_chat_session` RPC、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、request log 和 compact debug summary 写入；Phase 4 Step 5 进一步完成 status pill 可用性语义、本机模型选择持久化、history inline 重命名与删除确认、隐藏 archive 入口，以及 Add Food AI 食物分析到 Food Preview 的草稿确认链路；Phase 4 Step 6 新增 AI Chat 千问最多三张图片附件、Qwen 多模态 route、Food Draft artifact 卡片、点击后重建 Food Preview、AI 页背景性能优化和 loading/rename 体验修复；后续补齐了紧凑同会话 context、Workout Draft artifact 卡片、点击后重建现有训练编辑草稿、训练草稿最多一次追问，以及 Add Food AI 食物分析支持纯文字或最多三张可选图片。本阶段仍不接入 RAG、长期图片存储、长期草稿队列或 AI 自动正式业务数据写入。
 
 ### 为什么现在做
 
@@ -1529,7 +1529,7 @@ AI Gateway 和 Chat History 是所有后续 AI workflow 的基础。先验证最
 - Chat 支持最多三张千问图片附件，不支持长期图片存储或超过三张图片。
 - Chat 生成的 Food Draft 必须进入 Food Preview，用户确认前不能保存。
 - Chat 生成的 Workout Draft 必须进入现有训练编辑页，用户确认前不能保存为正式训练记录。
-- Add Food 图片分析只生成 Food Draft，并在用户进入 Food Preview 后由用户确认保存。
+- Add Food AI 食物分析只生成 Food Draft，并在用户进入 Food Preview 后由用户确认保存。
 - 不直接写正式 food/workout/profile 记录。
 - 不做流式输出，除非 Phase 0 已确定且实现成本低。
 - 不做复杂多 Agent。
@@ -1910,7 +1910,7 @@ flutter build apk --debug
 
 ### 目标
 
-补齐 Step 6 之后仍未实现的 Food Vision / Food Draft 增强能力。当前已经实现 Add Food 最多三张图片分析 -> Qwen 多模态估算 -> Food Draft -> Food Preview -> 用户确认保存，AI Chat 最多三张图片附件 -> Qwen 多模态 -> Food Draft -> Food Preview 的确认路径，以及 Chat 内 Food Draft / Workout Draft artifact 卡片；Phase 6 剩余范围主要是更完整的 draft 编辑体验、保存 hardening 和视觉识别鲁棒性。
+补齐 Step 6 之后仍未实现的 Food Vision / Food Draft 增强能力。当前已经实现 Add Food AI 食物分析 -> Qwen 估算 -> Food Draft -> Food Preview -> 用户确认保存，AI Chat 最多三张图片附件 -> Qwen 多模态 -> Food Draft -> Food Preview 的确认路径，以及 Chat 内 Food Draft / Workout Draft artifact 卡片；Phase 6 剩余范围主要是更完整的 draft 编辑体验、保存 hardening 和视觉识别鲁棒性。
 
 这是 V1 中第一个允许 AI workflow 触达正式业务写入的阶段，因此必须严格使用草稿和确认机制。
 
@@ -1922,7 +1922,7 @@ flutter build apk --debug
 - 账号/订阅/Profile 存在。
 - AI Gateway 可用。
 - Chat history 可用。
-- Step 5 已验证 Add Food 图片分析的受控草稿确认路径。
+- Step 5 已验证 Add Food AI 食物分析的受控草稿确认路径。
 
 后续增强必须继续把风险集中在 draft schema、UI preview、用户确认、repository write 和刷新逻辑上，不能绕过 Food Preview 或用户确认。
 

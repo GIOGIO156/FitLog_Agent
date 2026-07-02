@@ -411,7 +411,7 @@ class AppStrings {
       case 'ai_paste':
         return _t('AI Paste', 'AI 粘贴');
       case 'ai_photo':
-        return _t('AI Photo', '图片 AI');
+        return _t('AI Analysis', 'AI 分析');
       case 'manual':
         return _t('Manual', '手动录入');
       default:
@@ -461,32 +461,32 @@ class AppStrings {
       _t('No item rows for this record.', '这条记录暂无 item 明细。');
   String get noFoodItemListDetected =>
       _t('No item list detected in JSON.', 'JSON 中未检测到 item 列表。');
-  String get photoAiAnalysis => _t('Photo AI Analysis', '图片 AI 分析');
+  String get photoAiAnalysis => _t('AI Food Analysis', 'AI 食物分析');
   String get photoAiEntrySubtitle => _t(
-    'Take or choose a photo to create an editable food draft',
-    '拍照或选择图片，生成可编辑食物草稿',
+    'Describe food or add photos to create an editable food draft',
+    '描述食物或添加图片，生成可编辑食物草稿',
   );
   String get start => _t('Start', '开始');
   String get photoAiHeaderBody => _t(
-    'FitLog AI estimates a draft from up to 3 food images. Review and save on the next page.',
-    'FitLog AI 会从最多 3 张食物图片估算草稿。请在下一页确认后再保存。',
+    'FitLog AI estimates a draft from your description and up to 3 optional food images. Review and save on the next page.',
+    'FitLog AI 会根据你的描述和最多 3 张可选食物图片估算草稿。请在下一页确认后再保存。',
   );
   String get photoAiPickPlaceholder =>
-      _t('Add up to 3 food photos', '最多添加 3 张食物图片');
+      _t('Add optional food photos', '可选添加食物图片');
   String get takePhoto => _t('Photo', '拍照');
   String get chooseFromGallery => _t('Gallery', '相册');
   String get retakePhoto => _t('Photo', '拍照');
   String get replacePhoto => _t('Replace', '换图');
   String get removePhoto => _t('Remove', '移除');
-  String get photoAiNoteLabel => _t('Optional note', '补充说明');
+  String get photoAiNoteLabel => _t('Food description', '食物描述');
   String get photoAiNoteHint => _t(
-    'Example: I ate half the rice; chicken thigh without skin',
-    '例如：米饭只吃了一半，鸡腿去皮',
+    'Example: 100 g salmon; half the rice; skinless chicken thigh',
+    '例如：100g 三文鱼；米饭只吃了一半；鸡腿去皮',
   );
-  String get startPhotoAiAnalysis => _t('Analyze photo', '开始分析');
+  String get startPhotoAiAnalysis => _t('Analyze food', '开始分析');
   String get photoAiAnalyzing => _t('Analyzing...', '正在分析...');
   String get photoAiPickImageFirst =>
-      _t('Choose at least one food photo first.', '请先选择至少一张食物图片。');
+      _t('Describe the food or add at least one photo.', '请描述食物，或至少添加一张图片。');
   String get photoAiPickFailed =>
       _t('Could not open camera or gallery.', '无法打开相机或相册。');
   String get photoAiUnsupportedImage =>
@@ -496,14 +496,14 @@ class AppStrings {
     '有图片压缩后仍过大，请换更小的图片或重新拍摄。',
   );
   String get photoAiNeedsClarification => _t(
-    'The image is unclear. Add a note or retake the photo.',
-    '图片信息不够清楚，请补充说明或重新拍摄。',
+    'The food input is unclear. Add details or retake the photo.',
+    '食物信息不够清楚，请补充说明或重新拍摄。',
   );
   String get photoAiNoDraft =>
       _t('AI did not return a usable food draft.', 'AI 未返回可用的食物草稿。');
   String get photoAiNetworkFailure => _t(
-    'Network failed. Your photo and note are still here. Try again.',
-    '网络连接失败，当前图片和说明仍在，可重试。',
+    'Network failed. Your input is still here. Try again.',
+    '网络连接失败，当前输入仍在，可重试。',
   );
   String get comingSoon => _t('Coming soon', '即将上线');
 

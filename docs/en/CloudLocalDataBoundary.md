@@ -8,7 +8,7 @@ This document is the source of truth for how FitLog_Agent relates cloud data, lo
 
 ## Scope
 
-These rules apply to the Phase 3 Cloud Records Foundation and signed-in Agent builds after it. The current project has landed the root auth gate, active-device claim/assert, Cloud Records migration, body/food/workout cloud-first writes, local v15 confirmed-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, Home selected-day daily-summary confirmed cache with stale-while-revalidate background rebuilds, app-side `daily_summaries` cloud upsert/read recovery, bounded recent-summary warm cache, confirmed-cache eviction, and export completeness hardening through cloud official records. Fuller Body Trends partial-state polish and richer repair screens may continue later, but the Phase 3 main cloud/local hardening chain is no longer blocked by those items.
+These rules apply to the Phase 3 Cloud Records Foundation and signed-in Agent builds after it. The current project has landed the root auth gate, active-device claim/assert, Cloud Records migration, body/food/workout cloud-first writes, local v15 confirmed-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, auth-session account binding for first-render local record reads, Home selected-day daily-summary confirmed cache with stale-while-revalidate background rebuilds, app-side `daily_summaries` cloud upsert/read recovery, bounded recent-summary warm cache, confirmed-cache eviction, and export completeness hardening through cloud official records. Fuller Body Trends partial-state polish and richer repair screens may continue later, but the Phase 3 main cloud/local hardening chain is no longer blocked by those items.
 
 Pre-login Local-style behavior remains local. Phase 3 does not implement offline official-write queues, complete two-way sync, automatic old-device-history migration, or complex cross-device merge UI.
 
@@ -17,7 +17,7 @@ Pre-login Local-style behavior remains local. Phase 3 does not implement offline
 - Cloud records are the authority for signed-in official body, food, and workout data.
 - Local SQLite is partial cache, draft storage, runtime acceleration, and confirmed UI read model.
 - Local cache is not a complete cloud mirror and must not be required for AI, export, repair, or cross-device correctness.
-- Pages with confirmed account-bound cache should open from local data without waiting for Supabase session recovery or cloud refresh.
+- Pages with confirmed account-bound cache should open from local data without waiting for active-device recovery or cloud refresh once the signed-in auth account is known.
 - Official data must not be lost because local cache is evicted.
 - AI may draft, explain, and review, but official data changes still require user confirmation and cloud success.
 
@@ -147,6 +147,7 @@ Transition rules:
 
 - Startup must not block first render on a full-history cloud pull.
 - Startup must not force a complete 30-day refetch before rendering cache-backed pages.
+- When the five-tab shell is entered for a recovered signed-in session, the app must bind Food, Workout, and Profile repositories to the auth-session account id before the active-device runtime context finishes claiming or refreshing. This lets Home, Food, and Workout read matching local account caches on the first current-date render instead of showing an empty day until the user changes dates.
 - First-render data is not warm cache. If no matching confirmed Home cache exists, the first signed-in Home render may wait for a small first-render bundle: account/Cloud Profile basics, the selected-day Home summary/read model, and only the data required by the default visible surface. The app should not render an empty Home and then replace it with the real Home while the user is watching.
 - If a matching confirmed Home cache exists, render it immediately and validate in the background. Matching cloud data should not visibly refresh Home; changed cloud data should update only the affected values without a full-page loading reset.
 - Supabase session recovery, subscription refresh, Cloud Profile refresh, and visible-window Cloud Records refresh should run in the background when matching local cache exists.
@@ -355,7 +356,7 @@ These are the expected implementation locations when Phase 3 lands. Exact filena
 - Warm cache and eviction: `lib/domain/services/warm_cache_coordinator.dart` warms recent 30-day summaries after the five-tab shell renders; `lib/domain/services/cache_maintenance_service.dart` prunes old cloud-confirmed local cache without deleting cloud official records.
 - Write/read-model coordination: cloud-backed repositories update the local confirmed cache after cloud success, pages refresh through `RefreshNotifier`, and successful food/workout/Profile writes schedule affected-date summary cache/cloud projection refresh.
 - Export correctness: `lib/export/export_table_builder.dart` uses cloud-backed all-record loaders for food, workout, and body metric records before building CSV/XLSX tables, and includes a Body Metrics table.
-- Root auth gate and cache-backed pages: `lib/app.dart`, `profile_page.dart`, `home_page.dart`, `food_log_page.dart`, `workout_log_page.dart`.
+- Root auth gate, first-render account binding, and cache-backed pages: `lib/app.dart`, `profile_page.dart`, `home_page.dart`, `food_log_page.dart`, `workout_log_page.dart`.
 - Account state machine, Cloud Profile display cache, subscription display cache, background recovery, and refresh backoff: `lib/features/account/account_controller.dart`.
 - Active device claim / guard: Supabase RPCs `claim_active_device`, `assert_active_device`, and `release_active_device`; Flutter repository lives at `lib/data/repositories/active_device_repository.dart`, with runtime state in `lib/domain/models/cloud_runtime_context.dart`.
 - The Profile gate must treat `offline_readonly` and refresh errors with matching cache as renderable states, not full-page errors.
@@ -397,6 +398,7 @@ Required regression coverage:
 - A newer login claims the active device; an older device that receives `device_replaced` during the next cloud interaction stops official writes and returns to sign-in/takeover flow.
 - A configured build restores a valid persisted Supabase session unless the user signed out, Android app data was cleared, the package/signature changed in a way that forces reinstall, or the session is unrecoverable.
 - Cold start with confirmed cache renders Home immediately.
+- Cold start after process death binds current account caches before active-device refresh, so Home/Food/Workout do not show an empty current day that only repairs after a date switch.
 - First signed-in Home render without cache waits for the selected-day summary/read model instead of rendering an empty Home that refreshes under the user's gaze.
 - `auth_required` during background refresh does not replace cached Home with a full-page error.
 - Optional calibration/self-check history failures do not replace the selected-day Home summary with a full-page error.

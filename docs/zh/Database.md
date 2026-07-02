@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | SQLite / `sqflite` | 本地 profile/cache、校准、策略复盘、自定义动作、训练草稿、账号绑定 confirmed read model、选中日期 `daily_summary_cache` 和 partial cache。 | Local 基线已实现；Phase 3 schema v15 承载 cloud/cache 元数据和选中日期 summary cache。 |
 | Supabase Cloud Records | `body_metric_logs`、`food_records`/`food_items`、`workout_sessions`/`workout_sets`、`daily_summaries`。 | Phase 3 migration 已新增；body/food/workout 读写和 daily summary upsert/恢复已接入 cloud-backed repository。 |
-| SharedPreferences | UI 语言偏好、本地主题偏好、轻量 app 偏好、按账号保存的用户记录摘要授权、Cloud Profile 展示缓存，以及 Supabase 注册验证码所需的 PKCE verifier 状态。 | Local 基线和 Phase 2 账号基础已实现；auth verifier 和 theme key 是本机运行期/展示状态，不是业务记录同步。 |
+| SharedPreferences | UI 语言偏好、本地主题偏好、轻量 app 偏好、按账号保存的用户记录摘要授权、Cloud Profile 展示缓存、Supabase 注册验证码所需的 PKCE verifier 状态，以及很小的待恢复 AI 食物分析 picker 标记。 | Local 基线和 Phase 2 账号基础已实现；auth verifier、theme key 和 picker 恢复标记是本机运行期/展示状态，不是业务记录同步。 |
 | 本地文件 | App documents directory 中的 XLSX 和 CSV ZIP 导出。 | Local 基线已实现。 |
 | 云端数据库 | Supabase Auth 账号身份、订阅 entitlement rows、Cloud Profile、AI chat sessions/messages、AI request logs 和 compact debug summaries。 | Phase 2 migration 已新增 `subscriptions` 和 `cloud_profiles`；Phase 4 Step 1 新增受保护的 AI chat/log/debug 表；Phase 4 Steps 2-4 新增 Gateway Edge Function、服务端 chat-turn/session RPC、真实 text provider metadata 和 App 侧云端 history 读取。 |
 | AI 文档索引 | 面向 Document RAG 的可检索 App 文档块。 | Agent V1 计划。 |
@@ -121,10 +121,10 @@ Agent V1 说明：登录后 Cloud Profile 成为权威版本。Local `user_profi
 | `fat_g` | 脂肪克数。 |
 | `confidence` | 可用时的估算置信度。 |
 | `estimation_notes` | 估算或用户备注。 |
-| `source` | `manual`、`ai_paste`，以及从 Add Food 图片 AI 草稿确认保存而来的 `ai_photo`。 |
+| `source` | `manual`、`ai_paste`，以及从 Add Food AI 食物分析草稿确认保存而来的 `ai_photo`。 |
 | `created_at`, `updated_at` | ISO 时间戳。 |
 
-V1 边界：正式行只有用户确认后才写入。Add Food 图片 AI 先创建草稿并进入 Food Preview，只有用户保存才写正式行。
+V1 边界：正式行只有用户确认后才写入。Add Food AI 食物分析会从文字和可选图片创建草稿并进入 Food Preview，只有用户保存才写正式行。
 
 ### `food_items`
 
@@ -597,7 +597,7 @@ Phase 2 将它实现为 Supabase Postgres 表，具备 own-row select/insert/upd
 - `image_count`
 - `created_at`
 
-Phase 4 Step 1 创建该表作为服务端 operational record。Phase 4 chat 从服务端路径写入 Gateway success、blocked、timeout、provider failure 和 error metadata，并在可用时保存脱敏 provider/model metadata。Add Food 图片分析对一到三张通过校验的图片请求写入 `workflow_type = food_logging`、`model_choice = qwen`、`model_provider = qwen`、`schema_version = food_draft.v1` 和实际 `image_count`。AI Chat 图片请求通过 `ai-chat-route` 转发最多三张图片给千问，并写入通过校验的 `image_count`；chat history 持久化文本和经过校验的 artifact snapshot，但不保存原图 bytes 或 base64 payload。Authenticated client 不获得直接 table read policy。生产日志应优先保存 metadata 和脱敏摘要，而不是原始敏感 payload。
+Phase 4 Step 1 创建该表作为服务端 operational record。Phase 4 chat 从服务端路径写入 Gateway success、blocked、timeout、provider failure 和 error metadata，并在可用时保存脱敏 provider/model metadata。Add Food AI 食物分析写入 `workflow_type = food_logging`、`model_choice = qwen`、`model_provider = qwen`、`schema_version = food_draft.v1`，以及纯文字请求 `0` 或最多三张可选图片请求的实际 `image_count`。AI Chat 图片请求通过 `ai-chat-route` 转发最多三张图片给千问，并写入通过校验的 `image_count`；chat history 持久化文本和经过校验的 artifact snapshot，但不保存原图 bytes 或 base64 payload。Authenticated client 不获得直接 table read policy。生产日志应优先保存 metadata 和脱敏摘要，而不是原始敏感 payload。
 
 ### `ai_debug_summaries`
 
@@ -621,7 +621,7 @@ Phase 4 Step 1 创建该表作为服务端 operational record。Phase 4 chat 从
 
 规则：
 
-- Phase 4 Step 1 创建该表作为服务端 operational record。Chat 写入紧凑 Gateway summary。Add Food 图片分析写入紧凑的 `food_photo_analysis` summary，只包含图片 mime type、压缩字节数、选中日期、是否有补充说明、schema 校验状态和 safety/error flags。Authenticated client 不获得直接 table read policy。
+- Phase 4 Step 1 创建该表作为服务端 operational record。Chat 写入紧凑 Gateway summary。Add Food AI 食物分析写入紧凑的 `food_photo_analysis` summary，只包含输入类型、选中日期、是否有补充说明、图片数量、可用时的图片 mime type 和压缩字节数、schema 校验状态和 safety/error flags。Authenticated client 不获得直接 table read policy。
 - JSON 字段是紧凑数组，不是无限制 traces。
 - Production 保存紧凑脱敏摘要。
 - 用户 UI 只展示最终消息和草稿卡，不展示 debug traces。
@@ -730,8 +730,8 @@ Phase 3 hardening 后，导出正确性以云端正式 records、云端 summarie
 - Workout: `lib/domain/models/workout_session.dart`, `lib/domain/models/workout_set.dart`, `lib/data/repositories/workout_repository.dart`
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
-- AI chat 和图片饮食分析 contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
+- AI chat 和 AI 食物分析 contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
 - Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`
 - Supabase AI Gateway: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
-- AI chat 和图片饮食分析 repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`
+- AI chat 和 AI 食物分析 repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`
 - Export: `lib/export/xlsx_export_service.dart`, `lib/export/csv_export_service.dart`

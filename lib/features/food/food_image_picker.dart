@@ -23,6 +23,10 @@ abstract class FoodImagePicker {
 
   Future<PickedFoodImage?> pick(FoodImageSource source);
 
+  Future<List<PickedFoodImage>> retrieveLostImages({required int limit}) async {
+    return const <PickedFoodImage>[];
+  }
+
   Future<List<PickedFoodImage>> pickMultiple(
     FoodImageSource source, {
     required int limit,
@@ -76,6 +80,33 @@ class ImagePickerFoodImagePicker extends FoodImagePicker {
       images.add(await _pickedImageFromFile(file));
     }
     return List<PickedFoodImage>.unmodifiable(images);
+  }
+
+  @override
+  Future<List<PickedFoodImage>> retrieveLostImages({required int limit}) async {
+    if (limit <= 0) {
+      return const <PickedFoodImage>[];
+    }
+    final response = await _picker.retrieveLostData();
+    if (response.isEmpty) {
+      return const <PickedFoodImage>[];
+    }
+    if (response.exception != null) {
+      throw response.exception!;
+    }
+    final files = response.files;
+    if (files != null && files.isNotEmpty) {
+      final images = <PickedFoodImage>[];
+      for (final file in files.take(limit)) {
+        images.add(await _pickedImageFromFile(file));
+      }
+      return List<PickedFoodImage>.unmodifiable(images);
+    }
+    final file = response.file;
+    if (file == null) {
+      return const <PickedFoodImage>[];
+    }
+    return <PickedFoodImage>[await _pickedImageFromFile(file)];
   }
 
   Future<PickedFoodImage> _pickedImageFromFile(XFile file) async {
