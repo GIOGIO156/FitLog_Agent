@@ -12,6 +12,7 @@ import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/workout_record_draft.dart';
 import '../../domain/models/workout_session.dart';
 import 'add_workout_page.dart';
+import 'workout_draft_notification.dart';
 import 'workout_session_page.dart';
 
 class WorkoutPlanPage extends StatefulWidget {
@@ -132,6 +133,13 @@ class _WorkoutPlanPageState extends State<WorkoutPlanPage> {
           .read<AppServices>()
           .workoutDraftRepository
           .deleteActiveDraft();
+      if (!mounted) {
+        return;
+      }
+      await WorkoutDraftNotificationSync.syncFromDraft(
+        null,
+        context.stringsRead,
+      );
       if (!mounted) {
         return;
       }

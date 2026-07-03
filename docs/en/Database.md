@@ -239,6 +239,7 @@ Rules:
 - Drafts do not feed Home totals.
 - Drafts are not official workout history.
 - Explicit save validates editor state before writing official workout tables.
+- Draft strength-set entries may include draft-only `completed_at` timestamps inside `payload_json` so the Android workout-in-progress notification can identify the most recently checked set. This does not change the `workout_sets` SQLite schema or the official saved-record migration version.
 
 ### `user_weight_logs`
 

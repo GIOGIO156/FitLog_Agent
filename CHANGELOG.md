@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-07-03 Android Workout Draft Progress Notification
+
+### Added
+
+- Added an Android workout-in-progress system notification for active unsaved workout editor drafts with any selected exercise. The notification mirrors local draft state, shows the current exercise, next incomplete set when one exists, a short return-to-continue prompt when no set is available yet, and the matching exercise/body-part image, and opens the existing active draft editor when tapped.
+- Added Android 13+ notification permission requesting for the workout draft notification; denying the permission leaves workout draft editing unchanged.
+- Added draft-only `completed_at` timestamps to workout draft set payloads so notification focus can follow the most recently checked set without changing the official SQLite workout-set schema.
+- Added focus and sync tests covering first-set focus, same-exercise next-set focus, multi-exercise recent-completion focus, fallback after an exercise is complete, unchecking, weight/reps edits, deleted current exercise fallback, complete state, save/discard cancellation, and duplicate-open prevention.
+
+### Changed
+
+- Updated Product, AppGuide, and Database docs in English and Chinese to describe the local-draft notification boundary, Android small-icon limitation, right-side exercise image rule, focus rules, tap-to-resume behavior, and draft-only completion timestamp.
+- Changed workout draft persistence during editing so any meaningful editor content is saved as the active draft, allowing the notification tap to recover the same editor state even when the user has just selected an exercise.
+
+### Fixed
+
+- Fixed Android light-theme system status bars in the Agent app so status bar time and icons use dark foregrounds over FitLog's light page background, including when Android selects night resources.
+- Fixed the workout draft notification's right-side image so it uses the current exercise/body-part PNG asset instead of the app icon; chest press variants without dedicated PNG assets fall back to the chest body-part image instead of borrowing the barbell flat bench press image.
+- Removed the duplicate generic Bench Press entry from the built-in exercise library so users choose Barbell Flat Bench Press for that movement.
+
+### Validation
+
+- Ran `dart format lib test`.
+- Confirmed the required documentation tree exists and searched stable docs for date-appended headings, stale local design-doc paths, and replacement characters.
+- Ran `git diff --check`; only existing Windows line-ending warnings were reported.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test\workout_draft_notification_test.dart`; all notification focus, sync, and tap-coordinator tests passed.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
 ## 2026-07-03 AI Background Smoothing, Composer Bounds, And Chat Draft Contract
 
 ### Changed

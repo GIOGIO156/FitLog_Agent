@@ -23,6 +23,7 @@ Explanation guide sheets are temporary reading layers, not page content. Home st
 Pages should use `FitLogNotifications` for app-level transient feedback.
 
 - Food and Workout success events, including save, delete, and copy completion, use top lightweight notices. Food/Workout validation and cloud/local write failures use bottom error notices that stay above navigation and the keyboard.
+- On Android, an unsaved workout editor draft with any selected exercise is mirrored by a system workout-in-progress notification. It is local draft state only, not a background workout task. When a next strength set exists, the notification title is the current exercise, the body is the next incomplete set such as `Set 2 of 8 - 60 kg x 8 reps`, and the image is the matching exercise thumbnail with a body-part fallback, never the app icon. If no next strength set exists because the selected exercise has no sets or is cardio-only, the body is a short return-to-continue prompt. The focus follows the most recently checked completed set when that exercise still has unfinished sets; otherwise it falls back to the first unfinished strength exercise in workout order. If all strength sets are checked but the draft is not saved, the notification enters a complete state asking the user to return and save. Save, discard, or deleting all exercises cancels it. Android 13+ asks for notification permission the first time this notification needs to be shown; denying permission does not affect the workout draft.
 - Profile success events, including body metric save, Profile save, export ready, sign-out, data clear, redeem success, and registration code sent, use top lightweight notices. Profile validation, auth, subscription, export, redeem, and Cloud Profile failures use bottom error notices with the readable mapped message or diagnostic detail.
 - AI uses info notices for neutral unavailable placeholders and error notices for failed sends or preference saves.
 - Any future notification with an action, such as retry, undo, or open file, must use the shared action notification API so the button and callback remain visible.
@@ -180,6 +181,7 @@ Existing Local capabilities:
 - save completed strength sets
 - estimate workout calories deterministically
 - edit or delete saved records
+- keep an Android system notification in sync with the active local workout draft while it contains any selected exercise; tapping it resumes the existing draft editor instead of creating a new draft or record
 
 Agent V1 boundary:
 

@@ -380,7 +380,7 @@ void main() {
       expect(recordDraft.kind, 'new_record');
       expect(recordDraft.date, '2026-07-02');
       expect(recordDraft.exerciseCount, 1);
-      expect(recordDraft.firstExerciseName, 'Bench Press');
+      expect(recordDraft.firstExerciseName, 'Barbell Flat Bench Press');
       expect(recordDraft.payload['exercises'], hasLength(1));
     });
   });

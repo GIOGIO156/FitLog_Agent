@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase/supabase.dart' as supabase;
 
@@ -46,7 +47,12 @@ import 'features/food/photo_food_analysis_page.dart';
 import 'features/food/photo_food_analysis_recovery.dart';
 import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
+import 'features/workout/add_workout_page.dart';
+import 'features/workout/workout_draft_notification.dart';
 import 'features/workout/workout_log_page.dart';
+
+final GlobalKey<NavigatorState> fitLogNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 const String fitLogFontFamily = 'NotoSansSC';
 const List<String> fitLogChineseSansFallback = <String>[
@@ -58,6 +64,27 @@ const List<String> fitLogChineseSansFallback = <String>[
   'Microsoft YaHei',
   'sans-serif',
 ];
+
+SystemUiOverlayStyle fitLogSystemUiOverlayStyle(FitLogThemeData fitLogTheme) {
+  final isDark = fitLogTheme.isDark;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+    systemNavigationBarColor: fitLogTheme.pageBackground,
+    systemNavigationBarIconBrightness: isDark
+        ? Brightness.light
+        : Brightness.dark,
+    systemNavigationBarDividerColor: Colors.transparent,
+  );
+}
+
+Widget _fitLogSystemUiBuilder(BuildContext context, Widget? child) {
+  return AnnotatedRegion<SystemUiOverlayStyle>(
+    value: fitLogSystemUiOverlayStyle(context.fitLogTheme),
+    child: child ?? const SizedBox.shrink(),
+  );
+}
 
 class FitLogApp extends StatefulWidget {
   const FitLogApp({
@@ -244,15 +271,63 @@ class _FitLogAppState extends State<FitLogApp> {
 
     _languageController = LanguageController()..load();
     _themeController = FitLogThemeController()..load();
+    MethodChannelWorkoutDraftNotificationPlatform.instance.setTapHandler(
+      _handleWorkoutDraftNotificationTap,
+    );
+    unawaited(
+      MethodChannelWorkoutDraftNotificationPlatform.instance
+          .consumeInitialTapIfAny(),
+    );
   }
 
   @override
   void dispose() {
+    MethodChannelWorkoutDraftNotificationPlatform.instance.setTapHandler(null);
     _supabaseAuthSubscription?.cancel();
     _accountController.dispose();
     _cloudRuntimeContext.dispose();
     _themeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleWorkoutDraftNotificationTap() async {
+    await WorkoutDraftNotificationTapCoordinator.instance.handleTap(
+      loadActiveDraft: _services.workoutDraftRepository.getActiveDraft,
+      cancelNotification:
+          MethodChannelWorkoutDraftNotificationPlatform.instance.cancel,
+      openDraft: (draft) async {
+        final navigator = fitLogNavigatorKey.currentState;
+        final navigatorContext = fitLogNavigatorKey.currentContext;
+        if (!mounted || navigator == null || navigatorContext == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              unawaited(_handleWorkoutDraftNotificationTap());
+            }
+          });
+          return;
+        }
+        try {
+          navigatorContext.read<RootTabController>().setIndex(
+            RootTabIndex.workout,
+          );
+        } catch (_) {
+          // Notification resume should still open the draft if tab state is absent.
+        }
+        await navigator.push<bool>(
+          MaterialPageRoute<bool>(
+            builder: (_) => AddWorkoutPage(initialDate: draft.date),
+          ),
+        );
+        if (!mounted || !navigatorContext.mounted) {
+          return;
+        }
+        try {
+          navigatorContext.read<RefreshNotifier>().markDataChanged();
+        } catch (_) {
+          // The editor save/discard path remains the authoritative refresh source.
+        }
+      },
+    );
   }
 
   @override
@@ -297,6 +372,7 @@ class _FitLogAppState extends State<FitLogApp> {
             return MaterialApp(
               debugShowCheckedModeBanner: false,
               theme: buildFitLogTheme(Brightness.light),
+              builder: _fitLogSystemUiBuilder,
               home: Scaffold(
                 body: Center(child: Text(context.strings.loading)),
               ),
@@ -305,6 +381,7 @@ class _FitLogAppState extends State<FitLogApp> {
 
           return MaterialApp(
             title: context.strings.appName,
+            navigatorKey: fitLogNavigatorKey,
             debugShowCheckedModeBanner: false,
             themeMode: ThemeMode.light,
             theme: buildFitLogTheme(
@@ -315,6 +392,7 @@ class _FitLogAppState extends State<FitLogApp> {
               Brightness.dark,
               themeKey: themeController.theme,
             ),
+            builder: _fitLogSystemUiBuilder,
             home: const _RootAuthGate(),
           );
         },
@@ -378,6 +456,9 @@ ThemeData buildFitLogTheme(
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: Colors.transparent,
+      foregroundColor: fitLogTheme.textPrimary,
+      iconTheme: IconThemeData(color: fitLogTheme.textPrimary),
+      systemOverlayStyle: fitLogSystemUiOverlayStyle(fitLogTheme),
       titleTextStyle: _withFontFallback(
         TextStyle(
           fontSize: 20,
@@ -555,6 +636,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_restoreLostPhotoAnalysisIfNeeded());
+        unawaited(_syncActiveWorkoutDraftNotification());
       }
     });
   }
@@ -572,6 +654,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     }
     _scheduleSelectedDateHydrationRefresh();
     unawaited(_restoreLostPhotoAnalysisIfNeeded());
+    unawaited(_syncActiveWorkoutDraftNotification());
   }
 
   @override
@@ -669,6 +752,20 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     } finally {
       _restoringLostPhotoAnalysis = false;
     }
+  }
+
+  Future<void> _syncActiveWorkoutDraftNotification() async {
+    final draft = await context
+        .read<AppServices>()
+        .workoutDraftRepository
+        .getActiveDraft();
+    if (!mounted) {
+      return;
+    }
+    await WorkoutDraftNotificationSync.syncFromDraft(
+      draft,
+      context.stringsRead,
+    );
   }
 
   @override

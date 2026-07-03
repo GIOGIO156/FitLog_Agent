@@ -320,65 +320,11 @@ class FitLogStrategyGuideSection extends StatelessWidget {
 }
 
 String fitLogWorkoutAssetForBodyPart(String bodyPart) {
-  switch (bodyPart) {
-    case 'Chest':
-      return FitLogIconAssets.workoutChest;
-    case 'Back':
-      return FitLogIconAssets.workoutBack;
-    case 'Legs':
-      return FitLogIconAssets.workoutLegs;
-    case 'Glutes':
-      return FitLogIconAssets.workoutLegs;
-    case 'Shoulders':
-      return FitLogIconAssets.workoutShoulders;
-    case 'Arms':
-      return FitLogIconAssets.workoutArms;
-    case 'Core':
-      return FitLogIconAssets.workoutCore;
-    case 'Cardio':
-      return FitLogIconAssets.workoutCardio;
-    case 'Full Body':
-      return FitLogIconAssets.workoutFullBody;
-    default:
-      return FitLogIconAssets.workoutFullBody;
-  }
+  return FitLogIconAssets.workoutAssetForBodyPart(bodyPart);
 }
 
 String? fitLogWorkoutAssetForExercise(String exerciseName) {
-  switch (exerciseName) {
-    case 'Bench Press':
-      return FitLogIconAssets.exerciseBenchPress;
-    case 'Cable Fly':
-      return FitLogIconAssets.exerciseCableFly;
-    case 'Deadlift':
-      return FitLogIconAssets.exerciseDeadlift;
-    case 'Dumbbell Biceps Curl':
-      return FitLogIconAssets.exerciseDumbbellBicepsCurl;
-    case 'Dumbbell Fly':
-      return FitLogIconAssets.exerciseDumbbellFly;
-    case 'Barbell Biceps Curl':
-      return FitLogIconAssets.exerciseBarbellBicepsCurl;
-    case 'Bent-over Barbell Row':
-      return FitLogIconAssets.exerciseBentOverBarbellRow;
-    case 'Lateral Raise':
-      return FitLogIconAssets.exerciseLateralRaise;
-    case 'Lat Pulldown':
-      return FitLogIconAssets.exerciseLatPulldown;
-    case 'Barbell Overhead Press':
-    case 'Overhead Press':
-      return FitLogIconAssets.exerciseOverheadPress;
-    case 'Pull-up':
-      return FitLogIconAssets.exercisePullUp;
-    case 'Running':
-      return FitLogIconAssets.exerciseRunning;
-    case 'Seated Cable Row':
-    case 'Seated Row':
-      return FitLogIconAssets.exerciseSeatedRow;
-    case 'Squat':
-      return FitLogIconAssets.exerciseSquat;
-    default:
-      return null;
-  }
+  return FitLogIconAssets.exerciseAssetForExercise(exerciseName);
 }
 
 class FitLogActionIconButton extends StatelessWidget {

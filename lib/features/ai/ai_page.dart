@@ -26,6 +26,7 @@ import '../account/account_controller.dart';
 import '../food/food_image_picker.dart';
 import '../food/food_preview_page.dart';
 import '../workout/add_workout_page.dart';
+import '../workout/workout_draft_notification.dart';
 import 'ai_chat_controller.dart';
 
 enum AiShellMode { disabled, ready, processing, needsClarification }
@@ -820,9 +821,10 @@ class _AiPageState extends State<AiPage> {
       }
     }
     final resolvedDate = draft.date ?? DateUtilsX.todayKey();
-    await services.workoutDraftRepository.saveActiveDraft(
-      draft.toWorkoutRecordDraft(dateFallback: resolvedDate),
-    );
+    final recordDraft = draft.toWorkoutRecordDraft(dateFallback: resolvedDate);
+    final strings = context.stringsRead;
+    await services.workoutDraftRepository.saveActiveDraft(recordDraft);
+    await WorkoutDraftNotificationSync.syncFromDraft(recordDraft, strings);
     if (!mounted) {
       return;
     }

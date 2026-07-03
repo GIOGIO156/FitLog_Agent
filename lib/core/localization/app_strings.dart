@@ -1122,6 +1122,26 @@ class AppStrings {
 
   String get completeSet => _t('Complete Set', '完成本组');
   String get completed => _t('Completed', '已完成');
+  String get workoutDraftNotificationCompleteTitle =>
+      _t('Sets complete', '训练组已完成');
+  String get workoutDraftNotificationCompleteBody =>
+      _t('Return to save workout', '返回保存训练');
+  String get workoutDraftNotificationContinueBody =>
+      _t('Return to continue workout', '返回继续训练');
+  String workoutDraftNotificationSetBody(
+    int setNumber,
+    int totalSets,
+    String performance,
+  ) => _t(
+    'Set $setNumber of $totalSets - $performance',
+    '第 $setNumber 组，共 $totalSets 组 - $performance',
+  );
+  String workoutDraftNotificationSetPerformance(String weight, String reps) =>
+      _t('$weight kg x $reps reps', '$weight kg x $reps 次');
+  String workoutDraftNotificationSetDurationPerformance(
+    String weight,
+    String duration,
+  ) => _t('$weight kg x $duration', '$weight kg x $duration');
 
   String get todayFoodList => _t('Today Food Records', '今日食物记录');
   String get todayWorkoutList => _t('Today Workout Records', '今日训练记录');

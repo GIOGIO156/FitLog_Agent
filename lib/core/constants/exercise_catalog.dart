@@ -77,13 +77,6 @@ class ExerciseCatalog {
       loadInputMode: ExerciseLoadInputMode.bodyweightAdded,
     ),
     ExerciseDefinition(
-      key: 'bench_press',
-      name: 'Bench Press',
-      bodyPart: 'Chest',
-      exerciseType: ExerciseType.strength,
-      strengthProfile: ExerciseStrengthProfile.upperBodyCompound,
-    ),
-    ExerciseDefinition(
       key: 'incline_dumbbell_press',
       name: 'Incline Dumbbell Press',
       bodyPart: 'Chest',

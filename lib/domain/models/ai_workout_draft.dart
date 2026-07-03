@@ -220,8 +220,8 @@ class AiWorkoutDraftSet {
 }
 
 const Map<String, String> _exerciseNameAliases = <String, String>{
-  '卧推': 'Bench Press',
-  '杠铃卧推': 'Bench Press',
+  '卧推': 'Barbell Flat Bench Press',
+  '杠铃卧推': 'Barbell Flat Bench Press',
   '平板卧推': 'Barbell Flat Bench Press',
   '深蹲': 'Squat',
   '硬拉': 'Deadlift',
