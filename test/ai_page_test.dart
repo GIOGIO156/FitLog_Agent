@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fitlog_local/app.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
+import 'package:fitlog_local/core/theme/fitlog_theme.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
 import 'package:fitlog_local/data/repositories/ai_chat_repository.dart';
 import 'package:fitlog_local/data/repositories/ai_local_context_permission_repository.dart';
@@ -133,6 +135,107 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI chat accents follow the active FitLog theme', (tester) async {
+    final harness = _readyAiHarness();
+    final completer = Completer<AiGatewayResponse>();
+    harness.repository.sendHandler = (_) => completer.future;
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildReadyAiTestApp(harness, themeKey: FitLogThemeKey.blackOrange),
+    );
+    await tester.pump();
+
+    final indicator = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('ai_status_indicator')),
+    );
+    final indicatorDecoration = indicator.decoration! as BoxDecoration;
+    expect(indicatorDecoration.color, const Color(0xFF5FA94D));
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      '黑橙主题消息',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+    await tester.pump();
+
+    final pendingBubbleDecoration =
+        tester
+                .widget<DecoratedBox>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          const ValueKey<String>('ai_pending_user_bubble'),
+                        ),
+                        matching: find.byType(DecoratedBox),
+                      )
+                      .first,
+                )
+                .decoration
+            as BoxDecoration;
+    expect(pendingBubbleDecoration.color, const Color(0xFFFF7A1A));
+
+    completer.complete(
+      const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: '收到。',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+  });
+
+  testWidgets('AI draft card keeps black orange actions warm and readable', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    harness.repository.sessions = <AiChatSession>[
+      _session('session_1', 'Food draft'),
+    ];
+    harness.repository.messages['session_1'] = <AiChatMessage>[
+      _message(
+        'a1',
+        'session_1',
+        1,
+        AiChatMessageRole.assistant,
+        '已为你生成饮食草稿。',
+        finalAnswerJson: _foodDraftArtifactJson(),
+      ),
+    ];
+    harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+    await harness.chatController.selectSession('session_1');
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildReadyAiTestApp(harness, themeKey: FitLogThemeKey.blackOrange),
+    );
+    await tester.pump();
+
+    final cardDecoration =
+        tester
+                .widget<DecoratedBox>(
+                  find.byKey(
+                    const ValueKey<String>('ai_food_draft_artifact_card'),
+                  ),
+                )
+                .decoration
+            as BoxDecoration;
+    final cardBorder = cardDecoration.border! as Border;
+    expect(cardDecoration.color, const Color(0xFFFFF3E8));
+    expect(cardBorder.top.color, const Color(0xFFF3C6A3));
+
+    final action = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Review and confirm'),
+    );
+    expect(
+      action.style?.backgroundColor?.resolve(<WidgetState>{}),
+      const Color(0xFFFF6B01),
+    );
+  });
+
   testWidgets('conversation keeps top actions fixed while provider moves up', (
     tester,
   ) async {
@@ -215,9 +318,13 @@ void main() {
     final historyBottom = tester.getRect(find.byTooltip('Chat history')).bottom;
     final questionTop = tester.getRect(find.text('Top question')).top;
 
-    expect(listTop, greaterThan(historyBottom));
-    expect(listTop, lessThan(76));
-    expect(questionTop, greaterThanOrEqualTo(listTop));
+    expect(
+      find.byKey(const ValueKey<String>('ai_message_soft_edges')),
+      findsOneWidget,
+    );
+    expect(listTop, lessThan(historyBottom));
+    expect(questionTop, greaterThan(historyBottom));
+    expect(_aiBackgroundMotion(tester), contains('quietChat'));
   });
 
   testWidgets('manual scroll keeps the final message above the composer', (
@@ -279,11 +386,103 @@ void main() {
         .getRect(find.text('Final readable line'))
         .bottom;
     final composerTop = tester
-        .getRect(find.byKey(const ValueKey<String>('ai_composer_field')))
+        .getRect(find.byKey(const ValueKey<String>('ai_composer_surface')))
         .top;
+    final listBottom = tester
+        .getRect(find.byKey(const ValueKey<String>('ai_message_list')))
+        .bottom;
 
     expect(finalLineBottom, lessThan(composerTop - 8));
+    expect(listBottom, lessThanOrEqualTo(composerTop - 8));
   });
+
+  testWidgets(
+    'keyboard lets messages flow behind the floating composer safely',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      addTearDown(tester.view.reset);
+
+      final harness = _readyAiHarness();
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Short chat'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        for (var index = 0; index < 6; index++) ...<AiChatMessage>[
+          _message(
+            'u$index',
+            'session_1',
+            index * 2 + 1,
+            AiChatMessageRole.user,
+            'Keyboard question $index',
+          ),
+          _message(
+            'a$index',
+            'session_1',
+            index * 2 + 2,
+            AiChatMessageRole.assistant,
+            'Keyboard answer $index\n\n- one\n- two\n- three',
+          ),
+        ],
+        _message(
+          'u-final',
+          'session_1',
+          99,
+          AiChatMessageRole.user,
+          '200毫升牛奶。',
+        ),
+        _message(
+          'a-final',
+          'session_1',
+          100,
+          AiChatMessageRole.assistant,
+          'Keyboard final readable line',
+        ),
+      ];
+      harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+      await harness.chatController.selectSession('session_1');
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(harness, resizeToAvoidBottomInset: false),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('ai_message_list')),
+        const Offset(0, -1800),
+      );
+      await tester.pump(const Duration(milliseconds: 240));
+
+      final listBottom = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_message_list')))
+          .bottom;
+      final composerRect = tester.getRect(
+        find.byKey(const ValueKey<String>('ai_composer_surface')),
+      );
+      final composerDecoration =
+          tester
+                  .widget<DecoratedBox>(
+                    find.byKey(const ValueKey<String>('ai_composer_surface')),
+                  )
+                  .decoration
+              as BoxDecoration;
+      final finalLineBottom = tester
+          .getRect(find.text('Keyboard final readable line'))
+          .bottom;
+
+      expect(
+        find.byKey(const ValueKey<String>('ai_composer_lower_veil')),
+        findsNothing,
+      );
+      expect(composerRect.bottom, closeTo(852 - 336, 0.1));
+      expect(composerDecoration.color, const Color(0xFFF9FDFB));
+      expect(listBottom, closeTo(composerRect.bottom, 0.5));
+      expect(listBottom, greaterThan(composerRect.top));
+      expect(finalLineBottom, lessThanOrEqualTo(composerRect.top - 12));
+    },
+  );
 
   testWidgets('sending anchors the new user bubble to the reading top', (
     tester,
@@ -345,17 +544,43 @@ void main() {
     final listTop = tester
         .getRect(find.byKey(const ValueKey<String>('ai_message_list')))
         .top;
+    final historyBottom = tester.getRect(find.byTooltip('Chat history')).bottom;
     final newQuestionTop = tester
         .getRect(find.text('New anchored question'))
         .top;
+    final pendingBubbleTop = tester
+        .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+        .top;
+    final pendingBubbleDecoration =
+        tester
+                .widget<DecoratedBox>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          const ValueKey<String>('ai_pending_user_bubble'),
+                        ),
+                        matching: find.byType(DecoratedBox),
+                      )
+                      .first,
+                )
+                .decoration
+            as BoxDecoration;
     final loadingTop = tester
         .getRect(
           find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
         )
         .top;
+    final readableAnchorTop = historyBottom + 16;
 
-    expect(newQuestionTop, greaterThanOrEqualTo(listTop));
-    expect(newQuestionTop, lessThan(listTop + 28));
+    expect(pendingBubbleTop, closeTo(readableAnchorTop, 1));
+    expect(pendingBubbleTop, greaterThan(listTop + 52));
+    expect(
+      pendingBubbleDecoration.color,
+      const Color(0xFF5FA94D).withValues(alpha: 0.92),
+    );
+    expect(newQuestionTop, greaterThan(pendingBubbleTop));
+    expect(newQuestionTop, greaterThan(historyBottom));
+    expect(newQuestionTop, lessThan(historyBottom + 32));
     expect(loadingTop, greaterThan(newQuestionTop));
     expect(
       find.byKey(const ValueKey<String>('ai_send_anchor_spacer')),
@@ -392,6 +617,94 @@ void main() {
     await tester.pump();
     await tester.pump();
   });
+
+  testWidgets(
+    'keyboard sending anchors the new user bubble to the reading top',
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      addTearDown(tester.view.reset);
+
+      final harness = _readyAiHarness();
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Existing chat'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        for (var index = 0; index < 10; index++) ...<AiChatMessage>[
+          _message(
+            'old-u$index',
+            'session_1',
+            index * 2 + 1,
+            AiChatMessageRole.user,
+            'Old keyboard question $index',
+          ),
+          _message(
+            'old-a$index',
+            'session_1',
+            index * 2 + 2,
+            AiChatMessageRole.assistant,
+            'Old keyboard answer $index\n\n- detail one\n- detail two',
+          ),
+        ],
+      ];
+      final completer = Completer<AiGatewayResponse>();
+      harness.repository.sendHandler = (_) => completer.future;
+      harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+      await harness.chatController.selectSession('session_1');
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(harness, resizeToAvoidBottomInset: false),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ai_composer_field')),
+        'Keyboard anchored question',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+      await tester.pump();
+      await tester.pump();
+
+      final listTop = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_message_list')))
+          .top;
+      final historyBottom = tester
+          .getRect(find.byTooltip('Chat history'))
+          .bottom;
+      final pendingBubbleTop = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+          .top;
+      final newQuestionTop = tester
+          .getRect(find.text('Keyboard anchored question'))
+          .top;
+      final loadingTop = tester
+          .getRect(
+            find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
+          )
+          .top;
+      final readableAnchorTop = historyBottom + 16;
+
+      expect(pendingBubbleTop, closeTo(readableAnchorTop, 1));
+      expect(pendingBubbleTop, greaterThan(listTop + 52));
+      expect(newQuestionTop, greaterThan(pendingBubbleTop));
+      expect(loadingTop, greaterThan(newQuestionTop));
+
+      completer.complete(
+        const AiGatewayResponse(
+          sessionId: 'session_1',
+          assistantMessageId: 'keyboard-new-a',
+          messageText: 'Done',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    },
+  );
 
   testWidgets('ready AI page sends up to three Qwen image attachments', (
     tester,
@@ -617,7 +930,9 @@ void main() {
     expect(find.textContaining('不会写入正式记录', findRichText: true), findsOneWidget);
   });
 
-  testWidgets('message bubbles expose a copy action', (tester) async {
+  testWidgets('message bubbles keep text selectable without copy buttons', (
+    tester,
+  ) async {
     final harness = _readyAiHarness();
     harness.repository.sessions = <AiChatSession>[
       _session('session_1', 'Existing chat'),
@@ -645,12 +960,16 @@ void main() {
     await tester.pumpWidget(_buildReadyAiTestApp(harness));
     await tester.pump();
 
-    expect(find.byTooltip('Copy message'), findsNWidgets(2));
-
-    await tester.tap(find.byTooltip('Copy message').last);
-    await tester.pump();
-
-    expect(find.text('Message copied.'), findsOneWidget);
+    expect(find.byTooltip('Copy message'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText && widget.data == 'Copy my question',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Copy', findRichText: true), findsWidgets);
+    expect(find.textContaining('this', findRichText: true), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -1025,7 +1344,7 @@ void main() {
     );
   });
 
-  testWidgets('AI background keeps animating while the keyboard is visible', (
+  testWidgets('AI background keeps landing motion while typing before chat', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(393, 852);
@@ -1045,6 +1364,7 @@ void main() {
     final secondProgress = _aiBackgroundProgress(tester);
 
     expect(secondProgress, isNot(firstProgress));
+    expect(_aiBackgroundMotion(tester), contains('idleLanding'));
     expect(tester.takeException(), isNull);
   });
 
@@ -1133,10 +1453,15 @@ class _AiIndexedStackHarnessState extends State<_AiIndexedStackHarness> {
   }
 }
 
-Widget _buildAiTestApp(Widget child, {bool resizeToAvoidBottomInset = true}) {
+Widget _buildAiTestApp(
+  Widget child, {
+  bool resizeToAvoidBottomInset = true,
+  FitLogThemeKey themeKey = FitLogThemeKey.green,
+}) {
   return ChangeNotifierProvider<LanguageController>(
     create: (_) => LanguageController(),
     child: MaterialApp(
+      theme: buildFitLogTheme(Brightness.light, themeKey: themeKey),
       home: Scaffold(
         resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         body: child,
@@ -1148,6 +1473,8 @@ Widget _buildAiTestApp(Widget child, {bool resizeToAvoidBottomInset = true}) {
 Widget _buildReadyAiTestApp(
   _ReadyAiHarness harness, {
   FoodImagePicker? imagePicker,
+  bool resizeToAvoidBottomInset = true,
+  FitLogThemeKey themeKey = FitLogThemeKey.green,
 }) {
   return _buildAiTestApp(
     MultiProvider(
@@ -1164,6 +1491,8 @@ Widget _buildReadyAiTestApp(
       ],
       child: AiPage(imagePicker: imagePicker),
     ),
+    resizeToAvoidBottomInset: resizeToAvoidBottomInset,
+    themeKey: themeKey,
   );
 }
 

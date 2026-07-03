@@ -68,8 +68,6 @@ class AppStrings {
   String get aiImageOnlyMessage => _t('Please analyze this image.', '请分析这张图片。');
   String get aiImageLimitReached =>
       _t('You can attach up to 3 images.', '最多可添加 3 张图片。');
-  String get aiCopyMessageTooltip => _t('Copy message', '复制消息');
-  String get aiMessageCopied => _t('Message copied.', '消息已复制。');
   String get aiFoodDraftCardTitle => _t('Food draft ready', '饮食草稿已生成');
   String aiFoodDraftCardSummary(String mealName, String calories) =>
       _t('$mealName · about $calories kcal', '$mealName · 约 $calories kcal');

@@ -401,6 +401,8 @@ Rules:
 - AI Gateway must reject unsupported writes unless user confirmation and schema validation have already happened.
 - The AI Gateway calls the selected provider through server-side adapters. Text, vision and structured-output model names must be environment-configured, not hard-coded in Flutter.
 - Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
+- Chat draft provider output should be one JSON envelope: user-facing explanation, estimate rationale, uncertainty, and review instructions go in `message.text`, while saveable Food Draft / Workout Draft data goes in `draft`. The Gateway may recover draft JSON from provider prose for robustness, but raw provider JSON must not be displayed as ordinary assistant Markdown.
+- The dedicated Add Food AI food-analysis workflow remains stricter than Chat: `ai-food-photo-analyze` expects pure structured Food Draft JSON and does not need chat-style explanation text.
 - Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
 
 ## AI Gateway Response

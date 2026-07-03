@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-07-03 AI Background Smoothing, Composer Bounds, And Chat Draft Contract
+
+### Changed
+
+- Changed pending AI Chat user bubbles to use the same green surface as persisted user bubbles so sending state no longer looks faded or disabled.
+- Smoothed the AI page liquid background by protecting the mint transition width and modestly increasing field sampling, reducing blocky bands when the pink and blue fields compress toward the center without adding real-time noise.
+- Changed the AI chat message viewport to use separate readable and floating-overlay bounds, keeping messages clear of the input while allowing keyboard-open content to continue behind the composer.
+- Changed the AI chat message layer into a near-full-screen scroll layer with asymmetric soft alpha edges, avoiding rectangular-looking card cutoffs near the top controls and composer.
+- Tuned the AI chat scroll-layer soft edges to be asymmetric, with a longer top fade for hierarchy behind controls and a shorter bottom fade so final bubbles remain clean.
+- Fixed send-time anchoring so the pending user bubble aligns to the readable top boundary in both keyboard-open and keyboard-closed states instead of landing inside the top fade-out region.
+- Changed the keyboard-open AI composer into a solid input-accessory position attached to the keyboard top, removing the extra keyboard-above footer band and lower-half veil while preserving the floating pill when the keyboard is closed.
+- Changed keyboard-open message spacing so the viewport extends to the composer bottom / keyboard top with no exterior composer background, while the final bubble still gets its safety distance from the message list's own bottom padding.
+- Changed AI Chat interaction accents to read the active FitLog theme, so Black Orange uses orange user bubbles, send/review buttons, draft-card accents, Markdown accents, and selected history rows while the AI liquid background keeps its independent pink/mint/blue identity.
+- Refined the Black Orange AI Chat palette so user bubbles use a softer bright orange, draft review buttons keep the stronger action orange, draft-card surfaces use a warm low-glare orange system, and the ready indicator returns to semantic green for availability.
+- Changed Qwen text Chat draft prompting so user-friendly explanation belongs in `message.text` and structured Food Draft / Workout Draft data belongs in `draft`, while Add Food AI food analysis remains on its dedicated pure-JSON contract.
+- Hardened AI Gateway provider parsing to prefer Gateway-shaped JSON objects, preventing incidental provider prose objects from hiding a later valid draft payload.
+- Updated README, Product, AppGuide, AgentDesign, and API contract docs to describe the smoothed background sampling, soft-edge message scroll layer, floating-composer scroll geometry, keyboard accessory composer mode, theme-aware AI Chat accents with semantic readiness green, and stable Chat draft envelope.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed, including pending user-bubble green, Black Orange warm orange bubbles and draft action, semantic green readiness, keyboard-open solid floating-composer overlay, readable-top send anchoring, soft-edge message layer, and final-bubble safe-padding coverage.
+- Ran `flutter test`; all tests passed.
+- Added Edge Function contract regression tests for friendly prose plus Food Draft JSON and Gateway-shaped JSON preference; local Deno CLI was unavailable in this environment, so these tests were not executed here.
+- Ran `git diff --check`; no whitespace errors were reported.
+- Confirmed the required README, changelog, and English/Chinese design documentation tree exists.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
+## 2026-07-02 AI Background Fluid Gradient
+
+### Changed
+
+- Changed the AI page background from whole-layer translation plus a fixed wash path to a full-screen programmatic liquid-gradient color field with a stronger pink field from the top, a smaller mint center band that wraps the center status text, and an earlier blue transition so visible pink and blue areas feel more balanced on portrait phones.
+- Changed the background animation to use seamless whole-field warped color sampling instead of localized moving blobs, with a faster landing loop, a quieter 9-second chat/history loop after the first message is sent, and pre-conversation keyboard input kept on the visible landing motion.
+- Removed per-message copy buttons from AI Chat bubbles; message text remains selectable and copying uses the system text-selection menu.
+- Updated README, Product, AppGuide, and AgentDesign docs in English and Chinese to describe the AI page background as a continuous liquid-gradient color field rather than a translated static image or localized moving blob layer.
+
+### Validation
+
+- Ran `dart format lib test`; formatter reported 0 changed files on the final pass.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
 ## 2026-07-02 Startup Cache And AI Food Analysis Recovery
 
 ### Added

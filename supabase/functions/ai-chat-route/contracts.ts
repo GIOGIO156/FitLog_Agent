@@ -666,17 +666,28 @@ function stripJsonFence(value: string): string {
 }
 
 function parseJsonObjectFromContent(value: string): Record<string, unknown> | null {
+  let fallback: Record<string, unknown> | null = null;
   for (const candidate of jsonObjectCandidates(value)) {
     try {
       const parsed = JSON.parse(candidate);
       if (isRecord(parsed)) {
-        return parsed;
+        fallback ??= parsed;
+        if (isProviderGatewayShape(parsed)) {
+          return parsed;
+        }
       }
     } catch (_) {
       // Try the next candidate.
     }
   }
-  return null;
+  return fallback;
+}
+
+function isProviderGatewayShape(value: Record<string, unknown>): boolean {
+  return isRecord(value.message) ||
+    isRecord(value.draft) ||
+    value.schema_version === "workout_draft.v1" ||
+    "meal_name" in value;
 }
 
 function jsonObjectCandidates(value: string): string[] {
@@ -686,8 +697,7 @@ function jsonObjectCandidates(value: string): string[] {
   for (const match of trimmed.matchAll(fencePattern)) {
     candidates.push(match[1].trim());
   }
-  const balanced = firstBalancedJsonObject(trimmed);
-  if (balanced !== null) {
+  for (const balanced of balancedJsonObjects(trimmed)) {
     candidates.push(balanced);
   }
   return candidates.filter((candidate, index) =>
@@ -695,11 +705,20 @@ function jsonObjectCandidates(value: string): string[] {
   );
 }
 
-function firstBalancedJsonObject(value: string): string | null {
-  const start = value.indexOf("{");
-  if (start < 0) {
-    return null;
+function balancedJsonObjects(value: string): string[] {
+  const candidates: string[] = [];
+  let start = value.indexOf("{");
+  while (start >= 0) {
+    const candidate = balancedJsonObjectFrom(value, start);
+    if (candidate !== null) {
+      candidates.push(candidate);
+    }
+    start = value.indexOf("{", start + 1);
   }
+  return candidates;
+}
+
+function balancedJsonObjectFrom(value: string, start: number): string | null {
   let depth = 0;
   let inString = false;
   let escaped = false;

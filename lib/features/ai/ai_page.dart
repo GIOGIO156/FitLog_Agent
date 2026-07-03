@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app.dart';
 import '../../core/localization/localization_extensions.dart';
+import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_notifications.dart';
@@ -41,8 +42,14 @@ const int _maxChatImageBytes = 4 * 1024 * 1024;
 const double _aiTopBarHeight = 58;
 const double _aiMessageTopGap = 4;
 const double _aiMessageBottomGap = 10;
+const double _aiMessageListTopPadding = 4;
+const double _aiMessageListBottomSafePadding = 14;
+const double _aiMessageTopSoftEdgeHeight = 52;
+const double _aiMessageBottomSoftEdgeHeight = 12;
 const double _aiDefaultComposerHeight = 88;
 const double _aiSendingTurnEstimatedHeight = 96;
+const double _aiComposerHorizontalPadding = 16;
+const double _aiComposerMaxWidth = 620;
 const Set<String> _supportedChatImageMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -54,6 +61,165 @@ class _AiStatusPresentation {
 
   final String label;
   final _AiStatusTone tone;
+}
+
+class _AiThemePalette {
+  const _AiThemePalette({
+    required this.icon,
+    required this.mutedText,
+    required this.action,
+    required this.onAction,
+    required this.disabledActionBackground,
+    required this.disabledActionForeground,
+    required this.userBubble,
+    required this.onUserBubble,
+    required this.assistantText,
+    required this.providerSelectedText,
+    required this.providerText,
+    required this.statusAvailableIndicator,
+    required this.statusAvailableText,
+    required this.statusUnavailableIndicator,
+    required this.statusUnavailableText,
+    required this.artifactSurface,
+    required this.artifactDisabledSurface,
+    required this.artifactBorder,
+    required this.artifactDisabledBorder,
+    required this.artifactTitle,
+    required this.artifactBody,
+    required this.artifactButtonDisabledBackground,
+    required this.artifactButtonDisabledForeground,
+    required this.markdownAuxText,
+    required this.markdownCodeText,
+    required this.markdownCodeBackground,
+    required this.markdownCodeBlockBackground,
+    required this.markdownTableBorder,
+    required this.historySelectedSurface,
+    required this.historySurface,
+    required this.historySelectedText,
+    required this.historyText,
+  });
+
+  final Color icon;
+  final Color mutedText;
+  final Color action;
+  final Color onAction;
+  final Color disabledActionBackground;
+  final Color disabledActionForeground;
+  final Color userBubble;
+  final Color onUserBubble;
+  final Color assistantText;
+  final Color providerSelectedText;
+  final Color providerText;
+  final Color statusAvailableIndicator;
+  final Color statusAvailableText;
+  final Color statusUnavailableIndicator;
+  final Color statusUnavailableText;
+  final Color artifactSurface;
+  final Color artifactDisabledSurface;
+  final Color artifactBorder;
+  final Color artifactDisabledBorder;
+  final Color artifactTitle;
+  final Color artifactBody;
+  final Color artifactButtonDisabledBackground;
+  final Color artifactButtonDisabledForeground;
+  final Color markdownAuxText;
+  final Color markdownCodeText;
+  final Color markdownCodeBackground;
+  final Color markdownCodeBlockBackground;
+  final Color markdownTableBorder;
+  final Color historySelectedSurface;
+  final Color historySurface;
+  final Color historySelectedText;
+  final Color historyText;
+
+  static final _AiThemePalette _green = _AiThemePalette(
+    icon: const Color(0xFF506052),
+    mutedText: const Color(0xFF647067),
+    action: const Color(0xFF5FA94D),
+    onAction: Colors.white,
+    disabledActionBackground: const Color(0xFFD8E0D7),
+    disabledActionForeground: const Color(0xFF8C978D),
+    userBubble: const Color(0xFF5FA94D).withValues(alpha: 0.92),
+    onUserBubble: Colors.white,
+    assistantText: const Color(0xFF1A261D),
+    providerSelectedText: const Color(0xFF284A31),
+    providerText: const Color(0xFF66736B),
+    statusAvailableIndicator: const Color(0xFF5FA94D),
+    statusAvailableText: const Color(0xFF2F6F35),
+    statusUnavailableIndicator: const Color(0xFF8E9A93),
+    statusUnavailableText: const Color(0xFF66736B),
+    artifactSurface: const Color(0xFFF4F9EE),
+    artifactDisabledSurface: const Color(0xFFF1F3EF),
+    artifactBorder: const Color(0xFFCFE8BC),
+    artifactDisabledBorder: const Color(0xFFD8DED5),
+    artifactTitle: const Color(0xFF315B2F),
+    artifactBody: const Color(0xFF4F6251),
+    artifactButtonDisabledBackground: const Color(0xFFB7BFB3),
+    artifactButtonDisabledForeground: Colors.white,
+    markdownAuxText: const Color(0xFF5A665C),
+    markdownCodeText: const Color(0xFF243329),
+    markdownCodeBackground: const Color(0xFFEAF1EA),
+    markdownCodeBlockBackground: const Color(0xFFF0F4F1),
+    markdownTableBorder: const Color(0xFFD8E3D6),
+    historySelectedSurface: const Color(0xFFDDF2D7).withValues(alpha: 0.82),
+    historySurface: Colors.white.withValues(alpha: 0.48),
+    historySelectedText: const Color(0xFF284A31),
+    historyText: const Color(0xFF334137),
+  );
+
+  factory _AiThemePalette.of(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
+    if (!fitTheme.isDark) {
+      return _green;
+    }
+
+    const semanticReady = Color(0xFF5FA94D);
+    const semanticReadyText = Color(0xFF2F6F35);
+    const userOrange = Color(0xFFFF7A1A);
+    const actionOrange = Color(0xFFFF6B01);
+    const deepOrangeText = Color(0xFFA84F08);
+    const warmBody = Color(0xFF5F5144);
+    const warmSurface = Color(0xFFFFF3E8);
+    const warmDisabledSurface = Color(0xFFFFF8F1);
+    const warmBorder = Color(0xFFF3C6A3);
+    const warmDisabledBorder = Color(0xFFF2D8C4);
+    const warmSoft = Color(0xFFFFEFE0);
+
+    return _AiThemePalette(
+      icon: warmBody,
+      mutedText: const Color(0xFF6F665E),
+      action: actionOrange,
+      onAction: fitTheme.onPrimary,
+      disabledActionBackground: const Color(0xFFFFE6D1),
+      disabledActionForeground: const Color(0xFF8A8075),
+      userBubble: userOrange,
+      onUserBubble: fitTheme.onPrimary,
+      assistantText: const Color(0xFF1F1B16),
+      providerSelectedText: deepOrangeText,
+      providerText: const Color(0xFF6F665E),
+      statusAvailableIndicator: semanticReady,
+      statusAvailableText: semanticReadyText,
+      statusUnavailableIndicator: const Color(0xFF9B9288),
+      statusUnavailableText: const Color(0xFF6F665E),
+      artifactSurface: warmSurface,
+      artifactDisabledSurface: warmDisabledSurface,
+      artifactBorder: warmBorder,
+      artifactDisabledBorder: warmDisabledBorder,
+      artifactTitle: deepOrangeText,
+      artifactBody: warmBody,
+      artifactButtonDisabledBackground: warmDisabledBorder,
+      artifactButtonDisabledForeground: const Color(0xFF8A8075),
+      markdownAuxText: const Color(0xFF6F665E),
+      markdownCodeText: const Color(0xFF2A211A),
+      markdownCodeBackground: warmSoft,
+      markdownCodeBlockBackground: warmDisabledSurface,
+      markdownTableBorder: warmDisabledBorder,
+      historySelectedSurface: warmSoft.withValues(alpha: 0.86),
+      historySurface: Colors.white.withValues(alpha: 0.48),
+      historySelectedText: deepOrangeText,
+      historyText: const Color(0xFF3A332D),
+    );
+  }
 }
 
 class AiPage extends StatefulWidget {
@@ -115,9 +281,7 @@ class _AiPageState extends State<AiPage> {
     final bottomInset = mediaQuery.viewInsets.bottom;
     final keyboardVisible = bottomInset > 0;
     final quietBackground =
-        hasConversation ||
-        keyboardVisible ||
-        (chatController?.sending ?? false);
+        hasConversation || (chatController?.sending ?? false);
     final status = _statusPresentation(
       context,
       accountController: accountController,
@@ -128,18 +292,26 @@ class _AiPageState extends State<AiPage> {
         : _aiErrorLabel(context, chatController!.lastError!);
     final errorLabel = _composerNoticeText ?? gatewayErrorLabel;
     final composerBottomPadding = keyboardVisible
-        ? bottomInset + 12.0
+        ? bottomInset
         : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
-    final bottomObstruction =
-        composerBottomPadding + _composerHeight + _aiMessageBottomGap;
+    final messageViewportGap = keyboardVisible ? 0.0 : _aiMessageBottomGap;
+    final readableBottomObstruction =
+        composerBottomPadding + _composerHeight + messageViewportGap;
+    final messageViewportBottomObstruction = keyboardVisible
+        ? composerBottomPadding
+        : readableBottomObstruction;
+    final messageListBottomPadding =
+        _aiMessageListBottomSafePadding +
+        (keyboardVisible ? _composerHeight : 0.0);
     final contentTopPadding = hasConversation
         ? _aiTopBarHeight + _aiMessageTopGap
         : 74.0;
+    final messageListTopPadding = contentTopPadding + _aiMessageListTopPadding;
     final viewportHeight =
         mediaQuery.size.height -
         mediaQuery.padding.top -
         contentTopPadding -
-        bottomObstruction;
+        readableBottomObstruction;
     final sendAnchorPadding = chatController?.sending == true
         ? math.max(0.0, viewportHeight - _aiSendingTurnEstimatedHeight)
         : 0.0;
@@ -163,18 +335,18 @@ class _AiPageState extends State<AiPage> {
           child: Stack(
             children: <Widget>[
               if (hasConversation)
-                Positioned.fill(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      18,
-                      contentTopPadding,
-                      18,
-                      bottomObstruction,
-                    ),
+                Positioned(
+                  left: 18,
+                  top: 0,
+                  right: 18,
+                  bottom: messageViewportBottomObstruction,
+                  child: _AiMessageViewport(
                     child: _AiMessageList(
                       controller: chatController!,
                       scrollController: _messageScrollController,
                       latestUserKey: _latestUserMessageKey,
+                      topPadding: messageListTopPadding,
+                      bottomPadding: messageListBottomPadding,
                       sendAnchorBottomPadding: sendAnchorPadding,
                       onOpenFoodDraft: _openFoodDraftPreview,
                       onOpenWorkoutDraft: _openWorkoutDraftPreview,
@@ -182,19 +354,20 @@ class _AiPageState extends State<AiPage> {
                   ),
                 )
               else
-                Positioned.fill(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(18, 18, 18, bottomObstruction),
-                    child: Center(
-                      child: SingleChildScrollView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: _AiCenterStatus(
-                          mode: effectiveMode,
-                          displayName:
-                              widget.displayName ??
-                              cloudNickname ??
-                              accountController?.authSession.displayName,
-                        ),
+                Positioned(
+                  left: 18,
+                  top: 18,
+                  right: 18,
+                  bottom: readableBottomObstruction,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: _AiCenterStatus(
+                        mode: effectiveMode,
+                        displayName:
+                            widget.displayName ??
+                            cloudNickname ??
+                            accountController?.authSession.displayName,
                       ),
                     ),
                   ),
@@ -211,13 +384,15 @@ class _AiPageState extends State<AiPage> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    16,
+                    _aiComposerHorizontalPadding,
                     0,
-                    16,
+                    _aiComposerHorizontalPadding,
                     composerBottomPadding,
                   ),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 620),
+                    constraints: const BoxConstraints(
+                      maxWidth: _aiComposerMaxWidth,
+                    ),
                     child: KeyedSubtree(
                       key: _composerLayoutKey,
                       child: _AiComposer(
@@ -228,6 +403,7 @@ class _AiPageState extends State<AiPage> {
                         attachedImages: _attachedImages,
                         mode: effectiveMode,
                         status: status,
+                        solidSurface: keyboardVisible,
                         hasConversation: hasConversation,
                         errorLabel: errorLabel,
                         onProviderChanged: _selectProvider,
@@ -807,9 +983,9 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
   Duration get _duration {
     switch (widget.motion) {
       case _AiBackgroundMotion.idleLanding:
-        return const Duration(seconds: 16);
+        return const Duration(milliseconds: 3800);
       case _AiBackgroundMotion.quietChat:
-        return const Duration(seconds: 28);
+        return const Duration(seconds: 9);
     }
   }
 
@@ -820,26 +996,15 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
         animation: _controller,
         builder: (context, _) {
           final progress = _controller.value;
-          final quiet = widget.motion == _AiBackgroundMotion.quietChat;
-          final motionScale = quiet ? 0.50 : 1.0;
-          final angle = progress * math.pi * 2;
-          return Transform.translate(
-            offset: Offset(
-              math.sin(angle) * 24 * motionScale,
-              math.cos(angle * 0.78) * 14 * motionScale,
+          return CustomPaint(
+            isComplex: true,
+            willChange: true,
+            painter: _AiFlowBackgroundPainter(
+              progress: progress,
+              mode: widget.mode,
+              motion: widget.motion,
             ),
-            child: Transform.scale(
-              scale: 1.08,
-              child: CustomPaint(
-                isComplex: true,
-                willChange: false,
-                painter: _AiFlowBackgroundPainter(
-                  progress: progress,
-                  mode: widget.mode,
-                  motion: widget.motion,
-                ),
-              ),
-            ),
+            child: const SizedBox.expand(),
           );
         },
       ),
@@ -858,95 +1023,216 @@ class _AiFlowBackgroundPainter extends CustomPainter {
   final AiShellMode mode;
   final _AiBackgroundMotion motion;
 
+  static const List<double> _fieldSamples = <double>[
+    0.0,
+    0.125,
+    0.25,
+    0.375,
+    0.50,
+    0.625,
+    0.75,
+    0.875,
+    1.0,
+  ];
+
+  static const List<Color> _disabledPalette = <Color>[
+    Color(0xFFF7F5F1),
+    Color(0xFFEDE8E6),
+    Color(0xFFE7EEE8),
+    Color(0xFFE6EEF0),
+  ];
+
+  static const List<double> _disabledStops = <double>[0.0, 0.36, 0.70, 1.0];
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
+    if (rect.isEmpty) {
+      return;
+    }
+
     final disabled = mode == AiShellMode.disabled;
     final quiet = motion == _AiBackgroundMotion.quietChat;
-    final motionScale = quiet ? 0.62 : 1.0;
+    final time = progress * math.pi * 2;
+    final motionScale = disabled ? 0.22 : (quiet ? 0.42 : 1.04);
+    final tintScale = disabled ? 0.0 : (quiet ? 0.56 : 1.0);
     final emphasis = switch (mode) {
       AiShellMode.processing => 1.0,
-      AiShellMode.ready => 0.58,
-      AiShellMode.needsClarification => 0.24,
+      AiShellMode.ready => 0.88,
+      AiShellMode.needsClarification => 0.48,
       AiShellMode.disabled => 0.0,
     };
-    final shift = math.sin(progress * math.pi * 2);
 
-    final baseColors = disabled
-        ? const <Color>[Color(0xFFF5F4F1), Color(0xFFE7ECE6), Color(0xFFF0F3EE)]
-        : const <Color>[
-            Color(0xFFF5CDD9),
-            Color(0xFFD8F2E4),
-            Color(0xFFA8DDF6),
+    final paletteColors = disabled
+        ? _disabledPalette
+        : <Color>[
+            Color.lerp(
+              const Color(0xFFFFBCD1),
+              const Color(0xFFFFD6E2),
+              _wave01(time, 0.20),
+            )!,
+            Color.lerp(
+              const Color(0xFFFFD9E4),
+              const Color(0xFFFFE7EE),
+              _wave01(time, 1.30),
+            )!,
+            Color.lerp(
+              const Color(0xFFE4F4E8),
+              const Color(0xFFCBF3E2),
+              _wave01(time, 2.10),
+            )!,
+            Color.lerp(
+              const Color(0xFFB8F0E0),
+              const Color(0xFFA8EADF),
+              _wave01(time, 3.40),
+            )!,
+            Color.lerp(
+              const Color(0xFF9ADCF4),
+              const Color(0xFF7CCDF8),
+              _wave01(time, 4.20),
+            )!,
+            const Color(0xFF64BEF6),
           ];
+    final paletteStops = disabled
+        ? _disabledStops
+        : _activePaletteStops(time, motionScale);
 
-    final basePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment(-0.64 + shift * 0.18 * motionScale, -1),
-        end: Alignment(0.76 - shift * 0.18 * motionScale, 1),
-        colors: baseColors,
-      ).createShader(rect);
-    canvas.drawRect(rect, basePaint);
+    final stripeCount = (size.height / 9.5).ceil().clamp(88, 144).toInt();
+    final stripeHeight = size.height / stripeCount;
+    for (var index = 0; index < stripeCount; index += 1) {
+      final top = index * stripeHeight;
+      final y = (top + stripeHeight * 0.5) / size.height;
+      final stripeRect = Rect.fromLTWH(0, top, size.width, stripeHeight + 1.1);
+      final sampleColors = <Color>[
+        for (final sampleX in _fieldSamples)
+          _sampleFieldColor(
+            sampleX,
+            y,
+            time,
+            motionScale: motionScale,
+            emphasis: emphasis,
+            paletteColors: paletteColors,
+            paletteStops: paletteStops,
+          ),
+      ];
+      final stripePaint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: sampleColors,
+          stops: _fieldSamples,
+        ).createShader(stripeRect);
+      canvas.drawRect(stripeRect, stripePaint);
+    }
 
-    final washPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment(-1 + shift * 0.26 * motionScale, -0.4),
-        end: Alignment(1, 0.8),
-        colors: disabled
-            ? <Color>[
-                Colors.white.withValues(alpha: 0.16),
-                const Color(0xFFDDE8DD).withValues(alpha: 0.18),
-                Colors.white.withValues(alpha: 0.16),
-              ]
-            : <Color>[
-                const Color(
-                  0xFFFFF5DF,
-                ).withValues(alpha: 0.30 + emphasis * 0.10),
-                const Color(
-                  0xFFA9E7D3,
-                ).withValues(alpha: 0.34 + emphasis * 0.12),
-                const Color(
-                  0xFFC3E5FF,
-                ).withValues(alpha: 0.30 + emphasis * 0.10),
-              ],
-      ).createShader(rect);
-
-    final washPath = Path()
-      ..moveTo(
-        -size.width * 0.18,
-        size.height * (0.15 + shift * 0.03 * motionScale),
-      )
-      ..cubicTo(
-        size.width * 0.28,
-        size.height * (0.02 - shift * 0.04 * motionScale),
-        size.width * 0.70,
-        size.height * (0.34 + shift * 0.05 * motionScale),
-        size.width * 1.16,
-        size.height * (0.20 - shift * 0.02 * motionScale),
-      )
-      ..lineTo(size.width * 1.16, size.height * 0.80)
-      ..cubicTo(
-        size.width * 0.70,
-        size.height * (0.68 + shift * 0.04 * motionScale),
-        size.width * 0.26,
-        size.height * (0.90 - shift * 0.03 * motionScale),
-        -size.width * 0.18,
-        size.height * (0.72 + shift * 0.02 * motionScale),
-      )
-      ..close();
-    canvas.drawPath(washPath, washPaint);
+    if (!disabled) {
+      final atmosphericPaint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            const Color(0xFFFFBED2).withValues(alpha: 0.10 * tintScale),
+            Colors.white.withValues(alpha: 0.05 * tintScale),
+            const Color(0xFF83D1F8).withValues(alpha: 0.08 * tintScale),
+          ],
+          stops: const <double>[0.0, 0.48, 1.0],
+          transform: GradientRotation(math.sin(time) * 0.08),
+        ).createShader(rect);
+      canvas.drawRect(rect, atmosphericPaint);
+    }
 
     final veilPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: <Color>[
-          Colors.white.withValues(alpha: disabled ? 0.18 : 0.12),
-          Colors.white.withValues(alpha: disabled ? 0.24 : 0.10),
+          Colors.white.withValues(alpha: disabled ? 0.20 : 0.07),
+          Colors.white.withValues(alpha: disabled ? 0.20 : 0.04),
           Colors.white.withValues(alpha: disabled ? 0.05 : 0.00),
         ],
       ).createShader(rect);
     canvas.drawRect(rect, veilPaint);
+  }
+
+  Color _sampleFieldColor(
+    double x,
+    double y,
+    double time, {
+    required double motionScale,
+    required double emphasis,
+    required List<Color> paletteColors,
+    required List<double> paletteStops,
+  }) {
+    final verticalFlow =
+        math.sin(time + x * 2.35 + y * 3.60) * 0.042 +
+        math.sin(time * 2 - x * 3.90 + y * 1.70) * 0.018 +
+        math.cos(time + x * 0.80 - y * 5.40) * 0.024;
+    final broadShear = math.sin(time * 2 + y * 4.00) * (x - 0.5) * 0.032;
+    final sampledY = _clampUnit(y + (verticalFlow + broadShear) * motionScale);
+    final base = _samplePalette(paletteColors, paletteStops, sampledY);
+    final lightBreath =
+        (math.sin(time * 2 + x * 5.0 - y * 2.0) + 1) *
+        (0.012 + emphasis * 0.010) *
+        motionScale;
+    return Color.lerp(
+      base,
+      Colors.white,
+      lightBreath.clamp(0.0, 0.055).toDouble(),
+    )!;
+  }
+
+  Color _samplePalette(List<Color> colors, List<double> stops, double value) {
+    final sampled = _clampUnit(value);
+    for (var index = 0; index < stops.length - 1; index += 1) {
+      final start = stops[index];
+      final end = stops[index + 1];
+      if (sampled <= end) {
+        final localProgress = end == start
+            ? 1.0
+            : _smoothStep(_clampUnit((sampled - start) / (end - start)));
+        return Color.lerp(colors[index], colors[index + 1], localProgress)!;
+      }
+    }
+    return colors.last;
+  }
+
+  double _smoothStep(double value) {
+    final t = _clampUnit(value);
+    return t * t * (3 - 2 * t);
+  }
+
+  double _wave01(double time, double phase) {
+    return (math.sin(time + phase) + 1) / 2;
+  }
+
+  List<double> _activePaletteStops(double time, double motionScale) {
+    final pinkEnd = _clampUnit(
+      0.27 + math.sin(time + 0.60) * 0.016 * motionScale,
+    );
+    final mintStart = math.max(
+      pinkEnd + 0.105,
+      _clampUnit(0.39 + math.sin(time * 2 + 1.40) * 0.020 * motionScale),
+    );
+    final mintEnd = math.max(
+      mintStart + 0.145,
+      _clampUnit(0.56 + math.cos(time + 2.20) * 0.020 * motionScale),
+    );
+    final blueStart = math.max(
+      mintEnd + 0.115,
+      _clampUnit(0.70 + math.sin(time * 2 + 3.10) * 0.014 * motionScale),
+    );
+    return <double>[
+      0.0,
+      pinkEnd,
+      mintStart.clamp(0.0, 0.52).toDouble(),
+      mintEnd.clamp(0.0, 0.66).toDouble(),
+      blueStart.clamp(0.0, 0.80).toDouble(),
+      1.0,
+    ];
+  }
+
+  double _clampUnit(double value) {
+    return value.clamp(0.0, 1.0).toDouble();
   }
 
   @override
@@ -1056,6 +1342,7 @@ class _AiRoundButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
     return Tooltip(
       message: tooltip,
       child: Material(
@@ -1067,7 +1354,7 @@ class _AiRoundButton extends StatelessWidget {
           child: SizedBox(
             width: 42,
             height: 42,
-            child: Icon(icon, size: 20, color: const Color(0xFF506052)),
+            child: Icon(icon, size: 20, color: palette.icon),
           ),
         ),
       ),
@@ -1147,6 +1434,7 @@ class _AiComposer extends StatelessWidget {
     required this.attachedImages,
     required this.mode,
     required this.status,
+    required this.solidSurface,
     required this.hasConversation,
     required this.errorLabel,
     required this.onProviderChanged,
@@ -1162,6 +1450,7 @@ class _AiComposer extends StatelessWidget {
   final List<PickedFoodImage> attachedImages;
   final AiShellMode mode;
   final _AiStatusPresentation status;
+  final bool solidSurface;
   final bool hasConversation;
   final String? errorLabel;
   final ValueChanged<_AiProvider> onProviderChanged;
@@ -1172,6 +1461,7 @@ class _AiComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
+    final palette = _AiThemePalette.of(context);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1199,11 +1489,18 @@ class _AiComposer extends StatelessWidget {
                 canSend &&
                 !sending &&
                 (value.text.trim().isNotEmpty || attachedImages.isNotEmpty);
+            final surfaceColor = solidSurface
+                ? const Color(0xFFF9FDFB)
+                : Colors.white.withValues(alpha: 0.76);
+            final borderColor = solidSurface
+                ? Colors.white
+                : Colors.white.withValues(alpha: 0.70);
             return DecoratedBox(
+              key: const ValueKey<String>('ai_composer_surface'),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.76),
+                color: surfaceColor,
                 borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+                border: Border.all(color: borderColor),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: const Color(0xFF273321).withValues(alpha: 0.08),
@@ -1237,7 +1534,7 @@ class _AiComposer extends StatelessWidget {
                                 ? onAttachPressed
                                 : null,
                             icon: const Icon(Icons.add_rounded),
-                            color: const Color(0xFF506052),
+                            color: palette.icon,
                             disabledColor: const Color(0xFF9DA89F),
                           ),
                         ),
@@ -1272,17 +1569,19 @@ class _AiComposer extends StatelessWidget {
                                 ? () => onSend(value.text)
                                 : null,
                             style: IconButton.styleFrom(
-                              disabledBackgroundColor: const Color(0xFFD8E0D7),
-                              disabledForegroundColor: const Color(0xFF8C978D),
-                              backgroundColor: const Color(0xFF5FA94D),
-                              foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  palette.disabledActionBackground,
+                              disabledForegroundColor:
+                                  palette.disabledActionForeground,
+                              backgroundColor: palette.action,
+                              foregroundColor: palette.onAction,
                             ),
                             icon: sending
-                                ? const SizedBox.square(
+                                ? SizedBox.square(
                                     dimension: 18,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: palette.onAction,
                                     ),
                                   )
                                 : const Icon(Icons.arrow_upward_rounded),
@@ -1592,6 +1891,7 @@ class _AiProviderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
     return Semantics(
       button: true,
       selected: selected,
@@ -1612,8 +1912,8 @@ class _AiProviderChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: selected
-                  ? const Color(0xFF284A31)
-                  : const Color(0xFF66736B),
+                  ? palette.providerSelectedText
+                  : palette.providerText,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
             ),
           ),
@@ -1630,15 +1930,16 @@ class _AiStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
     final indicatorColor = switch (status.tone) {
-      _AiStatusTone.available => const Color(0xFF5FA94D),
+      _AiStatusTone.available => palette.statusAvailableIndicator,
       _AiStatusTone.blocked => const Color(0xFFD58B33),
-      _AiStatusTone.unavailable => const Color(0xFF8E9A93),
+      _AiStatusTone.unavailable => palette.statusUnavailableIndicator,
     };
     final textColor = switch (status.tone) {
-      _AiStatusTone.available => const Color(0xFF2F6F35),
+      _AiStatusTone.available => palette.statusAvailableText,
       _AiStatusTone.blocked => const Color(0xFF86551F),
-      _AiStatusTone.unavailable => const Color(0xFF66736B),
+      _AiStatusTone.unavailable => palette.statusUnavailableText,
     };
 
     return DecoratedBox(
@@ -1681,6 +1982,8 @@ class _AiMessageList extends StatelessWidget {
     required this.controller,
     required this.scrollController,
     required this.latestUserKey,
+    required this.topPadding,
+    required this.bottomPadding,
     required this.sendAnchorBottomPadding,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
@@ -1689,6 +1992,8 @@ class _AiMessageList extends StatelessWidget {
   final AiChatController controller;
   final ScrollController scrollController;
   final GlobalKey latestUserKey;
+  final double topPadding;
+  final double bottomPadding;
   final double sendAnchorBottomPadding;
   final ValueChanged<AiFoodDraft> onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
@@ -1761,7 +2066,11 @@ class _AiMessageList extends StatelessWidget {
       );
     }
     if (controller.sending && pendingUserKey != null) {
-      _scheduleSendAnchorScroll(scrollController, pendingUserKey);
+      _scheduleSendAnchorScroll(
+        scrollController,
+        pendingUserKey,
+        readableTopPadding: topPadding,
+      );
     }
 
     return ListView(
@@ -1770,18 +2079,63 @@ class _AiMessageList extends StatelessWidget {
       physics: controller.sending
           ? const NeverScrollableScrollPhysics()
           : const ClampingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(2, 4, 2, 14),
+      padding: EdgeInsets.fromLTRB(2, topPadding, 2, bottomPadding),
       children: items,
+    );
+  }
+}
+
+class _AiMessageViewport extends StatelessWidget {
+  const _AiMessageViewport({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      key: const ValueKey<String>('ai_message_soft_edges'),
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) {
+        final height = bounds.height;
+        if (height <= 0) {
+          return const LinearGradient(
+            colors: <Color>[Colors.black, Colors.black],
+          ).createShader(bounds);
+        }
+        final topStop = (_aiMessageTopSoftEdgeHeight / height)
+            .clamp(0.0, 0.32)
+            .toDouble();
+        final bottomStop = (_aiMessageBottomSoftEdgeHeight / height)
+            .clamp(0.0, 0.12)
+            .toDouble();
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const <Color>[
+            Colors.transparent,
+            Colors.black,
+            Colors.black,
+            Colors.transparent,
+          ],
+          stops: <double>[0.0, topStop, 1 - bottomStop, 1.0],
+        ).createShader(bounds);
+      },
+      child: child,
     );
   }
 }
 
 void _scheduleSendAnchorScroll(
   ScrollController scrollController,
-  GlobalKey? pendingUserKey,
-) {
+  GlobalKey? pendingUserKey, {
+  required double readableTopPadding,
+}) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (_ensureSendAnchorVisible(pendingUserKey)) {
+    if (_alignSendAnchorToReadableTop(
+      scrollController,
+      pendingUserKey,
+      readableTopPadding: readableTopPadding,
+    )) {
       return;
     }
     if (!scrollController.hasClients) {
@@ -1789,21 +2143,43 @@ void _scheduleSendAnchorScroll(
     }
     scrollController.jumpTo(scrollController.position.maxScrollExtent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensureSendAnchorVisible(pendingUserKey);
+      _alignSendAnchorToReadableTop(
+        scrollController,
+        pendingUserKey,
+        readableTopPadding: readableTopPadding,
+      );
     });
   });
 }
 
-bool _ensureSendAnchorVisible(GlobalKey? pendingUserKey) {
+bool _alignSendAnchorToReadableTop(
+  ScrollController scrollController,
+  GlobalKey? pendingUserKey, {
+  required double readableTopPadding,
+}) {
   final targetContext = pendingUserKey?.currentContext;
-  if (targetContext == null) {
+  if (targetContext == null || !scrollController.hasClients) {
     return false;
   }
-  Scrollable.ensureVisible(
-    targetContext,
-    alignment: 0,
-    duration: Duration.zero,
-  );
+  final targetRenderObject = targetContext.findRenderObject();
+  final scrollable = Scrollable.maybeOf(targetContext);
+  final viewportRenderObject = scrollable?.context.findRenderObject();
+  if (targetRenderObject is! RenderBox ||
+      viewportRenderObject is! RenderBox ||
+      !targetRenderObject.attached ||
+      !viewportRenderObject.attached) {
+    return false;
+  }
+  final position = scrollController.position;
+  final targetTop = targetRenderObject.localToGlobal(Offset.zero).dy;
+  final viewportTop = viewportRenderObject.localToGlobal(Offset.zero).dy;
+  final desiredTop = viewportTop + readableTopPadding;
+  final nextOffset = (position.pixels + targetTop - desiredTop)
+      .clamp(position.minScrollExtent, position.maxScrollExtent)
+      .toDouble();
+  if ((nextOffset - position.pixels).abs() > 0.5) {
+    scrollController.jumpTo(nextOffset);
+  }
   return true;
 }
 
@@ -1883,9 +2259,13 @@ class _AiBubbleSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasCopyableText = text.trim().isNotEmpty;
+    final palette = _AiThemePalette.of(context);
     final content = isUser
-        ? _AiUserMessageContent(text: text, attachments: attachments)
+        ? _AiUserMessageContent(
+            text: text,
+            attachments: attachments,
+            textColor: palette.onUserBubble,
+          )
         : Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1893,7 +2273,7 @@ class _AiBubbleSurface extends StatelessWidget {
               _AiMarkdownText(
                 text: text,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF1A261D),
+                  color: palette.assistantText,
                   height: 1.42,
                   fontWeight: FontWeight.w500,
                 ),
@@ -1920,70 +2300,25 @@ class _AiBubbleSurface extends StatelessWidget {
             ],
           );
     return Align(
+      key: pending && isUser
+          ? const ValueKey<String>('ai_pending_user_bubble')
+          : null,
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: isUser
-                ? const Color(
-                    0xFF5FA94D,
-                  ).withValues(alpha: pending ? 0.70 : 0.92)
+                ? palette.userBubble
                 : Colors.white.withValues(alpha: 0.80),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            child: Stack(
-              children: <Widget>[
-                Padding(
-                  padding: EdgeInsetsDirectional.only(
-                    end: hasCopyableText ? 32 : 0,
-                  ),
-                  child: content,
-                ),
-                if (hasCopyableText)
-                  PositionedDirectional(
-                    top: -6,
-                    end: -6,
-                    child: _AiCopyMessageButton(text: text, isUser: isUser),
-                  ),
-              ],
-            ),
+            child: content,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _AiCopyMessageButton extends StatelessWidget {
-  const _AiCopyMessageButton({required this.text, required this.isUser});
-
-  final String text;
-  final bool isUser;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
-    return IconButton(
-      key: const ValueKey<String>('ai_message_copy_button'),
-      tooltip: strings.aiCopyMessageTooltip,
-      onPressed: () {
-        unawaited(Clipboard.setData(ClipboardData(text: text)));
-        FitLogNotifications.success(context, strings.aiMessageCopied);
-      },
-      icon: const Icon(Icons.copy_all_outlined, size: 17),
-      style: IconButton.styleFrom(
-        backgroundColor: isUser
-            ? Colors.white.withValues(alpha: 0.18)
-            : const Color(0xFFEAF1EA).withValues(alpha: 0.88),
-        foregroundColor: isUser ? Colors.white : const Color(0xFF3E5B42),
-        minimumSize: const Size(30, 30),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-        padding: EdgeInsets.zero,
       ),
     );
   }
@@ -2002,15 +2337,20 @@ class _AiFoodDraftArtifactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final strings = context.strings;
+    final palette = _AiThemePalette.of(context);
     final calories = draft.caloriesKcal?.round().toString() ?? '--';
     final enabled = onPressed != null;
     return DecoratedBox(
       key: const ValueKey<String>('ai_food_draft_artifact_card'),
       decoration: BoxDecoration(
-        color: enabled ? const Color(0xFFF4F9EE) : const Color(0xFFF1F3EF),
+        color: enabled
+            ? palette.artifactSurface
+            : palette.artifactDisabledSurface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: enabled ? const Color(0xFFCFE8BC) : const Color(0xFFD8DED5),
+          color: enabled
+              ? palette.artifactBorder
+              : palette.artifactDisabledBorder,
         ),
       ),
       child: Padding(
@@ -2022,7 +2362,7 @@ class _AiFoodDraftArtifactCard extends StatelessWidget {
             Text(
               strings.aiFoodDraftCardTitle,
               style: theme.textTheme.labelLarge?.copyWith(
-                color: const Color(0xFF315B2F),
+                color: palette.artifactTitle,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2030,7 +2370,7 @@ class _AiFoodDraftArtifactCard extends StatelessWidget {
             Text(
               strings.aiFoodDraftCardSummary(draft.mealName, calories),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF4F6251),
+                color: palette.artifactBody,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2041,9 +2381,11 @@ class _AiFoodDraftArtifactCard extends StatelessWidget {
                 onPressed: onPressed,
                 style: FilledButton.styleFrom(
                   backgroundColor: enabled
-                      ? const Color(0xFF5FA94D)
-                      : const Color(0xFFB7BFB3),
-                  foregroundColor: Colors.white,
+                      ? palette.action
+                      : palette.artifactButtonDisabledBackground,
+                  foregroundColor: enabled
+                      ? palette.onAction
+                      : palette.artifactButtonDisabledForeground,
                   textStyle: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -2079,14 +2421,19 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final strings = context.strings;
+    final palette = _AiThemePalette.of(context);
     final enabled = onPressed != null;
     return DecoratedBox(
       key: const ValueKey<String>('ai_workout_draft_artifact_card'),
       decoration: BoxDecoration(
-        color: enabled ? const Color(0xFFF4F9EE) : const Color(0xFFF1F3EF),
+        color: enabled
+            ? palette.artifactSurface
+            : palette.artifactDisabledSurface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: enabled ? const Color(0xFFCFE8BC) : const Color(0xFFD8DED5),
+          color: enabled
+              ? palette.artifactBorder
+              : palette.artifactDisabledBorder,
         ),
       ),
       child: Padding(
@@ -2098,7 +2445,7 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
             Text(
               strings.aiWorkoutDraftCardTitle,
               style: theme.textTheme.labelLarge?.copyWith(
-                color: const Color(0xFF315B2F),
+                color: palette.artifactTitle,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2109,7 +2456,7 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
                 draft.exerciseCount,
               ),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF4F6251),
+                color: palette.artifactBody,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2120,9 +2467,11 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
                 onPressed: onPressed,
                 style: FilledButton.styleFrom(
                   backgroundColor: enabled
-                      ? const Color(0xFF5FA94D)
-                      : const Color(0xFFB7BFB3),
-                  foregroundColor: Colors.white,
+                      ? palette.action
+                      : palette.artifactButtonDisabledBackground,
+                  foregroundColor: enabled
+                      ? palette.onAction
+                      : palette.artifactButtonDisabledForeground,
                   textStyle: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -2146,10 +2495,15 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
 }
 
 class _AiUserMessageContent extends StatelessWidget {
-  const _AiUserMessageContent({required this.text, required this.attachments});
+  const _AiUserMessageContent({
+    required this.text,
+    required this.attachments,
+    required this.textColor,
+  });
 
   final String text;
   final List<AiGatewayImageAttachment> attachments;
+  final Color textColor;
 
   @override
   Widget build(BuildContext context) {
@@ -2160,7 +2514,7 @@ class _AiUserMessageContent extends StatelessWidget {
         : SelectableText(
             trimmed,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white,
+              color: textColor,
               height: 1.42,
               fontWeight: FontWeight.w700,
             ),
@@ -2249,6 +2603,7 @@ class _AiAssistantLoadingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
     return Align(
       key: const ValueKey<String>('ai_assistant_loading_bubble'),
       alignment: Alignment.centerLeft,
@@ -2267,14 +2622,14 @@ class _AiAssistantLoadingBubble extends StatelessWidget {
                 dimension: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: const Color(0xFF5FA94D),
+                  color: palette.action,
                 ),
               ),
               const SizedBox(width: 8),
               Text(
                 context.strings.aiThinkingStatus,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF506052),
+                  color: palette.icon,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -2295,6 +2650,7 @@ class _AiMarkdownText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseStyle = style ?? Theme.of(context).textTheme.bodyMedium;
+    final palette = _AiThemePalette.of(context);
     return MarkdownBody(
       data: text,
       selectable: true,
@@ -2308,7 +2664,7 @@ class _AiMarkdownText extends StatelessWidget {
         return SelectableText(
           label,
           style: baseStyle?.copyWith(
-            color: const Color(0xFF5A665C),
+            color: palette.markdownAuxText,
             fontStyle: FontStyle.italic,
           ),
         );
@@ -2323,12 +2679,13 @@ MarkdownStyleSheet _aiMarkdownStyleSheet(
   TextStyle? baseStyle,
 ) {
   final theme = Theme.of(context);
+  final palette = _AiThemePalette.of(context);
   final base = baseStyle ?? theme.textTheme.bodyMedium ?? const TextStyle();
   final heading = base.copyWith(fontWeight: FontWeight.w800, height: 1.34);
   final code = base.copyWith(
     fontFamily: 'monospace',
-    color: const Color(0xFF243329),
-    backgroundColor: const Color(0xFFEAF1EA),
+    color: palette.markdownCodeText,
+    backgroundColor: palette.markdownCodeBackground,
   );
   return MarkdownStyleSheet.fromTheme(theme).copyWith(
     p: base,
@@ -2349,28 +2706,28 @@ MarkdownStyleSheet _aiMarkdownStyleSheet(
     strong: base.copyWith(fontWeight: FontWeight.w800),
     em: base.copyWith(fontStyle: FontStyle.italic),
     a: base.copyWith(
-      color: const Color(0xFF315B2F),
+      color: palette.artifactTitle,
       decoration: TextDecoration.underline,
     ),
-    blockquote: base.copyWith(color: const Color(0xFF4F6251)),
+    blockquote: base.copyWith(color: palette.artifactBody),
     blockquotePadding: const EdgeInsets.only(left: 10),
-    blockquoteDecoration: const BoxDecoration(
-      border: Border(left: BorderSide(color: Color(0xFFCFE8BC), width: 3)),
+    blockquoteDecoration: BoxDecoration(
+      border: Border(left: BorderSide(color: palette.artifactBorder, width: 3)),
     ),
     code: code,
     codeblockPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
     codeblockDecoration: BoxDecoration(
-      color: const Color(0xFFF0F4F1),
+      color: palette.markdownCodeBlockBackground,
       borderRadius: BorderRadius.circular(8),
     ),
     listBullet: base.copyWith(fontWeight: FontWeight.w700),
     listIndent: 22,
     tableHead: base.copyWith(fontWeight: FontWeight.w800),
     tableBody: base,
-    tableBorder: TableBorder.all(color: const Color(0xFFD8E3D6)),
+    tableBorder: TableBorder.all(color: palette.markdownTableBorder),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
     img: base.copyWith(
-      color: const Color(0xFF5A665C),
+      color: palette.markdownAuxText,
       fontStyle: FontStyle.italic,
     ),
   );
@@ -2488,7 +2845,7 @@ class _AiHistoryPanel extends StatelessWidget {
                       Text(
                         strings.aiHistorySignedOut,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF647067),
+                          color: _AiThemePalette.of(context).mutedText,
                           height: 1.4,
                         ),
                       )
@@ -2518,7 +2875,7 @@ class _AiHistoryPanel extends StatelessWidget {
                           strings.aiHistoryEmpty,
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
-                                color: const Color(0xFF647067),
+                                color: _AiThemePalette.of(context).mutedText,
                                 height: 1.4,
                               ),
                         )
@@ -2710,14 +3067,15 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
     final textColor = widget.selected
-        ? const Color(0xFF284A31)
-        : const Color(0xFF334137);
+        ? palette.historySelectedText
+        : palette.historyText;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: widget.selected
-            ? const Color(0xFFDDF2D7).withValues(alpha: 0.82)
-            : Colors.white.withValues(alpha: 0.48),
+            ? palette.historySelectedSurface
+            : palette.historySurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Material(
@@ -2787,7 +3145,7 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
         minLines: 1,
         maxLines: 2,
         style: titleStyle,
-        cursorColor: const Color(0xFF4D9842),
+        cursorColor: _AiThemePalette.of(context).action,
         onSubmitted: (_) => _submitRename(),
         decoration: const InputDecoration(
           counterText: '',

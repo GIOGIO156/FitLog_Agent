@@ -307,6 +307,75 @@ Deno.test("parseProviderGatewayBody extracts JSON object from provider prose", (
   );
 });
 
+Deno.test("parseProviderGatewayBody extracts food draft JSON after friendly prose", () => {
+  const request = parseGatewayRequest({
+    message: { text: "200ml 全脂牛奶，生成饮食草稿。" },
+    language: "zh",
+    model_choice: "qwen",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+  });
+  const draft = {
+    ...validDraft(),
+    meal_name: "全脂牛奶",
+    total_weight_g: 200,
+    calories_kcal: 130,
+    protein_g: 6.4,
+    carbs_g: 9.6,
+    fat_g: 7.6,
+    estimation_notes: "按常见全脂牛奶营养数据估算。",
+    items: [{
+      name: "全脂牛奶",
+      weight_g: 200,
+      calories_kcal: 130,
+      protein_g: 6.4,
+      carbs_g: 9.6,
+      fat_g: 7.6,
+    }],
+  };
+  const parsed = parseProviderGatewayBody([
+    "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。",
+    "",
+    JSON.stringify({
+      message: {
+        text: "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。请确认后保存。",
+      },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft,
+    }),
+  ].join("\n"), request);
+
+  assertEquals(
+    parsed.messageText,
+    "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。请确认后保存。",
+  );
+  assertEquals(parsed.draft?.meal_name, "全脂牛奶");
+  assertEquals(parsed.needsClarification, false);
+});
+
+Deno.test("parseProviderGatewayBody skips non-contract JSON before draft JSON", () => {
+  const request = parseGatewayRequest({
+    message: { text: "Log this milk." },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+  });
+  const parsed = parseProviderGatewayBody([
+    'Example note object that should not become the response: {"note":"not a gateway"}',
+    JSON.stringify({
+      message: { text: "Review this food draft before saving." },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft: validDraft(),
+    }),
+  ].join("\n"), request);
+
+  assertEquals(parsed.messageText, "Review this food draft before saving.");
+  assertEquals(parsed.draft?.meal_name, "Chicken rice");
+});
+
 Deno.test("runMockProvider returns fixed text and stable simulated failures", () => {
   const baseRequest = parseGatewayRequest({
     message: { text: "hello" },
@@ -396,9 +465,12 @@ Deno.test("provider adapter builds safe request without leaking unsupported fiel
     device_id: "device-a",
   }));
 
+  const json = JSON.stringify(capturedBody);
   assertEquals(result, "ok");
   assertEquals(capturedBody?.model, "qwen-model");
   assertEquals(capturedBody?.enable_thinking, false);
+  assert(json.includes("Put all user-facing explanation"));
+  assert(json.includes("message.text"));
   assertEquals("attachments" in (capturedBody ?? {}), false);
   assertEquals("context_objects" in (capturedBody ?? {}), false);
 });

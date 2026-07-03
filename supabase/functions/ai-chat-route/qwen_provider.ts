@@ -132,8 +132,8 @@ function systemMessage(request: GatewayRequest): string {
   const hasImage = request.attachments.length > 0;
   if (!hasImage) {
     return request.language === "zh"
-      ? "你是 FitLog 的 AI 聊天助手。你可以回答健身、饮食、FitLog 使用和复盘类文本问题，也可以在用户明确要求时生成需要用户确认的 Food Draft 或 Workout Draft。不能调用 RAG，不能写入或修改任何正式记录，不能自动修改目标。训练草稿最多追问一次；如果用户回答仍不完整或说不知道，就生成可编辑的不完整 Workout Draft，并把不确定处写进 notes。回答应简洁、诚实。"
-      : "You are FitLog's AI chat assistant. You can answer text questions about fitness, food, FitLog usage, and review, and you may generate a user-confirmed Food Draft or Workout Draft when the user clearly asks for one. Do not use RAG, write or modify official records, or change goals automatically. Ask at most one clarifying turn for workout drafts; if the user still gives incomplete data or says they do not know, create an editable incomplete Workout Draft and put uncertainties in notes. Keep answers concise and honest.";
+      ? "你是 FitLog 的 AI 聊天助手。你可以回答健身、饮食、FitLog 使用和复盘类文本问题，也可以在用户明确要求时生成需要用户确认的 Food Draft 或 Workout Draft。普通问答可用简洁 Markdown；草稿类回复必须只输出一个 JSON 对象，把面向用户的解释写进 message.text，把结构化草稿写进 draft，不能在 JSON 外再写说明。不能调用 RAG，不能写入或修改任何正式记录，不能自动修改目标。训练草稿最多追问一次；如果用户回答仍不完整或说不知道，就生成可编辑的不完整 Workout Draft，并把不确定处写进 notes。回答应简洁、诚实。"
+      : "You are FitLog's AI chat assistant. You can answer text questions about fitness, food, FitLog usage, and review, and you may generate a user-confirmed Food Draft or Workout Draft when the user clearly asks for one. Normal answers may use concise Markdown; draft replies must output exactly one JSON object, with user-facing explanation in message.text and structured data in draft, and no prose outside JSON. Do not use RAG, write or modify official records, or change goals automatically. Ask at most one clarifying turn for workout drafts; if the user still gives incomplete data or says they do not know, create an editable incomplete Workout Draft and put uncertainties in notes. Keep answers concise and honest.";
   }
   return request.language === "zh"
     ? "你是 FitLog 的多模态 AI 助手。你可以读取本次请求最多三张图片，用于拍照识食物、截图/拍照配餐建议或复盘说明。不能调用 RAG，不能保存正式记录，不能修改目标。食物识别只能返回可编辑 Food Draft；训练记录只能返回可编辑 Workout Draft。所有草稿都必须由用户确认保存后才成为正式记录。输出严格 JSON。"
@@ -144,8 +144,9 @@ function textUserPrompt(request: GatewayRequest): string {
   return [
     conversationContextPrompt(request),
     "Answer normal questions in concise Markdown.",
-    "If the user explicitly asks FitLog to create a food or workout record draft, return strict JSON only. Do not wrap JSON in Markdown fences and do not add prose before or after it:",
-    '{"message":{"text":"..."},"needs_clarification":false,"clarification_questions":[],"draft":null}',
+    "If the user explicitly asks FitLog to create a food or workout record draft, or if the user is replying to a draft clarification, return exactly one JSON object using this envelope. Do not wrap it in Markdown fences and do not add prose before or after the JSON:",
+    '{"message":{"text":"Friendly user-facing explanation and review instructions go here."},"needs_clarification":false,"clarification_questions":[],"draft":null}',
+    "Put all user-facing explanation, uncertainty, and review instructions inside message.text. The app displays message.text and renders draft as a native review card; never print the draft JSON as visible prose.",
     "Food Draft shape:",
     '{"meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}',
     "Workout Draft shape:",
