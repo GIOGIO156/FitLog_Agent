@@ -1225,6 +1225,55 @@ void main() {
     );
   });
 
+  testWidgets('Profile body field reveal clears the keyboard without rebound', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Age'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Age'));
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    final fieldBottom = tester.getRect(find.byType(TextField).last).bottom;
+    expect(fieldBottom, lessThanOrEqualTo(640 - 300 - 12));
+  });
+
   testWidgets('Body metric calendar defaults to today', (tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     tester.view.physicalSize = const Size(390, 1400);

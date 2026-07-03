@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -51,6 +52,7 @@ const double _aiDefaultComposerHeight = 88;
 const double _aiSendingTurnEstimatedHeight = 96;
 const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
+const Duration _aiKeyboardTransitionSettleDelay = Duration(milliseconds: 180);
 const Set<String> _supportedChatImageMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -234,34 +236,79 @@ class AiPage extends StatefulWidget {
   State<AiPage> createState() => _AiPageState();
 }
 
-class _AiPageState extends State<AiPage> {
+class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _messageScrollController = ScrollController();
   final GlobalKey _composerLayoutKey = GlobalKey();
   final GlobalKey _latestUserMessageKey = GlobalKey();
+  final ValueNotifier<bool> _keyboardTransitioning = ValueNotifier<bool>(false);
   late final FoodImagePicker _imagePicker;
   _AiProvider _provider = _AiProvider.chatGpt;
   bool _historyOpen = false;
   List<PickedFoodImage> _attachedImages = const <PickedFoodImage>[];
   String? _composerNoticeText;
   Timer? _composerNoticeTimer;
+  Timer? _keyboardTransitionTimer;
   String? _accountBoundaryKey;
   String? _chatSyncKey;
+  double? _lastKeyboardBottomInset;
   double _composerHeight = _aiDefaultComposerHeight;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _lastKeyboardBottomInset = _currentViewKeyboardInset();
+    });
     unawaited(_loadProviderPreference());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _composerNoticeTimer?.cancel();
+    _keyboardTransitionTimer?.cancel();
+    _keyboardTransitioning.dispose();
     _messageScrollController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final nextInset = _currentViewKeyboardInset();
+    if (nextInset == null) {
+      return;
+    }
+    final previousInset = _lastKeyboardBottomInset;
+    _lastKeyboardBottomInset = nextInset;
+    if (previousInset != null && (nextInset - previousInset).abs() < 0.5) {
+      return;
+    }
+    if (!_keyboardTransitioning.value) {
+      _keyboardTransitioning.value = true;
+    }
+    _keyboardTransitionTimer?.cancel();
+    _keyboardTransitionTimer = Timer(_aiKeyboardTransitionSettleDelay, () {
+      if (!mounted) {
+        return;
+      }
+      _keyboardTransitioning.value = false;
+    });
+  }
+
+  double? _currentViewKeyboardInset() {
+    final view = View.maybeOf(context);
+    if (view == null) {
+      return null;
+    }
+    return view.viewInsets.bottom / view.devicePixelRatio;
   }
 
   @override
@@ -278,9 +325,8 @@ class _AiPageState extends State<AiPage> {
         ? accountController?.aiAvailability.canSend ?? false
         : effectiveMode != AiShellMode.disabled;
     final hasConversation = chatController?.hasVisibleConversation ?? false;
-    final mediaQuery = MediaQuery.of(context);
-    final bottomInset = mediaQuery.viewInsets.bottom;
-    final keyboardVisible = bottomInset > 0;
+    final mediaSize = MediaQuery.sizeOf(context);
+    final mediaPadding = MediaQuery.paddingOf(context);
     final quietBackground =
         hasConversation || (chatController?.sending ?? false);
     final status = _statusPresentation(
@@ -292,30 +338,6 @@ class _AiPageState extends State<AiPage> {
         ? null
         : _aiErrorLabel(context, chatController!.lastError!);
     final errorLabel = _composerNoticeText ?? gatewayErrorLabel;
-    final composerBottomPadding = keyboardVisible
-        ? bottomInset
-        : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
-    final messageViewportGap = keyboardVisible ? 0.0 : _aiMessageBottomGap;
-    final readableBottomObstruction =
-        composerBottomPadding + _composerHeight + messageViewportGap;
-    final messageViewportBottomObstruction = keyboardVisible
-        ? composerBottomPadding
-        : readableBottomObstruction;
-    final messageListBottomPadding =
-        _aiMessageListBottomSafePadding +
-        (keyboardVisible ? _composerHeight : 0.0);
-    final contentTopPadding = hasConversation
-        ? _aiTopBarHeight + _aiMessageTopGap
-        : 74.0;
-    final messageListTopPadding = contentTopPadding + _aiMessageListTopPadding;
-    final viewportHeight =
-        mediaQuery.size.height -
-        mediaQuery.padding.top -
-        contentTopPadding -
-        readableBottomObstruction;
-    final sendAnchorPadding = chatController?.sending == true
-        ? math.max(0.0, viewportHeight - _aiSendingTurnEstimatedHeight)
-        : 0.0;
     _scheduleComposerMeasure();
 
     return Stack(
@@ -328,101 +350,44 @@ class _AiPageState extends State<AiPage> {
               motion: quietBackground
                   ? _AiBackgroundMotion.quietChat
                   : _AiBackgroundMotion.idleLanding,
+              pauseListenable: _keyboardTransitioning,
             ),
           ),
         ),
-        SafeArea(
-          bottom: false,
-          child: Stack(
-            children: <Widget>[
-              if (hasConversation)
-                Positioned(
-                  left: 18,
-                  top: 0,
-                  right: 18,
-                  bottom: messageViewportBottomObstruction,
-                  child: _AiMessageViewport(
-                    child: _AiMessageList(
-                      controller: chatController!,
-                      scrollController: _messageScrollController,
-                      latestUserKey: _latestUserMessageKey,
-                      topPadding: messageListTopPadding,
-                      bottomPadding: messageListBottomPadding,
-                      sendAnchorBottomPadding: sendAnchorPadding,
-                      onOpenFoodDraft: _openFoodDraftPreview,
-                      onOpenWorkoutDraft: _openWorkoutDraftPreview,
-                    ),
-                  ),
-                )
-              else
-                Positioned(
-                  left: 18,
-                  top: 18,
-                  right: 18,
-                  bottom: readableBottomObstruction,
-                  child: Center(
-                    child: SingleChildScrollView(
-                      physics: const NeverScrollableScrollPhysics(),
-                      child: _AiCenterStatus(
-                        mode: effectiveMode,
-                        displayName:
-                            widget.displayName ??
-                            cloudNickname ??
-                            accountController?.authSession.displayName,
-                      ),
-                    ),
-                  ),
-                ),
-              _AiTopBar(
-                accountController: accountController,
-                showProviderStatus: hasConversation,
-                provider: _provider,
-                status: status,
-                onProviderChanged: _selectProvider,
-                onOpenHistory: () => setState(() => _historyOpen = true),
-              ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    _aiComposerHorizontalPadding,
-                    0,
-                    _aiComposerHorizontalPadding,
-                    composerBottomPadding,
-                  ),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: _aiComposerMaxWidth,
-                    ),
-                    child: KeyedSubtree(
-                      key: _composerLayoutKey,
-                      child: _AiComposer(
-                        controller: _controller,
-                        provider: _provider,
-                        canSend: canUseGateway,
-                        sending: chatController?.sending ?? false,
-                        attachedImages: _attachedImages,
-                        mode: effectiveMode,
-                        status: status,
-                        solidSurface: keyboardVisible,
-                        hasConversation: hasConversation,
-                        errorLabel: errorLabel,
-                        onProviderChanged: _selectProvider,
-                        onAttachPressed: _chooseImageAttachment,
-                        onRemoveAttachment: _removeImageAttachment,
-                        onSend: (text) => _sendMessage(
-                          text: text,
-                          chatController: chatController,
-                          accountController: accountController,
-                          cloudRuntimeContext: cloudRuntimeContext,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+        _AiKeyboardResponsiveLayer(
+          screenSize: mediaSize,
+          screenPadding: mediaPadding,
+          hasConversation: hasConversation,
+          chatController: chatController,
+          messageScrollController: _messageScrollController,
+          latestUserMessageKey: _latestUserMessageKey,
+          composerLayoutKey: _composerLayoutKey,
+          composerHeight: _composerHeight,
+          controller: _controller,
+          provider: _provider,
+          canUseGateway: canUseGateway,
+          sending: chatController?.sending ?? false,
+          attachedImages: _attachedImages,
+          mode: effectiveMode,
+          status: status,
+          errorLabel: errorLabel,
+          displayName:
+              widget.displayName ??
+              cloudNickname ??
+              accountController?.authSession.displayName,
+          accountController: accountController,
+          onProviderChanged: _selectProvider,
+          onOpenHistory: () => setState(() => _historyOpen = true),
+          onAttachPressed: _chooseImageAttachment,
+          onRemoveAttachment: _removeImageAttachment,
+          onSend: (text) => _sendMessage(
+            text: text,
+            chatController: chatController,
+            accountController: accountController,
+            cloudRuntimeContext: cloudRuntimeContext,
           ),
+          onOpenFoodDraft: _openFoodDraftPreview,
+          onOpenWorkoutDraft: _openWorkoutDraftPreview,
         ),
         if (_historyOpen)
           _AiHistoryPanel(
@@ -433,7 +398,7 @@ class _AiPageState extends State<AiPage> {
           left: 0,
           right: 0,
           bottom: 0,
-          height: math.max(mediaQuery.padding.bottom, 8),
+          height: math.max(mediaPadding.bottom, 8),
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -946,11 +911,185 @@ class _AiPageState extends State<AiPage> {
   }
 }
 
+class _AiKeyboardResponsiveLayer extends StatelessWidget {
+  const _AiKeyboardResponsiveLayer({
+    required this.screenSize,
+    required this.screenPadding,
+    required this.hasConversation,
+    required this.chatController,
+    required this.messageScrollController,
+    required this.latestUserMessageKey,
+    required this.composerLayoutKey,
+    required this.composerHeight,
+    required this.controller,
+    required this.provider,
+    required this.canUseGateway,
+    required this.sending,
+    required this.attachedImages,
+    required this.mode,
+    required this.status,
+    required this.errorLabel,
+    required this.displayName,
+    required this.accountController,
+    required this.onProviderChanged,
+    required this.onOpenHistory,
+    required this.onAttachPressed,
+    required this.onRemoveAttachment,
+    required this.onSend,
+    required this.onOpenFoodDraft,
+    required this.onOpenWorkoutDraft,
+  });
+
+  final Size screenSize;
+  final EdgeInsets screenPadding;
+  final bool hasConversation;
+  final AiChatController? chatController;
+  final ScrollController messageScrollController;
+  final GlobalKey latestUserMessageKey;
+  final GlobalKey composerLayoutKey;
+  final double composerHeight;
+  final TextEditingController controller;
+  final _AiProvider provider;
+  final bool canUseGateway;
+  final bool sending;
+  final List<PickedFoodImage> attachedImages;
+  final AiShellMode mode;
+  final _AiStatusPresentation status;
+  final String? errorLabel;
+  final String? displayName;
+  final AccountController? accountController;
+  final ValueChanged<_AiProvider> onProviderChanged;
+  final VoidCallback onOpenHistory;
+  final VoidCallback onAttachPressed;
+  final ValueChanged<int> onRemoveAttachment;
+  final ValueChanged<String> onSend;
+  final ValueChanged<AiFoodDraft> onOpenFoodDraft;
+  final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardVisible = bottomInset > 0;
+    final composerBottomPadding = keyboardVisible
+        ? bottomInset
+        : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
+    final messageViewportGap = keyboardVisible ? 0.0 : _aiMessageBottomGap;
+    final readableBottomObstruction =
+        composerBottomPadding + composerHeight + messageViewportGap;
+    final messageViewportBottomObstruction = keyboardVisible
+        ? composerBottomPadding
+        : readableBottomObstruction;
+    final messageListBottomPadding =
+        _aiMessageListBottomSafePadding +
+        (keyboardVisible ? composerHeight : 0.0);
+    final contentTopPadding = hasConversation
+        ? _aiTopBarHeight + _aiMessageTopGap
+        : 74.0;
+    final messageListTopPadding = contentTopPadding + _aiMessageListTopPadding;
+    final viewportHeight =
+        screenSize.height -
+        screenPadding.top -
+        contentTopPadding -
+        readableBottomObstruction;
+    final sendAnchorPadding = sending
+        ? math.max(0.0, viewportHeight - _aiSendingTurnEstimatedHeight)
+        : 0.0;
+
+    return SafeArea(
+      bottom: false,
+      child: Stack(
+        children: <Widget>[
+          if (hasConversation)
+            Positioned(
+              left: 18,
+              top: 0,
+              right: 18,
+              bottom: messageViewportBottomObstruction,
+              child: _AiMessageViewport(
+                child: _AiMessageList(
+                  controller: chatController!,
+                  scrollController: messageScrollController,
+                  latestUserKey: latestUserMessageKey,
+                  topPadding: messageListTopPadding,
+                  bottomPadding: messageListBottomPadding,
+                  sendAnchorBottomPadding: sendAnchorPadding,
+                  onOpenFoodDraft: onOpenFoodDraft,
+                  onOpenWorkoutDraft: onOpenWorkoutDraft,
+                ),
+              ),
+            )
+          else
+            Positioned(
+              left: 18,
+              top: 18,
+              right: 18,
+              bottom: readableBottomObstruction,
+              child: Center(
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: _AiCenterStatus(mode: mode, displayName: displayName),
+                ),
+              ),
+            ),
+          _AiTopBar(
+            accountController: accountController,
+            showProviderStatus: hasConversation,
+            provider: provider,
+            status: status,
+            onProviderChanged: onProviderChanged,
+            onOpenHistory: onOpenHistory,
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                _aiComposerHorizontalPadding,
+                0,
+                _aiComposerHorizontalPadding,
+                composerBottomPadding,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: _aiComposerMaxWidth,
+                ),
+                child: KeyedSubtree(
+                  key: composerLayoutKey,
+                  child: _AiComposer(
+                    controller: controller,
+                    provider: provider,
+                    canSend: canUseGateway,
+                    sending: sending,
+                    attachedImages: attachedImages,
+                    mode: mode,
+                    status: status,
+                    solidSurface: keyboardVisible,
+                    hasConversation: hasConversation,
+                    errorLabel: errorLabel,
+                    onProviderChanged: onProviderChanged,
+                    onAttachPressed: onAttachPressed,
+                    onRemoveAttachment: onRemoveAttachment,
+                    onSend: onSend,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AiAnimatedBackground extends StatefulWidget {
-  const _AiAnimatedBackground({required this.mode, required this.motion});
+  const _AiAnimatedBackground({
+    required this.mode,
+    required this.motion,
+    required this.pauseListenable,
+  });
 
   final AiShellMode mode;
   final _AiBackgroundMotion motion;
+  final ValueListenable<bool> pauseListenable;
 
   @override
   State<_AiAnimatedBackground> createState() => _AiAnimatedBackgroundState();
@@ -964,22 +1103,38 @@ class _AiAnimatedBackgroundState extends State<_AiAnimatedBackground>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: _duration);
-    _controller.repeat();
+    widget.pauseListenable.addListener(_syncAnimationState);
+    _syncAnimationState();
   }
 
   @override
   void didUpdateWidget(covariant _AiAnimatedBackground oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _controller.duration = _duration;
-    if (!_controller.isAnimating) {
-      _controller.repeat();
+    if (oldWidget.pauseListenable != widget.pauseListenable) {
+      oldWidget.pauseListenable.removeListener(_syncAnimationState);
+      widget.pauseListenable.addListener(_syncAnimationState);
     }
+    _controller.duration = _duration;
+    _syncAnimationState();
   }
 
   @override
   void dispose() {
+    widget.pauseListenable.removeListener(_syncAnimationState);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _syncAnimationState() {
+    if (widget.pauseListenable.value) {
+      if (_controller.isAnimating) {
+        _controller.stop(canceled: false);
+      }
+      return;
+    }
+    if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   Duration get _duration {

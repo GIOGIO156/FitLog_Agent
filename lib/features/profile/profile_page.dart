@@ -2020,7 +2020,6 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
 
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final navReservedHeight = FitLogBottomNavBar.reservedHeightFor(context);
     final draftBarBottomOffset =
         navReservedHeight - FitLogBottomNavBar.topContentGap + 8;
@@ -2033,9 +2032,7 @@ class _ProfilePageState extends State<ProfilePage> {
         children: <Widget>[
           ListView(
             controller: _scrollController,
-            padding: EdgeInsets.only(
-              bottom: navReservedHeight + 28 + draftBarHeight + keyboardInset,
-            ),
+            padding: EdgeInsets.zero,
             children: <Widget>[
               FitLogPageHeader(
                 title: strings.isChinese ? '用户设置' : 'User Settings',
@@ -3074,6 +3071,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           ],
                         ),
                       ),
+                    _ProfileKeyboardInsetSpacer(
+                      baseHeight: navReservedHeight + 28 + draftBarHeight,
+                    ),
                   ],
                 ),
               ),
@@ -3637,9 +3637,7 @@ class _ProfileSignInField extends StatelessWidget {
           obscureText: obscureText,
           enableSuggestions: !obscureText,
           autocorrect: !obscureText,
-          scrollPadding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
-          ),
+          scrollPadding: const EdgeInsets.only(bottom: 24),
           style: fieldTextStyle,
           decoration: InputDecoration(
             labelText: label,
@@ -5854,6 +5852,27 @@ class _ProfileTileValue extends StatelessWidget {
   }
 }
 
+class _ProfileKeyboardInsetSpacer extends StatelessWidget {
+  const _ProfileKeyboardInsetSpacer({required this.baseHeight});
+
+  final double baseHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: baseHeight + MediaQuery.viewInsetsOf(context).bottom,
+    );
+  }
+}
+
+const Duration _profileKeyboardRevealDelay = Duration(milliseconds: 90);
+const Duration _profileKeyboardFallbackRevealDelay = Duration(
+  milliseconds: 220,
+);
+const Duration _profileKeyboardRevealDuration = Duration(milliseconds: 180);
+const double _profileKeyboardRevealBottomGap = 22;
+const double _profileKeyboardRevealTopGap = 12;
+
 class _KeyboardFocusRevealer extends StatefulWidget {
   const _KeyboardFocusRevealer({required this.child, this.alignment = 0.38});
 
@@ -5873,8 +5892,10 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    if (_focused && _lastKeyboardInset != keyboardInset) {
-      _scheduleReveal(const Duration(milliseconds: 90));
+    if (_focused &&
+        _lastKeyboardInset != null &&
+        (keyboardInset - _lastKeyboardInset!).abs() > 0.5) {
+      _scheduleReveal(_profileKeyboardRevealDelay);
     }
     _lastKeyboardInset = keyboardInset;
   }
@@ -5891,7 +5912,12 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
       _timer?.cancel();
       return;
     }
-    _scheduleReveal(Duration.zero);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    _scheduleReveal(
+      keyboardInset > 0
+          ? _profileKeyboardRevealDelay
+          : _profileKeyboardFallbackRevealDelay,
+    );
   }
 
   void _scheduleReveal(Duration delay) {
@@ -5901,15 +5927,65 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
         if (!mounted || !_focused || Scrollable.maybeOf(context) == null) {
           return;
         }
-        Scrollable.ensureVisible(
-          context,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          alignment: widget.alignment,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        );
+        _revealFocusedInput();
       });
     });
+  }
+
+  void _revealFocusedInput() {
+    final scrollable = Scrollable.maybeOf(context);
+    final renderObject = context.findRenderObject();
+    if (scrollable == null ||
+        renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return;
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
+    if (keyboardInset <= 0) {
+      Scrollable.ensureVisible(
+        context,
+        duration: _profileKeyboardRevealDuration,
+        curve: Curves.easeOutCubic,
+        alignment: widget.alignment,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+      return;
+    }
+
+    final top = renderObject.localToGlobal(Offset.zero).dy;
+    final bottom = renderObject
+        .localToGlobal(Offset(0, renderObject.size.height))
+        .dy;
+    final visibleTop = mediaQuery.padding.top + _profileKeyboardRevealTopGap;
+    final visibleBottom =
+        mediaQuery.size.height -
+        keyboardInset -
+        _profileKeyboardRevealBottomGap;
+    var delta = 0.0;
+    if (bottom > visibleBottom) {
+      delta = bottom - visibleBottom;
+    } else if (top < visibleTop) {
+      delta = top - visibleTop;
+    }
+    if (delta.abs() < 1) {
+      return;
+    }
+
+    final position = scrollable.position;
+    final target = (position.pixels + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - position.pixels).abs() < 1) {
+      return;
+    }
+    position.animateTo(
+      target,
+      duration: _profileKeyboardRevealDuration,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -5943,9 +6019,7 @@ class _BorderlessProfileTextField extends StatelessWidget {
         maxLines: 1,
         textAlignVertical: TextAlignVertical.center,
         onChanged: onChanged,
-        scrollPadding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
-        ),
+        scrollPadding: const EdgeInsets.only(bottom: 24),
         style: Theme.of(context).textTheme.headlineSmall?.copyWith(
           fontWeight: FontWeight.w800,
           color: fitTheme.textPrimary,
@@ -5998,9 +6072,7 @@ class _InlineUnitEditor extends StatelessWidget {
               maxLines: 1,
               textAlignVertical: TextAlignVertical.center,
               onChanged: onChanged,
-              scrollPadding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(context).bottom + 140,
-              ),
+              scrollPadding: const EdgeInsets.only(bottom: 24),
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: fitTheme.textPrimary,

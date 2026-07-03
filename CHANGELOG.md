@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-07-03 Keyboard Animation Performance
+
+### Changed
+
+- Changed AI Chat keyboard handling so `viewInsets` changes rebuild only the keyboard-responsive composer/message layer, while the animated liquid background stays outside that keyboard layout path.
+- Paused AI Chat background animation only while Android keyboard metrics are actively transitioning, then resumed the existing landing/chat background motion after the keyboard settles.
+- Changed Profile keyboard reveal for auth and inline body fields to use a single focus-aware reveal path: keyboard inset is owned by a small scroll spacer, TextField scroll padding is no longer inset-amplified, and focused fields scroll only by the amount needed to clear the keyboard.
+
+### Fixed
+
+- Fixed Profile body-field keyboard reveal overshooting and settling back by replacing forced `ensureVisible` alignment with screen-coordinate overlap correction.
+
+### Validation
+
+- Added widget coverage for Profile body-field reveal staying above the keyboard.
+- Ran `flutter test test\ai_page_test.dart`; all AI Chat keyboard, background, and composer tests passed.
+- Ran `flutter test test\phase2_account_controller_test.dart`; all Profile and account tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing armeabi-v7a, arm64-v8a, and x86_64 debug APKs.
+
 ## 2026-07-03 Android Workout Draft Progress Notification
 
 ### Added
