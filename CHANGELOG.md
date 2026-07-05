@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-07-05 Phase 5-7 Roadmap And Evaluation Lab Plan
+
+### Changed
+
+- Reworked the remaining Agent V1 roadmap so Phase 5 focuses on RAG and read-only AI workflows, Phase 6 becomes a dedicated Reliability Evaluation Lab, and Phase 7 becomes evidence-driven release hardening.
+- Expanded the Phase 6 evaluation design around FitLog-owned system reliability rather than generic model intelligence, covering eval case schema, RAG retrieval checks, structured-context checks, answer faithfulness, safety red-team cases, draft-confirmation regression, thresholds, and report requirements.
+- Updated the cross-phase test matrix and final V1 completion criteria to require reliable eval evidence before release hardening and V1 completion.
+
+### Validation
+
+- Documentation-only change; Flutter analysis and tests were not run.
+- Confirmed the required documentation tree exists and searched the roadmap for stale old Phase 6 Food Vision stage wording after the update.
+
 ## 2026-07-05 AI Chat Camera Visual Recovery
 
 ### Changed
