@@ -61,6 +61,7 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
     );
     _notesController = TextEditingController(text: record.estimationNotes);
     _items = record.items.map(EditableFoodItemDraft.fromFoodItem).toList();
+    _syncMainFieldsFromItems();
   }
 
   @override
@@ -91,6 +92,48 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
     }
   }
 
+  void _updateItemTotals(VoidCallback update) {
+    update();
+    _syncMainFieldsFromItems();
+  }
+
+  void _syncMainFieldsFromItems() {
+    final totals = _editableItemTotals();
+    if (totals == null) {
+      return;
+    }
+    _weightController.text = totals.totalWeightG.toStringAsFixed(1);
+    _caloriesController.text = totals.caloriesKcal.toStringAsFixed(1);
+    _proteinController.text = totals.proteinG.toStringAsFixed(1);
+    _carbsController.text = totals.carbsG.toStringAsFixed(1);
+    _fatController.text = totals.fatG.toStringAsFixed(1);
+  }
+
+  _EditableFoodTotals? _editableItemTotals() {
+    if (_items.isEmpty) {
+      return null;
+    }
+    var totalWeightG = 0.0;
+    var caloriesKcal = 0.0;
+    var proteinG = 0.0;
+    var carbsG = 0.0;
+    var fatG = 0.0;
+    for (final item in _items) {
+      totalWeightG += NumberUtils.toDouble(item.estimatedWeightG);
+      caloriesKcal += NumberUtils.toDouble(item.caloriesKcal);
+      proteinG += NumberUtils.toDouble(item.proteinG);
+      carbsG += NumberUtils.toDouble(item.carbsG);
+      fatG += NumberUtils.toDouble(item.fatG);
+    }
+    return _EditableFoodTotals(
+      totalWeightG: totalWeightG,
+      caloriesKcal: caloriesKcal,
+      proteinG: proteinG,
+      carbsG: carbsG,
+      fatG: fatG,
+    );
+  }
+
   Future<void> _save() async {
     final strings = context.stringsRead;
     if (!_formKey.currentState!.validate()) {
@@ -101,14 +144,20 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
     final services = context.read<AppServices>();
 
     try {
+      final totals = _editableItemTotals();
       final record = FoodRecord(
         date: _date,
         mealName: _mealNameController.text.trim(),
-        totalWeightG: NumberUtils.toDouble(_weightController.text),
-        caloriesKcal: NumberUtils.toDouble(_caloriesController.text),
-        proteinG: NumberUtils.toDouble(_proteinController.text),
-        carbsG: NumberUtils.toDouble(_carbsController.text),
-        fatG: NumberUtils.toDouble(_fatController.text),
+        totalWeightG:
+            totals?.totalWeightG ??
+            NumberUtils.toDouble(_weightController.text),
+        caloriesKcal:
+            totals?.caloriesKcal ??
+            NumberUtils.toDouble(_caloriesController.text),
+        proteinG:
+            totals?.proteinG ?? NumberUtils.toDouble(_proteinController.text),
+        carbsG: totals?.carbsG ?? NumberUtils.toDouble(_carbsController.text),
+        fatG: totals?.fatG ?? NumberUtils.toDouble(_fatController.text),
         confidence: _confidenceController.text.trim().isEmpty
             ? null
             : NumberUtils.toDouble(_confidenceController.text),
@@ -282,7 +331,9 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        onChanged: (value) => item.estimatedWeightG = value,
+                        onChanged: (value) => _updateItemTotals(
+                          () => item.estimatedWeightG = value,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       FoodFormField(
@@ -292,7 +343,8 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
-                        onChanged: (value) => item.caloriesKcal = value,
+                        onChanged: (value) =>
+                            _updateItemTotals(() => item.caloriesKcal = value),
                       ),
                       const SizedBox(height: 8),
                       Row(
@@ -306,7 +358,9 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              onChanged: (value) => item.proteinG = value,
+                              onChanged: (value) => _updateItemTotals(
+                                () => item.proteinG = value,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -319,7 +373,8 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              onChanged: (value) => item.carbsG = value,
+                              onChanged: (value) =>
+                                  _updateItemTotals(() => item.carbsG = value),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -332,7 +387,8 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              onChanged: (value) => item.fatG = value,
+                              onChanged: (value) =>
+                                  _updateItemTotals(() => item.fatG = value),
                             ),
                           ),
                         ],
@@ -378,4 +434,20 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
       ),
     );
   }
+}
+
+class _EditableFoodTotals {
+  const _EditableFoodTotals({
+    required this.totalWeightG,
+    required this.caloriesKcal,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
+  });
+
+  final double totalWeightG;
+  final double caloriesKcal;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
 }

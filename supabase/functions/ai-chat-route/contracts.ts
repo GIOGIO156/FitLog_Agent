@@ -489,18 +489,27 @@ function validateFoodDraft(value: Record<string, unknown>): FoodDraft {
   if (mealName === "") {
     throw new Error("record_schema_mismatch");
   }
-  return {
-    meal_name: mealName,
+  const requestedTotals = {
     total_weight_g: nonNegativeFiniteNumber(value.total_weight_g),
     calories_kcal: nonNegativeFiniteNumber(value.calories_kcal),
     protein_g: nonNegativeFiniteNumber(value.protein_g),
     carbs_g: nonNegativeFiniteNumber(value.carbs_g),
     fat_g: nonNegativeFiniteNumber(value.fat_g),
+  };
+  const items = foodDraftItems(value.items);
+  const totals = items.length === 0 ? requestedTotals : foodDraftTotals(items);
+  return {
+    meal_name: mealName,
+    total_weight_g: totals.total_weight_g,
+    calories_kcal: totals.calories_kcal,
+    protein_g: totals.protein_g,
+    carbs_g: totals.carbs_g,
+    fat_g: totals.fat_g,
     confidence: value.confidence === null || value.confidence === undefined
       ? null
       : nonNegativeFiniteNumber(value.confidence),
     estimation_notes: stringOrEmpty(value.estimation_notes).trim(),
-    items: foodDraftItems(value.items),
+    items,
   };
 }
 
@@ -582,6 +591,21 @@ function foodDraftItems(value: unknown): FoodDraftItem[] {
   });
 }
 
+function foodDraftTotals(items: FoodDraftItem[]) {
+  return items.reduce((totals, item) => ({
+    total_weight_g: totals.total_weight_g + item.weight_g,
+    calories_kcal: totals.calories_kcal + item.calories_kcal,
+    protein_g: totals.protein_g + item.protein_g,
+    carbs_g: totals.carbs_g + item.carbs_g,
+    fat_g: totals.fat_g + item.fat_g,
+  }), {
+    total_weight_g: 0,
+    calories_kcal: 0,
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+  });
+}
 function nonNegativeFiniteNumber(value: unknown): number {
   const number = typeof value === "number"
     ? value

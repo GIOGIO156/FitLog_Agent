@@ -533,6 +533,14 @@ AiFoodPhotoAnalysisResponse _successResponse() {
           carbsG: 0,
           fatG: 10,
         ),
+        AiFoodDraftItem(
+          name: 'Rice',
+          weightG: 200,
+          caloriesKcal: 300,
+          proteinG: 4,
+          carbsG: 62,
+          fatG: 4,
+        ),
       ],
     ),
   );

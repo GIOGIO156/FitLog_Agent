@@ -40,6 +40,7 @@ import 'export/csv_export_service.dart';
 import 'export/xlsx_export_service.dart';
 import 'features/account/account_controller.dart';
 import 'features/ai/ai_chat_controller.dart';
+import 'features/ai/ai_chat_image_recovery.dart';
 import 'features/ai/ai_page.dart';
 import 'features/food/food_image_picker.dart';
 import 'features/food/food_log_page.dart';
@@ -347,6 +348,9 @@ class _FitLogAppState extends State<FitLogApp> {
             onDeviceReplaced: _cloudRuntimeContext.markDeviceReplaced,
           ),
         ),
+        ChangeNotifierProvider<AiChatImageRecoveryController>(
+          create: (_) => AiChatImageRecoveryController(),
+        ),
         ChangeNotifierProvider<RefreshNotifier>(
           create: (_) => RefreshNotifier(),
         ),
@@ -627,7 +631,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   String? _lastBackgroundAccountId;
   String? _lastRecordHydrationKey;
   bool _recordHydrationRefreshScheduled = false;
-  bool _restoringLostPhotoAnalysis = false;
+  bool _restoringLostPickerImages = false;
 
   @override
   void initState() {
@@ -635,7 +639,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(_restoreLostPhotoAnalysisIfNeeded());
+        unawaited(_restoreLostPickerImagesIfNeeded());
         unawaited(_syncActiveWorkoutDraftNotification());
       }
     });
@@ -653,7 +657,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       return;
     }
     _scheduleSelectedDateHydrationRefresh();
-    unawaited(_restoreLostPhotoAnalysisIfNeeded());
+    unawaited(_restoreLostPickerImagesIfNeeded());
     unawaited(_syncActiveWorkoutDraftNotification());
   }
 
@@ -718,40 +722,80 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _restoreLostPhotoAnalysisIfNeeded() async {
-    if (_restoringLostPhotoAnalysis) {
+  Future<void> _restoreLostPickerImagesIfNeeded() async {
+    if (_restoringLostPickerImages) {
       return;
     }
-    _restoringLostPhotoAnalysis = true;
+    _restoringLostPickerImages = true;
     try {
-      final draft = await PhotoFoodAnalysisRecoveryStore.loadPending();
-      if (draft == null) {
+      final photoDraft = await PhotoFoodAnalysisRecoveryStore.loadPending();
+      final chatDraft = await AiChatImageRecoveryStore.loadPending();
+      if (photoDraft == null && chatDraft == null) {
         return;
       }
       final images = await ImagePickerFoodImagePicker().retrieveLostImages(
         limit: 3,
       );
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
-      if (!mounted || (images.isEmpty && draft.note.trim().isEmpty)) {
+      if (photoDraft != null) {
+        await PhotoFoodAnalysisRecoveryStore.clearPending();
+      }
+      if (chatDraft != null) {
+        await AiChatImageRecoveryStore.clearPending();
+      }
+      if (!mounted) {
         return;
       }
-      final saved = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(
-          builder: (_) => PhotoFoodAnalysisPage(
-            initialDate: draft.initialDate,
-            initialNote: draft.note,
-            initialImages: images,
-          ),
-        ),
-      );
-      if (saved == true && mounted) {
-        context.read<RefreshNotifier>().markDataChanged();
+      if (photoDraft != null) {
+        await _restoreLostPhotoAnalysis(photoDraft, images);
+        return;
+      }
+      if (chatDraft != null) {
+        _restoreLostAiChatImages(chatDraft, images);
       }
     } catch (_) {
       await PhotoFoodAnalysisRecoveryStore.clearPending();
+      await AiChatImageRecoveryStore.clearPending();
     } finally {
-      _restoringLostPhotoAnalysis = false;
+      _restoringLostPickerImages = false;
     }
+  }
+
+  Future<void> _restoreLostPhotoAnalysis(
+    PhotoFoodAnalysisRecoveryDraft draft,
+    List<PickedFoodImage> images,
+  ) async {
+    if (images.isEmpty && draft.note.trim().isEmpty) {
+      return;
+    }
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PhotoFoodAnalysisPage(
+          initialDate: draft.initialDate,
+          initialNote: draft.note,
+          initialImages: images,
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
+      context.read<RefreshNotifier>().markDataChanged();
+    }
+  }
+
+  void _restoreLostAiChatImages(
+    AiChatImageRecoveryDraft draft,
+    List<PickedFoodImage> images,
+  ) {
+    if (images.isEmpty && draft.messageText.trim().isEmpty) {
+      return;
+    }
+    context.read<RootTabController>().setIndex(RootTabIndex.ai);
+    context.read<AiChatImageRecoveryController>().restore(
+      RecoveredAiChatImages(
+        messageText: draft.messageText,
+        provider: draft.provider,
+        images: images,
+      ),
+    );
   }
 
   Future<void> _syncActiveWorkoutDraftNotification() async {

@@ -29,6 +29,7 @@ import '../food/food_preview_page.dart';
 import '../workout/add_workout_page.dart';
 import '../workout/workout_draft_notification.dart';
 import 'ai_chat_controller.dart';
+import 'ai_chat_image_recovery.dart';
 
 enum AiShellMode { disabled, ready, processing, needsClarification }
 
@@ -251,6 +252,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   Timer? _keyboardTransitionTimer;
   String? _accountBoundaryKey;
   String? _chatSyncKey;
+  int _lastConsumedRecoveryVersion = 0;
+  int _scheduledRecoveryVersion = 0;
   double? _lastKeyboardBottomInset;
   double _composerHeight = _aiDefaultComposerHeight;
 
@@ -316,6 +319,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final accountController = _maybeAccountController(listen: true);
     final chatController = _maybeChatController(listen: true);
     final cloudRuntimeContext = _maybeCloudRuntimeContext(listen: true);
+    final imageRecoveryController = _maybeImageRecoveryController(listen: true);
+    _scheduleImageRecovery(imageRecoveryController);
     _syncAccountDraftBoundary(accountController);
     _scheduleChatSync(accountController, chatController);
     final effectiveMode = _effectiveMode(accountController);
@@ -439,6 +444,80 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       return Provider.of<CloudRuntimeContext>(context, listen: listen);
     } catch (_) {
       return null;
+    }
+  }
+
+  AiChatImageRecoveryController? _maybeImageRecoveryController({
+    required bool listen,
+  }) {
+    try {
+      return Provider.of<AiChatImageRecoveryController>(
+        context,
+        listen: listen,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _scheduleImageRecovery(AiChatImageRecoveryController? controller) {
+    final pending = controller?.pending;
+    final version = controller?.version ?? 0;
+    if (controller == null || pending == null) {
+      return;
+    }
+    if (version == _lastConsumedRecoveryVersion ||
+        version == _scheduledRecoveryVersion) {
+      return;
+    }
+    _scheduledRecoveryVersion = version;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final recovered = controller.consume(version);
+      _lastConsumedRecoveryVersion = version;
+      if (recovered == null) {
+        return;
+      }
+      _applyRecoveredImages(recovered);
+    });
+  }
+
+  void _applyRecoveredImages(RecoveredAiChatImages recovered) {
+    final provider = _providerFromPreferenceValue(recovered.provider);
+    final nextImages = <PickedFoodImage>[];
+    String? validationError;
+    for (final image in recovered.images) {
+      validationError = _validationErrorForImage(image);
+      if (validationError != null) {
+        break;
+      }
+      if (_attachedImages.length + nextImages.length >= _maxChatImages) {
+        validationError = context.stringsRead.aiImageLimitReached;
+        break;
+      }
+      nextImages.add(image);
+    }
+    final messageText = recovered.messageText;
+    if (messageText.isNotEmpty) {
+      _controller.text = messageText;
+      _controller.selection = TextSelection.collapsed(
+        offset: messageText.length,
+      );
+    }
+    setState(() {
+      if (provider != null) {
+        _provider = provider;
+      }
+      if (nextImages.isNotEmpty) {
+        _attachedImages = <PickedFoodImage>[..._attachedImages, ...nextImages];
+      }
+    });
+    if (validationError != null) {
+      _showComposerNotice(validationError);
+    } else if (nextImages.isNotEmpty || messageText.isNotEmpty) {
+      _clearComposerNotice();
     }
   }
 
@@ -641,11 +720,16 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
 
   Future<void> _pickImageAttachment(FoodImageSource source) async {
     try {
+      await AiChatImageRecoveryStore.savePending(
+        messageText: _controller.text,
+        provider: _providerPreferenceValue(_provider),
+      );
       final remainingSlots = _maxChatImages - _attachedImages.length;
       final images = await _imagePicker.pickMultiple(
         source,
         limit: remainingSlots,
       );
+      await AiChatImageRecoveryStore.clearPending();
       if (!mounted || images.isEmpty) {
         return;
       }
@@ -673,6 +757,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         _attachedImages = <PickedFoodImage>[..._attachedImages, ...nextImages];
       });
     } catch (_) {
+      await AiChatImageRecoveryStore.clearPending();
       if (!mounted) {
         return;
       }

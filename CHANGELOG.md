@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-05 AI Chat Camera Recovery And Food Draft Totals
+
+### Added
+
+- Added AI Chat image-picker recovery so Android activity restarts after camera/gallery selection can restore composer text, selected provider, and recovered image attachments instead of returning the user to Home.
+- Added regression coverage for AI Chat image recovery and Food Draft total normalization from item sums.
+
+### Changed
+
+- Changed Food Draft parsing, Gateway validation, Food Preview save behavior, and provider prompts so meal-level weight, calories, protein, carbs, and fat are derived from item totals whenever `items` is non-empty.
+- Updated README, API contract draft, and bilingual Product/AppGuide/AgentDesign/Database docs to document AI Chat image recovery and item-sum Food Draft totals.
+
+### Fixed
+
+- Fixed mismatched AI food-analysis totals where the meal total could diverge from the sum of visible item rows.
+- Fixed AI Chat camera attachment loss after Android picker activity recreation by sharing the existing lost-image recovery path with Chat attachments.
+
+### Validation
+
+- Ran `dart format` on changed Dart files; the SDK telemetry write was redirected to the repo-local `.dart_tool` appdata path after the default user-profile telemetry path was sandbox-blocked.
+- Ran `flutter clean`.
+- Ran `flutter pub get`.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test/ai_gateway_contract_test.dart`; all tests passed.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`. Gradle reported the existing Kotlin daemon incremental-cache issue for Android plugins, then continued and produced the APKs successfully.
+- Deno formatting/tests could not be run because `deno` is not installed in this environment.
+- Supabase Edge Function deployment could not be run because the Supabase CLI is not installed and no `SUPABASE_ACCESS_TOKEN` or cached Supabase login is available; target project ref detected from local config is `dyacqajcinjwrkbngeif`.
+
 ## 2026-07-03 Keyboard Animation Performance
 
 ### Changed

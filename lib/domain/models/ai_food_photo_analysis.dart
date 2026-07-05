@@ -127,7 +127,7 @@ class AiFoodDraft {
     if (mealName.isEmpty) {
       throw const FormatException('food_draft_missing_meal_name');
     }
-    return AiFoodDraft(
+    final draft = AiFoodDraft(
       mealName: mealName,
       totalWeightG: _nonNegativeFiniteNumber(json['total_weight_g']),
       caloriesKcal: _nonNegativeFiniteNumber(json['calories_kcal']),
@@ -140,16 +140,49 @@ class AiFoodDraft {
       estimationNotes: (json['estimation_notes'] ?? '').toString().trim(),
       items: _draftItems(json['items']),
     );
+    return draft.withItemTotalsIfPresent();
+  }
+
+  _FoodDraftTotals get _effectiveTotals {
+    if (items.isEmpty) {
+      return _FoodDraftTotals(
+        totalWeightG: totalWeightG,
+        caloriesKcal: caloriesKcal,
+        proteinG: proteinG,
+        carbsG: carbsG,
+        fatG: fatG,
+      );
+    }
+    return _FoodDraftTotals.fromItems(items);
+  }
+
+  AiFoodDraft withItemTotalsIfPresent() {
+    if (items.isEmpty) {
+      return this;
+    }
+    final totals = _FoodDraftTotals.fromItems(items);
+    return AiFoodDraft(
+      mealName: mealName,
+      totalWeightG: totals.totalWeightG,
+      caloriesKcal: totals.caloriesKcal,
+      proteinG: totals.proteinG,
+      carbsG: totals.carbsG,
+      fatG: totals.fatG,
+      confidence: confidence,
+      estimationNotes: estimationNotes,
+      items: items,
+    );
   }
 
   Map<String, dynamic> toJson() {
+    final totals = _effectiveTotals;
     return <String, dynamic>{
       'meal_name': mealName,
-      'total_weight_g': totalWeightG,
-      'calories_kcal': caloriesKcal,
-      'protein_g': proteinG,
-      'carbs_g': carbsG,
-      'fat_g': fatG,
+      'total_weight_g': totals.totalWeightG,
+      'calories_kcal': totals.caloriesKcal,
+      'protein_g': totals.proteinG,
+      'carbs_g': totals.carbsG,
+      'fat_g': totals.fatG,
       'confidence': confidence,
       'estimation_notes': estimationNotes,
       'items': items.map((item) => item.toJson()).toList(growable: false),
@@ -167,14 +200,15 @@ class AiFoodDraft {
         'AI food estimate via ${modelProvider!.trim()}',
       if ((userNote ?? '').trim().isNotEmpty) 'User note: ${userNote!.trim()}',
     ];
+    final totals = _effectiveTotals;
     return FoodRecord(
       date: date,
       mealName: mealName,
-      totalWeightG: totalWeightG,
-      caloriesKcal: caloriesKcal,
-      proteinG: proteinG,
-      carbsG: carbsG,
-      fatG: fatG,
+      totalWeightG: totals.totalWeightG,
+      caloriesKcal: totals.caloriesKcal,
+      proteinG: totals.proteinG,
+      carbsG: totals.carbsG,
+      fatG: totals.fatG,
       confidence: confidence,
       estimationNotes: noteParts.join('\n'),
       source: AppConstants.sourceAiPhoto,
@@ -237,6 +271,44 @@ class AiFoodDraftItem {
       notes: '',
     );
   }
+}
+
+class _FoodDraftTotals {
+  const _FoodDraftTotals({
+    required this.totalWeightG,
+    required this.caloriesKcal,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
+  });
+
+  factory _FoodDraftTotals.fromItems(List<AiFoodDraftItem> items) {
+    var totalWeightG = 0.0;
+    var caloriesKcal = 0.0;
+    var proteinG = 0.0;
+    var carbsG = 0.0;
+    var fatG = 0.0;
+    for (final item in items) {
+      totalWeightG += item.weightG;
+      caloriesKcal += item.caloriesKcal;
+      proteinG += item.proteinG;
+      carbsG += item.carbsG;
+      fatG += item.fatG;
+    }
+    return _FoodDraftTotals(
+      totalWeightG: totalWeightG,
+      caloriesKcal: caloriesKcal,
+      proteinG: proteinG,
+      carbsG: carbsG,
+      fatG: fatG,
+    );
+  }
+
+  final double totalWeightG;
+  final double caloriesKcal;
+  final double proteinG;
+  final double carbsG;
+  final double fatG;
 }
 
 double _nonNegativeFiniteNumber(Object? value) {

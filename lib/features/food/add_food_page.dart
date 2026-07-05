@@ -213,29 +213,35 @@ class _AddFoodActionCard extends StatelessWidget {
     return GlassPanel(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       padding: EdgeInsets.zero,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: FitLogIconCircle(icon: icon, color: color, size: 42),
-        title: Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 8,
+          ),
+          leading: FitLogIconCircle(icon: icon, color: color, size: 42),
+          title: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(subtitle),
+          ),
+          trailing: onTap == null
+              ? Text(
+                  context.strings.comingSoon,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: fitTheme.mutedText,
+                  ),
+                )
+              : Icon(Icons.chevron_right_rounded, color: fitTheme.mutedText),
+          onTap: onTap,
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(subtitle),
-        ),
-        trailing: onTap == null
-            ? Text(
-                context.strings.comingSoon,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: fitTheme.mutedText,
-                ),
-              )
-            : Icon(Icons.chevron_right_rounded, color: fitTheme.mutedText),
-        onTap: onTap,
       ),
     );
   }

@@ -336,7 +336,9 @@ void main() {
       expect(response.isSuccess, isTrue);
       expect(response.modelChoice, AiGatewayModelChoice.qwen);
       expect(response.draft?.mealName, 'Chicken rice');
-      expect(response.draft?.items, hasLength(1));
+      expect(response.draft?.totalWeightG, 320);
+      expect(response.draft?.caloriesKcal, 520);
+      expect(response.draft?.items, hasLength(2));
     });
 
     test('rejects invalid numeric draft fields', () {
@@ -351,6 +353,46 @@ void main() {
       );
     });
 
+    test('normalizes draft meal totals from item sums', () {
+      final draft = AiFoodDraft.fromJson(<String, dynamic>{
+        ..._validDraftJson(),
+        'total_weight_g': 999,
+        'calories_kcal': 999,
+        'protein_g': 999,
+        'carbs_g': 999,
+        'fat_g': 999,
+        'items': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'name': 'Rice',
+            'weight_g': 180,
+            'calories_kcal': 234,
+            'protein_g': 4.3,
+            'carbs_g': 51.4,
+            'fat_g': 0.5,
+          },
+          <String, dynamic>{
+            'name': 'Tofu',
+            'weight_g': 100,
+            'calories_kcal': 81,
+            'protein_g': 8.1,
+            'carbs_g': 2,
+            'fat_g': 4.8,
+          },
+        ],
+      });
+
+      expect(draft.totalWeightG, 280);
+      expect(draft.caloriesKcal, 315);
+      expect(draft.proteinG, closeTo(12.4, 0.0001));
+      expect(draft.carbsG, closeTo(53.4, 0.0001));
+      expect(draft.fatG, closeTo(5.3, 0.0001));
+      expect(draft.toJson()['calories_kcal'], 315);
+
+      final record = draft.toFoodRecord(date: '2026-07-01');
+      expect(record.totalWeightG, 280);
+      expect(record.caloriesKcal, 315);
+      expect(record.items, hasLength(2));
+    });
     test('converts a draft to an AI food analysis FoodRecord', () {
       final draft = AiFoodDraft.fromJson(_validDraftJson());
 
@@ -362,7 +404,11 @@ void main() {
 
       expect(record.source, AppConstants.sourceAiPhoto);
       expect(record.date, '2026-07-01');
-      expect(record.items.single.name, 'Chicken');
+      expect(record.totalWeightG, 320);
+      expect(record.caloriesKcal, 520);
+      expect(record.items, hasLength(2));
+      expect(record.items.first.name, 'Chicken');
+      expect(record.items.last.name, 'Rice');
       expect(record.estimationNotes, contains('qwen'));
       expect(record.estimationNotes, contains('少吃了米饭'));
     });
@@ -404,6 +450,14 @@ Map<String, dynamic> _validDraftJson() {
         'protein_g': 28,
         'carbs_g': 0,
         'fat_g': 10,
+      },
+      <String, dynamic>{
+        'name': 'Rice',
+        'weight_g': 200,
+        'calories_kcal': 300,
+        'protein_g': 4,
+        'carbs_g': 62,
+        'fat_g': 4,
       },
     ],
   };

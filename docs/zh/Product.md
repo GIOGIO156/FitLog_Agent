@@ -95,13 +95,13 @@ Home | Food | AI | Workout | Profile
 - AI Chat 的交互强调色跟随当前本机 FitLog 主题：用户气泡、发送/确认按钮、草稿 artifact 卡片边框、Markdown 强调色和 history 选中态在 Green 主题保持绿色，在 Black/黑橙主题切换为柔和但明确的橙色。可用状态灯保持语义绿色，因为它表达 provider 当前可用，而不是品牌强调。AI 页液态背景保留自己的粉绿蓝色场，不因为黑橙主题而整页变成深色表面。
 - 发送时输入框立即清空，用户消息先显示为 pending 气泡，并锚到顶部可读边界而不是 viewport 的渐变退场边缘；等待期间显示 assistant loading 气泡；如果发送失败，会恢复刚才尝试发送的草稿。
 - assistant 消息通过维护中的 GitHub-flavored Markdown 渲染器按 App 样式展示，文本可选择，不加载远程图片，也不执行链接动作。用户消息保持可选择的普通文本。复制通过系统文字选择菜单完成，不再提供每条消息独立复制按钮。
-- AI 页面可以通过千问发送最多三张 JPEG/PNG/WebP 图片。Food Draft 响应会在用户点击确认后打开 Food Preview，Workout Draft 响应会在用户点击确认后打开现有训练编辑草稿；二者都仍需用户在编辑页保存后才写正式记录。
+- AI 页面可以通过千问发送最多三张 JPEG/PNG/WebP 图片。Chat 图片附件打开系统相机/相册前会保存很小的本地恢复标记，让 Android activity 重建后可以恢复输入文字和取回的图片附件。Food Draft 响应会在用户点击确认后打开 Food Preview，Workout Draft 响应会在用户点击确认后打开现有训练编辑草稿；二者都仍需用户在编辑页保存后才写正式记录。
 - AI 页面不触发 RAG、长期图片存储、自动修改目标或正式业务记录自动写入。
 - 未发送的输入框内容是当前运行期内的设备级本地草稿。切换页面和不可用状态不应自动清空；用户删除、开始发送、退出登录或切换账号时清空，发送失败时恢复刚才尝试发送的草稿。
 
 当前 AI 页面在所有运行期 gate 满足时可以发送文本消息和最多三张千问图片附件。请求会携带紧凑同会话文本和 draft artifact 摘要，使模型能理解当前会话。云端正式 records 和 daily summaries 已经作为登录后的后续 AI context 来源，但当前 chat 路径还不会检索 records summary 或执行 RAG。
 
-AI Chat 生成草稿时，provider 回复应使用一个经过校验的 envelope：`message.text` 承载友好的解释、估算依据和确认提示，`draft` 承载结构化 Food Draft 或 Workout Draft。服务端校验通过后，App 展示解释文字和原生 artifact 卡片，不应把 provider 原始 JSON 当成普通 assistant Markdown 展示。专用 Add Food AI 食物分析路径更严格：`ai-food-photo-analyze` 期望纯结构化 Food Draft JSON，校验后直接进入 Food Preview。
+AI Chat 生成草稿时，provider 回复应使用一个经过校验的 envelope：`message.text` 承载友好的解释、估算依据和确认提示，`draft` 承载结构化 Food Draft 或 Workout Draft。服务端校验通过后，App 展示解释文字和原生 artifact 卡片，不应把 provider 原始 JSON 当成普通 assistant Markdown 展示。Food Draft 包含 items 时，餐品级重量、热量和宏量会先按 items 求和归一化，再进入确认或保存。专用 Add Food AI 食物分析路径更严格：`ai-food-photo-analyze` 期望纯结构化 Food Draft JSON，校验后直接进入 Food Preview。
 
 可用状态：
 

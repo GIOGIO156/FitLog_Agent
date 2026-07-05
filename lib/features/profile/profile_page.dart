@@ -2569,15 +2569,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                   .toList(),
                             ),
                             const SizedBox(height: 14),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _macroSelfCheckEnabled,
-                              title: Text(strings.macroSelfCheckEnabledLabel),
-                              onChanged: (value) {
-                                _updateMacroSettingsDraft(
-                                  selfCheckEnabled: value,
-                                );
-                              },
+                            Material(
+                              color: Colors.transparent,
+                              child: SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: _macroSelfCheckEnabled,
+                                title: Text(strings.macroSelfCheckEnabledLabel),
+                                onChanged: (value) {
+                                  _updateMacroSettingsDraft(
+                                    selfCheckEnabled: value,
+                                  );
+                                },
+                              ),
                             ),
                           ],
                         ),
@@ -2756,15 +2759,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                   .toList(),
                             ),
                             const SizedBox(height: 14),
-                            SwitchListTile(
-                              contentPadding: EdgeInsets.zero,
-                              value: _macroSelfCheckEnabled,
-                              title: Text(strings.macroSelfCheckEnabledLabel),
-                              onChanged: (value) {
-                                _updateMacroSettingsDraft(
-                                  selfCheckEnabled: value,
-                                );
-                              },
+                            Material(
+                              color: Colors.transparent,
+                              child: SwitchListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: _macroSelfCheckEnabled,
+                                title: Text(strings.macroSelfCheckEnabledLabel),
+                                onChanged: (value) {
+                                  _updateMacroSettingsDraft(
+                                    selfCheckEnabled: value,
+                                  );
+                                },
+                              ),
                             ),
                           ],
                         ),

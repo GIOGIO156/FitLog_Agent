@@ -24,6 +24,7 @@ import 'package:fitlog_local/domain/models/subscription_status.dart';
 import 'package:fitlog_local/domain/models/user_profile.dart';
 import 'package:fitlog_local/features/account/account_controller.dart';
 import 'package:fitlog_local/features/ai/ai_chat_controller.dart';
+import 'package:fitlog_local/features/ai/ai_chat_image_recovery.dart';
 import 'package:fitlog_local/features/ai/ai_page.dart';
 import 'package:fitlog_local/features/food/food_image_picker.dart';
 import 'package:fitlog_local/features/food/food_preview_page.dart';
@@ -782,6 +783,50 @@ void main() {
     );
   });
 
+  testWidgets(
+    'AI page restores recovered camera attachment and composer text',
+    (tester) async {
+      final harness = _readyAiHarness();
+      final recoveryController = AiChatImageRecoveryController();
+      addTearDown(harness.dispose);
+      addTearDown(recoveryController.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(
+          harness,
+          imageRecoveryController: recoveryController,
+        ),
+      );
+
+      recoveryController.restore(
+        RecoveredAiChatImages(
+          messageText: 'Log this meal',
+          provider: 'qwen',
+          images: <PickedFoodImage>[_tinyPngImage()],
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Log this meal'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('ai_attached_image_preview')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(harness.repository.lastRequest?.messageText, 'Log this meal');
+      expect(
+        harness.repository.lastRequest?.modelChoice,
+        AiGatewayModelChoice.qwen,
+      );
+      expect(harness.repository.lastRequest?.attachments, hasLength(1));
+    },
+  );
+
   testWidgets('AI page blocks the fourth image attachment', (tester) async {
     final harness = _readyAiHarness();
     final picker = _FakeFoodImagePicker(
@@ -1473,6 +1518,7 @@ Widget _buildAiTestApp(
 Widget _buildReadyAiTestApp(
   _ReadyAiHarness harness, {
   FoodImagePicker? imagePicker,
+  AiChatImageRecoveryController? imageRecoveryController,
   bool resizeToAvoidBottomInset = true,
   FitLogThemeKey themeKey = FitLogThemeKey.green,
 }) {
@@ -1488,6 +1534,10 @@ Widget _buildReadyAiTestApp(
         ChangeNotifierProvider<AiChatController>.value(
           value: harness.chatController,
         ),
+        if (imageRecoveryController != null)
+          ChangeNotifierProvider<AiChatImageRecoveryController>.value(
+            value: imageRecoveryController,
+          ),
       ],
       child: AiPage(imagePicker: imagePicker),
     ),
@@ -1736,6 +1786,14 @@ Map<String, dynamic> _validFoodDraftJson() {
         'protein_g': 28,
         'carbs_g': 0,
         'fat_g': 10,
+      },
+      <String, dynamic>{
+        'name': 'Rice',
+        'weight_g': 200,
+        'calories_kcal': 300,
+        'protein_g': 4,
+        'carbs_g': 62,
+        'fat_g': 4,
       },
     ],
   };

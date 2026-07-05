@@ -179,6 +179,20 @@ Deno.test("parseProviderFoodDraftBody extracts JSON object from provider prose",
   assertEquals(parsed.draft?.meal_name, "Chicken rice");
 });
 
+Deno.test("parseProviderFoodDraftBody normalizes food draft meal totals from items", () => {
+  const parsed = parseProviderFoodDraftBody(JSON.stringify({
+    needs_clarification: false,
+    clarification_questions: [],
+    draft: mismatchedFoodDraft(),
+  }));
+
+  assertEquals(parsed.draft?.total_weight_g, 280);
+  assertEquals(parsed.draft?.calories_kcal, 315);
+  assertEquals(parsed.draft?.protein_g, 12);
+  assertEquals(parsed.draft?.carbs_g, 53);
+  assertEquals(parsed.draft?.fat_g, 5);
+});
+
 Deno.test("parseProviderFoodDraftBody supports clarification without draft", () => {
   const parsed = parseProviderFoodDraftBody(JSON.stringify({
     needs_clarification: true,
@@ -269,6 +283,34 @@ function validDraft() {
       protein_g: 28,
       carbs_g: 0,
       fat_g: 10,
+    }],
+  };
+}
+
+function mismatchedFoodDraft() {
+  return {
+    meal_name: "Rice and tofu",
+    total_weight_g: 999,
+    calories_kcal: 999,
+    protein_g: 999,
+    carbs_g: 999,
+    fat_g: 999,
+    confidence: 0.72,
+    estimation_notes: "Estimated from visible plate.",
+    items: [{
+      name: "Rice",
+      weight_g: 180,
+      calories_kcal: 234,
+      protein_g: 4,
+      carbs_g: 51,
+      fat_g: 0,
+    }, {
+      name: "Tofu",
+      weight_g: 100,
+      calories_kcal: 81,
+      protein_g: 8,
+      carbs_g: 2,
+      fat_g: 5,
     }],
   };
 }

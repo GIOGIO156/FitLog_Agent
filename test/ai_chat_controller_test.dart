@@ -509,6 +509,14 @@ Map<String, dynamic> _validFoodDraftJson() {
         'carbs_g': 0,
         'fat_g': 10,
       },
+      <String, dynamic>{
+        'name': 'Rice',
+        'weight_g': 200,
+        'calories_kcal': 300,
+        'protein_g': 4,
+        'carbs_g': 62,
+        'fat_g': 4,
+      },
     ],
   };
 }

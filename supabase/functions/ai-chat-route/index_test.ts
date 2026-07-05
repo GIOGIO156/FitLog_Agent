@@ -258,6 +258,28 @@ Deno.test("parseProviderGatewayBody parses multimodal JSON with food draft", () 
   assertEquals(parsed.needsClarification, false);
 });
 
+Deno.test("parseProviderGatewayBody normalizes food draft meal totals from items", () => {
+  const request = parseGatewayRequest({
+    message: { text: "log this food" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+  });
+  const parsed = parseProviderGatewayBody(JSON.stringify({
+    message: { text: "Review this draft before saving." },
+    needs_clarification: false,
+    clarification_questions: [],
+    draft: mismatchedFoodDraft(),
+  }), request);
+
+  assertEquals(parsed.draft?.total_weight_g, 280);
+  assertEquals(parsed.draft?.calories_kcal, 315);
+  assertEquals(parsed.draft?.protein_g, 12);
+  assertEquals(parsed.draft?.carbs_g, 53);
+  assertEquals(parsed.draft?.fat_g, 5);
+});
+
 Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
   const request = parseGatewayRequest({
     message: { text: "Log bench press 20 kg for 3 sets of 10" },
@@ -576,6 +598,34 @@ function validDraft() {
       protein_g: 28,
       carbs_g: 0,
       fat_g: 10,
+    }],
+  };
+}
+
+function mismatchedFoodDraft() {
+  return {
+    meal_name: "Rice and tofu",
+    total_weight_g: 999,
+    calories_kcal: 999,
+    protein_g: 999,
+    carbs_g: 999,
+    fat_g: 999,
+    confidence: 0.72,
+    estimation_notes: "Estimated from visible plate.",
+    items: [{
+      name: "Rice",
+      weight_g: 180,
+      calories_kcal: 234,
+      protein_g: 4,
+      carbs_g: 51,
+      fat_g: 0,
+    }, {
+      name: "Tofu",
+      weight_g: 100,
+      calories_kcal: 81,
+      protein_g: 8,
+      carbs_g: 2,
+      fat_g: 5,
     }],
   };
 }

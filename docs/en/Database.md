@@ -12,7 +12,7 @@ The copied source uses the FitLog Local SQLite schema for business records. Phas
 | --- | --- | --- |
 | SQLite / `sqflite` | Local profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, selected-day `daily_summary_cache`, and partial cache. | Implemented from Local baseline; Phase 3 schema v15 carries cloud/cache metadata and selected-day summary cache. |
 | Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes plus daily-summary upsert/recovery are wired through cloud-backed repositories. |
-| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, Supabase registration-code PKCE verifier state, and a tiny pending AI food analysis picker-recovery marker. | Implemented from Local baseline and Phase 2 account work; auth verifier, theme key, and picker recovery are local runtime/display state, not business record sync. |
+| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, Supabase registration-code PKCE verifier state, and tiny pending AI food analysis / AI Chat image picker-recovery markers. | Implemented from Local baseline and Phase 2 account work; auth verifier, theme key, and picker recovery are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
 | Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, AI chat sessions/messages, AI request logs, and compact debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; Phase 4 Step 1 adds protected AI chat/log/debug tables; Phase 4 Steps 2-4 add the Gateway Edge Function, server-owned chat-turn/session RPCs, real text provider metadata, and app-side cloud history reads. |
 | AI document index | Searchable app documentation chunks for Document RAG. | Planned for Agent V1. |
@@ -114,7 +114,7 @@ Important fields:
 | `id` | Local record id. |
 | `date` | `yyyy-MM-dd`. |
 | `meal_name` | Meal label. |
-| `total_weight_g` | Total estimated weight. |
+| `total_weight_g` | Total estimated weight. For confirmed AI Food Drafts with item rows, the preview/save path derives this value from the item-weight sum. |
 | `calories_kcal` | Meal kcal. |
 | `protein_g` | Protein grams. |
 | `carbs_g` | Carbohydrate grams. |

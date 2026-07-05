@@ -557,6 +557,7 @@ Food Drafts are not official records.
 Validation rules:
 
 - Required numeric nutrition fields must be finite and non-negative.
+- If `items` is non-empty, item values are totals for each item portion and meal-level `total_weight_g`, `calories_kcal`, `protein_g`, `carbs_g`, and `fat_g` are normalized from the item sum before the draft is returned or saved.
 - Item names cannot be empty.
 - Missing key food facts should produce `clarification_questions` instead of a saveable draft.
 - Invalid schema must not show a save action.
