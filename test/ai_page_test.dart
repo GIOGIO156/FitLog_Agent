@@ -827,6 +827,49 @@ void main() {
     },
   );
 
+  testWidgets(
+    'AI page keeps ready recovery background while send remains disabled',
+    (tester) async {
+      final harness = _readyAiHarness()
+        ..accountController.subscriptionStatus =
+            const SubscriptionStatus.loading();
+      final recoveryController = AiChatImageRecoveryController();
+      addTearDown(harness.dispose);
+      addTearDown(recoveryController.dispose);
+
+      recoveryController.restore(
+        RecoveredAiChatImages(
+          messageText: 'Log this meal',
+          provider: 'qwen',
+          images: <PickedFoodImage>[_tinyPngImage()],
+          wasReadyVisual: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(
+          harness,
+          imageRecoveryController: recoveryController,
+        ),
+      );
+
+      expect(_aiBackgroundMode(tester), contains('ready'));
+      await tester.pump();
+
+      expect(find.text('Log this meal'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('ai_attached_image_preview')),
+        findsOneWidget,
+      );
+      expect(_aiBackgroundMode(tester), contains('ready'));
+
+      final sendButton = tester.widget<IconButton>(
+        find.byKey(const ValueKey<String>('ai_send_button')),
+      );
+      expect(sendButton.onPressed, isNull);
+      expect(harness.repository.lastRequest, isNull);
+    },
+  );
   testWidgets('AI page blocks the fourth image attachment', (tester) async {
     final harness = _readyAiHarness();
     final picker = _FakeFoodImagePicker(
@@ -1809,6 +1852,18 @@ double _aiBackgroundProgress(WidgetTester tester) {
       })
       .single;
   return (painter as dynamic).progress as double;
+}
+
+String _aiBackgroundMode(WidgetTester tester) {
+  final painter = tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((widget) => widget.painter)
+      .where((painter) {
+        return painter != null &&
+            painter.runtimeType.toString() == '_AiFlowBackgroundPainter';
+      })
+      .single;
+  return (painter as dynamic).mode.toString();
 }
 
 String _aiBackgroundMotion(WidgetTester tester) {

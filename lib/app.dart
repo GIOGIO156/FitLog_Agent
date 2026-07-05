@@ -794,6 +794,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         messageText: draft.messageText,
         provider: draft.provider,
         images: images,
+        wasReadyVisual: draft.wasReadyVisual,
       ),
     );
   }

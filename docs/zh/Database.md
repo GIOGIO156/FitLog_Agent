@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | SQLite / `sqflite` | 本地 profile/cache、校准、策略复盘、自定义动作、训练草稿、账号绑定 confirmed read model、选中日期 `daily_summary_cache` 和 partial cache。 | Local 基线已实现；Phase 3 schema v15 承载 cloud/cache 元数据和选中日期 summary cache。 |
 | Supabase Cloud Records | `body_metric_logs`、`food_records`/`food_items`、`workout_sessions`/`workout_sets`、`daily_summaries`。 | Phase 3 migration 已新增；body/food/workout 读写和 daily summary upsert/恢复已接入 cloud-backed repository。 |
-| SharedPreferences | UI 语言偏好、本地主题偏好、轻量 app 偏好、按账号保存的用户记录摘要授权、Cloud Profile 展示缓存、Supabase 注册验证码所需的 PKCE verifier 状态，以及很小的待恢复 AI 食物分析 / AI Chat 图片 picker 标记。 | Local 基线和 Phase 2 账号基础已实现；auth verifier、theme key 和 picker 恢复标记是本机运行期/展示状态，不是业务记录同步。 |
+| SharedPreferences | UI 语言偏好、本地主题偏好、轻量 app 偏好、按账号保存的用户记录摘要授权、Cloud Profile 展示缓存、Supabase 注册验证码所需的 PKCE verifier 状态，以及很小的待恢复 AI 食物分析 / AI Chat 图片 picker 标记，其中包含 AI Chat ready 彩色背景连续性状态。 | Local 基线和 Phase 2 账号基础已实现；auth verifier、theme key 和 picker 恢复标记是本机运行期/展示状态，不是业务记录同步。 |
 | 本地文件 | App documents directory 中的 XLSX 和 CSV ZIP 导出。 | Local 基线已实现。 |
 | 云端数据库 | Supabase Auth 账号身份、订阅 entitlement rows、Cloud Profile、AI chat sessions/messages、AI request logs 和 compact debug summaries。 | Phase 2 migration 已新增 `subscriptions` 和 `cloud_profiles`；Phase 4 Step 1 新增受保护的 AI chat/log/debug 表；Phase 4 Steps 2-4 新增 Gateway Edge Function、服务端 chat-turn/session RPC、真实 text provider metadata 和 App 侧云端 history 读取。 |
 | AI 文档索引 | 面向 Document RAG 的可检索 App 文档块。 | Agent V1 计划。 |

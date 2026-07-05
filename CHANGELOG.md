@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-05 AI Chat Camera Visual Recovery
+
+### Changed
+
+- Changed AI Chat image-picker recovery to preserve the ready colorful AI background when Android camera/system picker recreates the activity after the user entered from a ready AI page.
+- Kept send availability tied to real AccountController, subscription, Cloud Profile, active-device, and Gateway readiness; recovered content is not queued or auto-sent while state is restoring, and the send control may remain disabled/gray.
+- Updated bilingual AgentDesign, AppGuide, and Database docs to record the Android camera lifecycle recovery boundary and the difference between visual continuity and send permission.
+
+### Fixed
+
+- Fixed the brief disabled gray AI background flash after confirming a camera photo during AI Chat attachment recovery.
+
+### Validation
+
+- Ran `dart format` on changed Dart files with SDK telemetry redirected to the repo-local `.dart_tool` appdata path.
+- Ran `flutter clean`.
+- Ran `flutter pub get`.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test\ai_page_test.dart`; all AI Chat tests passed, including ready-background recovery with disabled send.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`. Gradle reported the existing Kotlin daemon incremental-cache issue for Android plugins, then continued and produced the APKs successfully.
+- No Supabase Edge Function deploy was required for this client-only AI Chat recovery change.
+
 ## 2026-07-05 AI Chat Camera Recovery And Food Draft Totals
 
 ### Added

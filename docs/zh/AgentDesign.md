@@ -152,6 +152,8 @@ AI Chat 草稿回复不应依赖“provider 普通解释 + 裸 JSON 粘贴”的
 
 未发送的输入框内容是当前运行期内的设备级本地草稿。它应在切换 tab 和可用状态变化时保留，直到用户删除或发送。发送时 composer 立即清空，文本进入 pending 用户气泡；如果发送失败，应恢复草稿以便重试。退出登录或切换账号时应清空，避免上一账号上下文残留；草稿只有发送成功后才能进入云端 chat history。
 
+Android 相机和系统 picker 流程可能在 FitLog 进入后台时暂停、销毁或重建 Flutter activity。这是 Android 生命周期和内存管理行为，不是 Flutter 主动停止 AI 动效。AI 图片恢复路径应接受这种重建可能发生，通过很小的本地恢复标记恢复输入文字、provider 和图片附件；如果用户是从 ready 的 AI 页面进入 picker，恢复期间应保留 ready 彩色 AI 背景，避免暴露账号状态短暂恢复中的灰色中间态。这种视觉连续性不能授予发送权限：发送按钮和请求路径仍必须依赖真实的 AccountController、订阅、Cloud Profile、active-device 和 Gateway readiness；状态恢复期间发送控件可以保持灰色禁用。账号状态尚未恢复完成时，App 不得排队或自动发送恢复内容。
+
 ## V1 支持的 Workflow
 
 ### Food Draft Workflow

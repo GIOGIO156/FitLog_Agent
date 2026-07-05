@@ -74,7 +74,7 @@ Agent V1 新增：
 
 - Add Food 把 AI 食物分析放在第一入口；它可以基于纯文字食物描述创建 Food Draft，也可以使用最多三张可选拍照/相册图片和描述创建 Food Draft
 - 打开相机/相册前会保存很小的本地恢复标记，让 Android activity 重启后能尽量回到分析草稿，而不是把用户丢回空白 Home
-- AI Chat 图片附件启动也会保留一个小的本地恢复标记，用于在 Android activity 重建后恢复输入文字和取回的图片附件
+- AI Chat 图片附件启动也会保留一个小的本地恢复标记，用于在 Android 相机/系统 picker 重建 activity 后恢复输入文字、provider、取回的图片附件和 ready 彩色背景连续性；发送仍等待真实账号和 Gateway readiness，恢复期间可以保持灰色禁用
 - AI 食物分析或后续 Chat 草稿流程中由用户确认的 Food Draft 可以变成正式记录
 - AI 估算不确定时应先追问，再进入保存
 

@@ -74,7 +74,7 @@ Agent V1 additions:
 
 - Add Food places AI Food Analysis first; it can create a Food Draft from a text-only food description or from up to three optional camera/gallery images plus description
 - camera/gallery launches keep a small local recovery marker so Android activity restarts can reopen the analysis draft instead of dumping the user back to an empty Home state
-- AI Chat image attachment launches keep a small local recovery marker for composer text and recovered image attachments when Android recreates the activity
+- AI Chat image attachment launches keep a small local recovery marker for composer text, provider, recovered image attachments, and ready-background continuity when Android camera/system picker recreates the activity; send still waits for real account and Gateway readiness and may stay disabled/gray during recovery
 - confirmed Food Drafts from AI Food Analysis or later Chat draft flows can become official records
 - uncertain AI estimates should ask follow-up questions before saving
 

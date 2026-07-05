@@ -54,6 +54,7 @@ const double _aiSendingTurnEstimatedHeight = 96;
 const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
 const Duration _aiKeyboardTransitionSettleDelay = Duration(milliseconds: 180);
+const Duration _aiImageRecoveryVisualOverrideTimeout = Duration(seconds: 6);
 const Set<String> _supportedChatImageMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -250,10 +251,12 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   String? _composerNoticeText;
   Timer? _composerNoticeTimer;
   Timer? _keyboardTransitionTimer;
+  Timer? _imageRecoveryVisualOverrideTimer;
   String? _accountBoundaryKey;
   String? _chatSyncKey;
   int _lastConsumedRecoveryVersion = 0;
   int _scheduledRecoveryVersion = 0;
+  bool _imageRecoveryReadyVisualOverride = false;
   double? _lastKeyboardBottomInset;
   double _composerHeight = _aiDefaultComposerHeight;
 
@@ -276,6 +279,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _composerNoticeTimer?.cancel();
     _keyboardTransitionTimer?.cancel();
+    _imageRecoveryVisualOverrideTimer?.cancel();
     _keyboardTransitioning.dispose();
     _messageScrollController.dispose();
     _controller.dispose();
@@ -323,7 +327,10 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     _scheduleImageRecovery(imageRecoveryController);
     _syncAccountDraftBoundary(accountController);
     _scheduleChatSync(accountController, chatController);
-    final effectiveMode = _effectiveMode(accountController);
+    final effectiveMode = _effectiveMode(
+      accountController,
+      imageRecoveryController,
+    );
     final cloudNickname =
         accountController?.cloudProfileState.cloudProfile?.profile.nickname;
     final canUseGateway = widget.mode == null
@@ -506,6 +513,9 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         offset: messageText.length,
       );
     }
+    if (recovered.wasReadyVisual) {
+      _holdImageRecoveryReadyVisual();
+    }
     setState(() {
       if (provider != null) {
         _provider = provider;
@@ -521,14 +531,42 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     }
   }
 
-  AiShellMode _effectiveMode(AccountController? accountController) {
+  AiShellMode _effectiveMode(
+    AccountController? accountController,
+    AiChatImageRecoveryController? imageRecoveryController,
+  ) {
     final explicitMode = widget.mode;
     if (explicitMode != null) {
       return explicitMode;
     }
-    return accountController?.aiAvailability.isReadyVisual == true
-        ? AiShellMode.ready
-        : AiShellMode.disabled;
+    if (accountController?.aiAvailability.isReadyVisual == true ||
+        _shouldKeepImageRecoveryReadyVisual(imageRecoveryController)) {
+      return AiShellMode.ready;
+    }
+    return AiShellMode.disabled;
+  }
+
+  bool _shouldKeepImageRecoveryReadyVisual(
+    AiChatImageRecoveryController? controller,
+  ) {
+    return _imageRecoveryReadyVisualOverride ||
+        (controller?.pending?.wasReadyVisual == true);
+  }
+
+  void _holdImageRecoveryReadyVisual() {
+    _imageRecoveryVisualOverrideTimer?.cancel();
+    _imageRecoveryReadyVisualOverride = true;
+    _imageRecoveryVisualOverrideTimer = Timer(
+      _aiImageRecoveryVisualOverrideTimeout,
+      () {
+        if (!mounted || !_imageRecoveryReadyVisualOverride) {
+          return;
+        }
+        setState(() {
+          _imageRecoveryReadyVisualOverride = false;
+        });
+      },
+    );
   }
 
   _AiStatusPresentation _statusPresentation(
@@ -723,6 +761,11 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       await AiChatImageRecoveryStore.savePending(
         messageText: _controller.text,
         provider: _providerPreferenceValue(_provider),
+        wasReadyVisual:
+            _maybeAccountController(
+              listen: false,
+            )?.aiAvailability.isReadyVisual ==
+            true,
       );
       final remainingSlots = _maxChatImages - _attachedImages.length;
       final images = await _imagePicker.pickMultiple(

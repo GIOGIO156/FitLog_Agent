@@ -152,6 +152,8 @@ AI Chat draft responses should not rely on raw provider prose plus pasted JSON. 
 
 Unsent composer text is a current-runtime device-local draft. It should survive tab switches and disabled availability states until the user deletes it or sends it. The composer clears immediately on send and the text moves into a pending user bubble; if sending fails, the draft should be restored for retry. Logout or account switching should clear the draft so previous account context does not linger; drafts must not be promoted into cloud chat history until a successful send.
 
+Android camera and system picker flows may pause, destroy, or recreate the Flutter activity while FitLog is in the background. This is Android lifecycle and memory management, not Flutter intentionally stopping the AI animation. The AI image recovery path should accept that recreation can happen, restore the composer text/provider/attachments from the small local recovery marker, and preserve the ready colorful AI background when the user entered the picker from a ready AI page. That visual continuity must not grant send permission: the send button and request path still depend on the real AccountController, subscription, Cloud Profile, active-device, and Gateway readiness, and the send control may remain disabled/gray while that state recovers. The app must not queue or auto-send recovered content while account state is still restoring.
+
 ## Supported V1 Workflows
 
 ### Food Draft Workflow
