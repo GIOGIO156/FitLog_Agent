@@ -14,7 +14,7 @@ FitLog_Agent V1 保留现有 FitLog Local 的 App 区域，并新增一个主要
 Home | Food | AI | Workout | Profile
 ```
 
-AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，并从 pill 中线到底部屏幕保留与导航等宽、页面背景色的底部遮挡层，避免滚动文字从导航和底部安全区透出；该遮挡层不能延伸到 pill 与屏幕两侧之间的空隙。AI tab 使用没有这层遮挡的更透明玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
+AI tab 位于正中间，因为它是 Agent 主入口。底部导航组件应是主题化浮动 pill，不应在 pill 外绘制整行背景色。非 AI tab 使用实体主题色 pill，并从 pill 中线到底部屏幕保留与导航等宽、页面背景色的底部遮挡层，避免滚动文字从导航和底部安全区透出；该遮挡层不能延伸到 pill 与屏幕两侧之间的空隙。AI tab 使用没有这层遮挡的更透明玻璃态 pill，保留动效背景可见性。Root shell 不缩短页面主体；导航 helper 必须区分屏幕坐标里的 pill 占用和页面 SafeArea 内容区里仍需避让的重叠高度。导航 pill 在键盘 inset 变化期间保持稳定的底部 `viewPadding`，不应在键盘感知控件移动时自己下弹。Home 首屏盒子扣除导航重叠高度，g/kg 和 energy-ratio 仪表盘只在盒子内部调整区块之间的空白，不缩小卡片内部结构；可滚动 tab 在自身内容底部预留阅读空间；饮食和训练固定底部操作按钮是透明 overlay，并与 AI 输入框一样使用屏幕坐标里的固定导航相对间距，不再形成整条 footer 底色。
 
 说明类 guide sheet 是临时阅读层，不是页面内容。Home 策略说明和 Profile 当前计划计算方法说明必须使用共享 root modal guide sheet：modal 遮罩覆盖并禁用底部导航，说明内容停在 nav pill footprint 上方 12 px，顶部至少保留 64 px 焦点留白，长内容在 sheet body 内部滚动。
 
@@ -120,7 +120,7 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 模型/状态 pill 只表示 readiness，并使用紧凑文案：满足发送条件时显示 `可用`，账号/Profile/订阅/网关 gate、离线或 active-device 阻止发送时显示 `不可用`。请求进行中只由发送按钮和 assistant loading 气泡表达。
 - AI Chat 的交互强调色会跟随主题：用户气泡、发送按钮、artifact 确认按钮、草稿卡片边框、Markdown 强调色和 history 选中态在 Green 主题保持绿色，在 Black/黑橙主题切换为柔和但明确的橙色。可用状态灯和文字保持语义绿色，继续表达 ready 状态。AI 液态背景仍是独立的粉绿蓝色场。
 - 发送 prompt 后，输入框立即清空，用户消息立即显示为 pending 气泡；等气泡有真实布局位置后，消息列表会把它锚到顶部操作区下方的可读边界，而不是消息 viewport 的物理顶端或顶部渐变退场区，并在服务端回复持久化和重新加载前显示 assistant loading 气泡。发送中的活动轮次填充不能暴露成可滚动空白，最终 assistant 回复出现后不再强制二次滚动。
-- 消息列表是接近全屏的滚动层，从 AI SafeArea 顶部开始，通过内部 top padding 把默认可读内容放到 history/account/provider 控件下方，并用不对称的轻柔 alpha 边缘替代硬矩形裁切。顶部退场更长，让已读内容滑到顶部控件后方时不和控件抢层级；底部退场更短，让最后一条消息保持干净可读。实测 composer 几何确保键盘弹起和未弹起时手动滚动都不会让最后一条消息被输入框盖住。键盘未弹起时，输入框保持带正常阅读间距的底部悬浮 pill，viewport 截止在输入框上方；键盘弹起时，输入框贴住键盘顶部，作为完整悬浮且实心的 input accessory，消息列表 viewport 延伸到输入框后方并截止在键盘顶部，不再被额外外部 gap、半高遮罩或 footer 背景带包围，最后一条气泡只依赖列表内部底部安全 padding 避开输入框。
+- 消息列表是接近全屏的滚动层，从 AI SafeArea 顶部开始，通过内部 top padding 把默认可读内容放到 history/account/provider 控件下方，并用不对称的轻柔 alpha 边缘替代硬矩形裁切。顶部退场更长，让已读内容滑到顶部控件后方时不和控件抢层级；底部退场更短，让最后一条消息保持干净可读。实测 composer 几何确保键盘弹起和未弹起时手动滚动都不会让最后一条消息被输入框盖住。键盘未弹起时，输入框保持带正常阅读间距的底部悬浮 pill，viewport 截止在输入框上方；键盘弹起时，输入框贴住键盘顶部，作为完整悬浮且实心的 input accessory，消息列表 viewport 延伸到输入框后方并截止在键盘顶部，不再被额外外部 gap、半高遮罩或 footer 背景带包围，最后一条气泡只依赖列表内部底部安全 padding 避开输入框。键盘收起时，输入框会停在正常导航上方静止避让位置，不跟随键盘落到屏幕物理底部后再弹回。
 - assistant 消息通过维护中的 GitHub-flavored Markdown 渲染器按 App 样式展示，文本可选择。用户消息仍按可选择的普通文本显示，复制通过系统文字选择菜单完成，不再提供气泡级复制按钮。当前 Markdown 渲染不加载远程图片，也不执行链接动作。
 - 当 Chat 回复包含 Food Draft 或 Workout Draft 时，assistant 消息会显示原生 artifact 卡片和确认按钮。按钮用已保存的 snapshot 重建 Food Preview 或现有训练编辑草稿；后台不会保持一个待命草稿页面，用户在编辑页保存前也不会写正式记录。
 - Chat 草稿回复应把面向用户的解释放在 `message.text`，把结构化草稿数据放在 `draft`。服务端校验后，App 展示解释文字和原生 artifact 卡片；provider 原始 JSON 不应作为普通 assistant Markdown 出现在聊天中。Add Food AI 食物分析快捷入口仍保持专用的 `ai-food-photo-analyze` 纯 JSON contract。
@@ -131,6 +131,8 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
 - 历史入口打开云端 chat history，支持新建 chat、切换 session、inline 重命名和二次确认删除；当前 UI 不暴露归档入口。
 - Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food AI 食物分析草稿流程。
+- 同时包含图片和文字的用户 turn 会在聊天 UI 中把图片附件显示为裸圆角 media，并把文字显示为独立气泡，但仍然是一条请求和一条云端 history turn。
+- 等待回复时，assistant loading 气泡只根据请求类型和等待时长显示保守的客户端进度文案；它不展示模型真实思考链，也不会在信号不存在时声称 RAG、context 或图片分析阶段已经完成。
 - AI 页面尚未实现 RAG、长期图片存储、自动修改目标或正式业务记录自动写入。Chat Food Draft 和 Workout Draft artifact 卡片只有在用户点击确认后才打开对应编辑页，用户保存前仍是草稿。
 
 可用状态：

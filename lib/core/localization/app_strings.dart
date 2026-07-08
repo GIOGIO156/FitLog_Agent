@@ -120,6 +120,24 @@ class AppStrings {
   String get aiOfflineStatus => _t('Offline', '离线');
   String get aiPreparingStatus => _t('Preparing', '准备中');
   String get aiThinkingStatus => _t('Thinking', '思考中');
+  String get aiProgressSendingText =>
+      _t('Sending your question...', '正在发送问题...');
+  String get aiProgressSendingImageRequest =>
+      _t('Sending image request...', '正在发送图片请求...');
+  String get aiProgressSendingImagesAndText =>
+      _t('Sending images and description...', '正在发送图片和描述...');
+  String get aiProgressWaitingForReply =>
+      _t('Waiting for the reply...', '正在等待回复...');
+  String get aiProgressImageMayTakeLonger => _t(
+    'This includes images, so it may take a few more seconds.',
+    '这次包含图片，可能需要多等几秒。',
+  );
+  String get aiProgressStillWaiting =>
+      _t('Still waiting for the server...', '仍在等待服务端返回...');
+  String get aiProgressSlowResponse => _t(
+    'Network or model response is slow. Still waiting...',
+    '网络或模型响应较慢，正在继续等待...',
+  );
   String get phase2BackendNotConfigured => _t(
     'Supabase is not configured for this build. Start the app with SUPABASE_URL and SUPABASE_ANON_KEY to test login.',
     '当前构建未配置 Supabase。请使用 SUPABASE_URL 和 SUPABASE_ANON_KEY 启动后测试登录。',

@@ -479,11 +479,56 @@ void main() {
       );
       expect(composerRect.bottom, closeTo(852 - 336, 0.1));
       expect(composerDecoration.color, const Color(0xFFF9FDFB));
+      expect(composerDecoration.border, isA<Border>());
+      final composerBorder = composerDecoration.border! as Border;
+      expect(composerBorder.top.width, closeTo(0.8, 0.01));
+      expect(composerDecoration.boxShadow, hasLength(2));
+      expect(composerDecoration.boxShadow!.first.blurRadius, 30);
       expect(listBottom, closeTo(composerRect.bottom, 0.5));
       expect(listBottom, greaterThan(composerRect.top));
       expect(finalLineBottom, lessThanOrEqualTo(composerRect.top - 12));
     },
   );
+
+  testWidgets('keyboard closing keeps the composer above navigation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _buildAiTestApp(
+        const AiPage(mode: AiShellMode.ready),
+        resizeToAvoidBottomInset: false,
+      ),
+    );
+    await tester.pump();
+
+    double composerBottomDistance() {
+      final composerRect = tester.getRect(
+        find.byKey(const ValueKey<String>('ai_composer_surface')),
+      );
+      return 852 - composerRect.bottom;
+    }
+
+    final restingBottomDistance = composerBottomDistance();
+    expect(restingBottomDistance, greaterThan(4));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    expect(composerBottomDistance(), closeTo(336, 0.1));
+
+    final closingInset = restingBottomDistance / 2;
+    tester.view.viewInsets = FakeViewPadding(bottom: closingInset);
+    await tester.pump();
+    expect(composerBottomDistance(), closeTo(restingBottomDistance, 0.1));
+    expect(composerBottomDistance(), greaterThan(closingInset));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    await tester.pump();
+    expect(composerBottomDistance(), closeTo(restingBottomDistance, 0.1));
+  });
 
   testWidgets('sending anchors the new user bubble to the reading top', (
     tester,
@@ -757,7 +802,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey<String>('ai_composer_field')),
-      'Can this work after training?',
+      'Can this work after training if I already ate rice and chicken earlier today?',
     );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
@@ -767,6 +812,10 @@ void main() {
     expect(
       harness.repository.lastRequest?.modelChoice,
       AiGatewayModelChoice.qwen,
+    );
+    expect(
+      harness.repository.lastRequest?.messageText,
+      'Can this work after training if I already ate rice and chicken earlier today?',
     );
     expect(harness.repository.lastRequest?.attachments, hasLength(3));
     expect(
@@ -781,6 +830,116 @@ void main() {
       find.byKey(const ValueKey<String>('ai_message_image_thumbnail')),
       findsNWidgets(3),
     );
+    expect(
+      find.byKey(const ValueKey<String>('ai_user_attachment_media')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('ai_user_text_bubble')),
+      findsOneWidget,
+    );
+
+    final attachmentMediaRect = tester.getRect(
+      find.byKey(const ValueKey<String>('ai_user_attachment_media')),
+    );
+    final textBubbleRect = tester.getRect(
+      find.byKey(const ValueKey<String>('ai_user_text_bubble')),
+    );
+    expect(textBubbleRect.top, greaterThan(attachmentMediaRect.bottom));
+    expect(
+      (textBubbleRect.right - attachmentMediaRect.right).abs(),
+      lessThanOrEqualTo(1),
+    );
+    expect(textBubbleRect.width, greaterThan(attachmentMediaRect.width));
+  });
+
+  testWidgets('sent image media stays bare and stable across keyboard inset', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final harness = _readyAiHarness();
+    final picker = _FakeFoodImagePicker(_tinyPngImage());
+    harness.repository.sendHandler = (request) async {
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Photo meal'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        _message(
+          'u1',
+          'session_1',
+          1,
+          AiChatMessageRole.user,
+          request.messageText,
+        ),
+        _message('a1', 'session_1', 2, AiChatMessageRole.assistant, '收到。'),
+      ];
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: '收到。',
+      );
+    };
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness, imagePicker: picker));
+    await tester.tap(find.byKey(const ValueKey<String>('ai_provider_qwen')));
+    await tester.pump();
+    await _attachAiGalleryImage(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      'Two beers',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+    await tester.pump();
+
+    final mediaFinder = find.byKey(
+      const ValueKey<String>('ai_user_attachment_media'),
+    );
+    expect(mediaFinder, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('ai_user_attachment_bubble')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('ai_message_image_thumbnail')),
+      findsOneWidget,
+    );
+    expect(
+      find
+          .descendant(of: mediaFinder, matching: find.byType(Image))
+          .evaluate()
+          .map((element) => element.widget as Image)
+          .single
+          .gaplessPlayback,
+      isTrue,
+    );
+
+    final mediaDecorations = find
+        .descendant(of: mediaFinder, matching: find.byType(DecoratedBox))
+        .evaluate()
+        .map((element) => (element.widget as DecoratedBox).decoration)
+        .whereType<BoxDecoration>()
+        .toList(growable: false);
+    expect(
+      mediaDecorations.map((decoration) => decoration.color),
+      isNot(contains(const Color(0xFF5FA94D).withValues(alpha: 0.92))),
+    );
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+
+    expect(mediaFinder, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('ai_message_image_thumbnail')),
+      findsOneWidget,
+    );
+    expect(find.text('Two beers'), findsOneWidget);
   });
 
   testWidgets(
@@ -944,7 +1103,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Ready'), findsOneWidget);
-    expect(find.text('Thinking'), findsOneWidget);
+    expect(find.text('Sending your question...'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1600));
+    expect(find.text('Waiting for the reply...'), findsOneWidget);
     expect(_aiBackgroundMotion(tester), contains('quietChat'));
 
     completer.complete(
@@ -962,7 +1123,82 @@ void main() {
       findsNothing,
     );
     expect(find.text('收到，我来处理。'), findsOneWidget);
+    expect(find.text('Waiting for the reply...'), findsNothing);
   });
+
+  testWidgets(
+    'image sends show conservative progress without claiming results',
+    (tester) async {
+      final harness = _readyAiHarness();
+      final picker = _FakeFoodImagePicker(_tinyPngImage());
+      final completer = Completer<AiGatewayResponse>();
+      harness.repository.sendHandler = (request) {
+        harness.repository.sessions = <AiChatSession>[
+          _session('session_1', 'Photo meal'),
+        ];
+        harness.repository.messages['session_1'] = <AiChatMessage>[
+          _message(
+            'u1',
+            'session_1',
+            1,
+            AiChatMessageRole.user,
+            request.messageText,
+          ),
+          _message('a1', 'session_1', 2, AiChatMessageRole.assistant, '收到。'),
+        ];
+        return completer.future;
+      };
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(harness, imagePicker: picker),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('ai_provider_qwen')));
+      await tester.pump();
+      await _attachAiGalleryImage(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ai_composer_field')),
+        'Please estimate this meal.',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+      await tester.pump();
+
+      expect(find.text('Sending images and description...'), findsOneWidget);
+      expect(find.textContaining('recognized'), findsNothing);
+      expect(find.textContaining('nutrition'), findsNothing);
+      expect(find.textContaining('FitLog rules'), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 1600));
+      expect(
+        find.text('This includes images, so it may take a few more seconds.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('recognized'), findsNothing);
+      expect(find.textContaining('nutrition'), findsNothing);
+      expect(find.textContaining('FitLog rules'), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 4500));
+      expect(find.text('Still waiting for the server...'), findsOneWidget);
+
+      completer.complete(
+        const AiGatewayResponse(
+          sessionId: 'session_1',
+          assistantMessageId: 'a1',
+          messageText: '收到。',
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
+        findsNothing,
+      );
+      expect(find.text('收到。'), findsOneWidget);
+      expect(find.textContaining('waiting', findRichText: true), findsNothing);
+    },
+  );
 
   testWidgets('assistant messages render basic Markdown without raw markers', (
     tester,

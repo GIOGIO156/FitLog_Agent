@@ -116,6 +116,7 @@ class FitLogBottomNavBar extends StatelessWidget {
     final shieldHeight = barHeight / 2 + bottomPadding + 1;
 
     return SafeArea(
+      maintainBottomViewPadding: true,
       minimum: const EdgeInsets.fromLTRB(
         horizontalInset,
         0,

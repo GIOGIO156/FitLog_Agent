@@ -1,5 +1,86 @@
 # Changelog
 
+## 2026-07-08 Bottom Navigation Keyboard Stability
+
+### Fixed
+
+- Kept the floating bottom navigation pill on stable bottom `viewPadding` during keyboard open/close transitions, preventing the nav from dipping down and bouncing back while the AI composer follows the keyboard.
+- Added root navigation widget coverage for the Android-style keyboard state where `padding.bottom` drops to zero while `viewPadding.bottom` still contains the system gesture safe area.
+- Updated bilingual Product, AppGuide, and AgentDesign docs to record that the root bottom navigation stays fixed during keyboard inset animation.
+
+### Validation
+
+- Ran `dart format lib\core\widgets\fitlog_bottom_nav_bar.dart test\root_navigation_test.dart`.
+- Ran `flutter test test\root_navigation_test.dart`; all root navigation tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+
+## 2026-07-08 AI Chat Composer Motion Clamp
+
+### Fixed
+
+- Clamped the AI Chat composer bottom offset to the larger of the keyboard inset and the closed navigation-resting clearance, preventing the composer from following a closing keyboard to the physical screen bottom before bouncing back above the navigation pill.
+- Kept the message viewport and composer on the same keyboard-attached geometry so the final chat bubble remains clear in open, closed, and intermediate keyboard states.
+- Added a widget regression test for keyboard open, partial-close, and fully closed insets.
+- Updated bilingual Product, AppGuide, and AgentDesign docs to record the composer motion range.
+
+### Validation
+
+- Ran `dart format lib\features\ai\ai_page.dart test\ai_page_test.dart`.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+
+## 2026-07-08 AI Chat Bare Image Media
+
+### Changed
+
+- Changed mixed image-plus-text user turns so image attachments render as bare rounded right-aligned media above the text bubble instead of being wrapped in a green user bubble, while still staying one Gateway request, pending lifecycle, retry unit, and cloud-history turn.
+- Cached decoded message thumbnail bytes in widget state, added stable thumbnail state keys, and enabled gapless image playback so keyboard inset rebuilds do not briefly expose a theme-colored placeholder before the image redraws.
+- Updated bilingual Product, AppGuide, and AgentDesign docs to record the bare media layout and keyboard-stable image thumbnail boundary.
+
+### Validation
+
+- Ran `dart format lib\features\ai\ai_page.dart test\ai_page_test.dart`.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+
+## 2026-07-08 AI Chat Conservative Progress Labels
+
+### Changed
+
+- Changed the AI Chat assistant loading bubble from a generic thinking label to conservative client-side progress labels driven only by request type and elapsed time.
+- Added text/image waiting states for sending, normal wait, longer image wait, continued server wait, and slow network/model response without exposing model chain-of-thought or claiming unverified image, nutrition, RAG, or context milestones.
+- Updated bilingual Product, AppGuide, and AgentDesign docs for the current Phase 4 client-only progress boundary, and updated the roadmap so future Phase 5-7 work requires progress claims to match Gateway/RAG/context evidence.
+
+### Validation
+
+- Ran `dart format lib\features\ai\ai_page.dart lib\core\localization\app_strings.dart test\ai_page_test.dart`.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+
+## 2026-07-08 AI Chat Mixed Attachment Layout
+
+### Changed
+
+- Changed AI Chat user-turn rendering so a message that includes both image attachments and text displays as separate adjacent media and text surfaces while staying one Gateway request, pending lifecycle, retry unit, and cloud-history turn.
+- Refined the floating AI composer with a subtle hairline border and layered low-opacity shadow so it reads as a floating input surface over the animated AI background without becoming a heavy card.
+- Updated bilingual Product, AppGuide, and AgentDesign docs to record the mixed attachment/text bubble layout and composer surface boundary.
+
+### Validation
+
+- Ran `dart format lib\features\ai\ai_page.dart test\ai_page_test.dart`.
+- Ran `flutter test test\ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+
 ## 2026-07-05 Phase 5-7 Roadmap And Evaluation Lab Plan
 
 ### Changed

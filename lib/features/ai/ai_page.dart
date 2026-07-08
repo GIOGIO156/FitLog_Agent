@@ -39,6 +39,8 @@ enum _AiBackgroundMotion { idleLanding, quietChat }
 
 enum _AiStatusTone { available, blocked, unavailable }
 
+enum _AiLoadingProgressStage { sending, waiting, stillWaiting, slow }
+
 const String _selectedAiProviderPreferenceKey = 'fitlog.ai.selected_provider';
 const int _maxChatImages = 3;
 const int _maxChatImageBytes = 4 * 1024 * 1024;
@@ -1097,19 +1099,25 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final keyboardVisible = bottomInset > 0;
-    final composerBottomPadding = keyboardVisible
-        ? bottomInset
-        : FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
-    final messageViewportGap = keyboardVisible ? 0.0 : _aiMessageBottomGap;
+    final restingComposerBottomPadding =
+        FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
+    final composerBottomPadding = math.max(
+      bottomInset,
+      restingComposerBottomPadding,
+    );
+    final composerAttachedToKeyboard =
+        bottomInset > restingComposerBottomPadding;
+    final messageViewportGap = composerAttachedToKeyboard
+        ? 0.0
+        : _aiMessageBottomGap;
     final readableBottomObstruction =
         composerBottomPadding + composerHeight + messageViewportGap;
-    final messageViewportBottomObstruction = keyboardVisible
+    final messageViewportBottomObstruction = composerAttachedToKeyboard
         ? composerBottomPadding
         : readableBottomObstruction;
     final messageListBottomPadding =
         _aiMessageListBottomSafePadding +
-        (keyboardVisible ? composerHeight : 0.0);
+        (composerAttachedToKeyboard ? composerHeight : 0.0);
     final contentTopPadding = hasConversation
         ? _aiTopBarHeight + _aiMessageTopGap
         : 74.0;
@@ -1190,7 +1198,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                     attachedImages: attachedImages,
                     mode: mode,
                     status: status,
-                    solidSurface: keyboardVisible,
+                    solidSurface: composerAttachedToKeyboard,
                     hasConversation: hasConversation,
                     errorLabel: errorLabel,
                     onProviderChanged: onProviderChanged,
@@ -1778,19 +1786,25 @@ class _AiComposer extends StatelessWidget {
                 ? const Color(0xFFF9FDFB)
                 : Colors.white.withValues(alpha: 0.76);
             final borderColor = solidSurface
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.70);
+                ? const Color(0xFFCFE0D4).withValues(alpha: 0.58)
+                : Colors.white.withValues(alpha: 0.82);
             return DecoratedBox(
               key: const ValueKey<String>('ai_composer_surface'),
               decoration: BoxDecoration(
                 color: surfaceColor,
                 borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: borderColor),
+                border: Border.all(color: borderColor, width: 0.8),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: const Color(0xFF273321).withValues(alpha: 0.08),
-                    blurRadius: 26,
-                    offset: const Offset(0, 12),
+                    color: const Color(0xFF1E3324).withValues(alpha: 0.10),
+                    blurRadius: 30,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 14),
+                  ),
+                  BoxShadow(
+                    color: const Color(0xFF172618).withValues(alpha: 0.035),
+                    blurRadius: 1,
+                    offset: const Offset(0, 0.5),
                   ),
                 ],
               ),
@@ -2329,7 +2343,13 @@ class _AiMessageList extends StatelessWidget {
       );
     }
     if (controller.sending) {
-      addMessage(const _AiAssistantLoadingBubble(), isUser: false);
+      addMessage(
+        _AiAssistantLoadingBubble(
+          hasText: (controller.pendingUserText ?? '').trim().isNotEmpty,
+          hasAttachments: controller.pendingUserAttachments.isNotEmpty,
+        ),
+        isUser: false,
+      );
     }
     if (controller.loadingMessages) {
       if (items.isNotEmpty) {
@@ -2545,57 +2565,54 @@ class _AiBubbleSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = _AiThemePalette.of(context);
-    final content = isUser
-        ? _AiUserMessageContent(
-            text: text,
-            attachments: attachments,
-            textColor: palette.onUserBubble,
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _AiMarkdownText(
-                text: text,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: palette.assistantText,
-                  height: 1.42,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (foodDraft != null) ...[
-                const SizedBox(height: 12),
-                _AiFoodDraftArtifactCard(
-                  draft: foodDraft!,
-                  onPressed: foodDraft!.draft == null || onOpenFoodDraft == null
-                      ? null
-                      : () => onOpenFoodDraft!(foodDraft!.draft!),
-                ),
-              ],
-              if (workoutDraft != null) ...[
-                const SizedBox(height: 12),
-                _AiWorkoutDraftArtifactCard(
-                  draft: workoutDraft!,
-                  onPressed:
-                      workoutDraft!.draft == null || onOpenWorkoutDraft == null
-                      ? null
-                      : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
-                ),
-              ],
-            ],
-          );
+    if (isUser) {
+      return _AiUserMessageCluster(
+        text: text,
+        pending: pending,
+        attachments: attachments,
+        textColor: palette.onUserBubble,
+        bubbleColor: palette.userBubble,
+      );
+    }
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _AiMarkdownText(
+          text: text,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: palette.assistantText,
+            height: 1.42,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (foodDraft != null) ...[
+          const SizedBox(height: 12),
+          _AiFoodDraftArtifactCard(
+            draft: foodDraft!,
+            onPressed: foodDraft!.draft == null || onOpenFoodDraft == null
+                ? null
+                : () => onOpenFoodDraft!(foodDraft!.draft!),
+          ),
+        ],
+        if (workoutDraft != null) ...[
+          const SizedBox(height: 12),
+          _AiWorkoutDraftArtifactCard(
+            draft: workoutDraft!,
+            onPressed: workoutDraft!.draft == null || onOpenWorkoutDraft == null
+                ? null
+                : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
+          ),
+        ],
+      ],
+    );
     return Align(
-      key: pending && isUser
-          ? const ValueKey<String>('ai_pending_user_bubble')
-          : null,
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: isUser
-                ? palette.userBubble
-                : Colors.white.withValues(alpha: 0.80),
+            color: Colors.white.withValues(alpha: 0.80),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
           ),
@@ -2603,6 +2620,117 @@ class _AiBubbleSurface extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: content,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiUserMessageCluster extends StatelessWidget {
+  const _AiUserMessageCluster({
+    required this.text,
+    required this.pending,
+    required this.attachments,
+    required this.textColor,
+    required this.bubbleColor,
+  });
+
+  final String text;
+  final bool pending;
+  final List<AiGatewayImageAttachment> attachments;
+  final Color textColor;
+  final Color bubbleColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final trimmed = text.trim();
+    final textWidget = trimmed.isEmpty
+        ? null
+        : SelectableText(
+            trimmed,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: textColor,
+              height: 1.42,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+    final segments = <Widget>[
+      if (attachments.isNotEmpty)
+        _AiUserMediaSegment(
+          key: const ValueKey<String>('ai_user_attachment_media'),
+          attachments: attachments,
+        ),
+      if (textWidget != null)
+        _AiUserBubbleSegment(
+          key: const ValueKey<String>('ai_user_text_bubble'),
+          color: bubbleColor,
+          child: textWidget,
+        ),
+    ];
+
+    if (segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final child = segments.length == 1
+        ? segments.single
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              for (var index = 0; index < segments.length; index++) ...[
+                if (index > 0) const SizedBox(height: 6),
+                segments[index],
+              ],
+            ],
+          );
+
+    return Align(
+      key: pending ? const ValueKey<String>('ai_pending_user_bubble') : null,
+      alignment: Alignment.centerRight,
+      child: child,
+    );
+  }
+}
+
+class _AiUserMediaSegment extends StatelessWidget {
+  const _AiUserMediaSegment({super.key, required this.attachments});
+
+  final List<AiGatewayImageAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: _AiMessageImageStrip(attachments: attachments),
+    );
+  }
+}
+
+class _AiUserBubbleSegment extends StatelessWidget {
+  const _AiUserBubbleSegment({
+    super.key,
+    required this.color,
+    required this.child,
+  });
+
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: child,
         ),
       ),
     );
@@ -2779,50 +2907,6 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
   }
 }
 
-class _AiUserMessageContent extends StatelessWidget {
-  const _AiUserMessageContent({
-    required this.text,
-    required this.attachments,
-    required this.textColor,
-  });
-
-  final String text;
-  final List<AiGatewayImageAttachment> attachments;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final trimmed = text.trim();
-    final textWidget = trimmed.isEmpty
-        ? null
-        : SelectableText(
-            trimmed,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: textColor,
-              height: 1.42,
-              fontWeight: FontWeight.w700,
-            ),
-          );
-
-    if (attachments.isEmpty) {
-      return textWidget ?? const SizedBox.shrink();
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: <Widget>[
-        _AiMessageImageStrip(attachments: attachments),
-        if (textWidget != null) ...<Widget>[
-          const SizedBox(height: 8),
-          textWidget,
-        ],
-      ],
-    );
-  }
-}
-
 class _AiMessageImageStrip extends StatelessWidget {
   const _AiMessageImageStrip({required this.attachments});
 
@@ -2835,37 +2919,78 @@ class _AiMessageImageStrip extends StatelessWidget {
       runSpacing: 8,
       alignment: WrapAlignment.end,
       children: <Widget>[
-        for (final attachment in attachments)
-          _AiMessageImageThumbnail(attachment: attachment),
+        for (var index = 0; index < attachments.length; index++)
+          _AiMessageImageThumbnail(
+            key: ValueKey<String>(
+              'ai_message_image_thumbnail_state_${attachments[index].name}_${attachments[index].byteLength}_$index',
+            ),
+            attachment: attachments[index],
+          ),
       ],
     );
   }
 }
 
-class _AiMessageImageThumbnail extends StatelessWidget {
-  const _AiMessageImageThumbnail({required this.attachment});
+class _AiMessageImageThumbnail extends StatefulWidget {
+  const _AiMessageImageThumbnail({super.key, required this.attachment});
 
   final AiGatewayImageAttachment attachment;
 
   @override
+  State<_AiMessageImageThumbnail> createState() =>
+      _AiMessageImageThumbnailState();
+}
+
+class _AiMessageImageThumbnailState extends State<_AiMessageImageThumbnail> {
+  Uint8List? _bytes;
+  String? _base64Data;
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AiMessageImageThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.attachment.base64Data != widget.attachment.base64Data) {
+      _decodeIfNeeded();
+    }
+  }
+
+  void _decodeIfNeeded() {
+    final base64Data = widget.attachment.base64Data;
+    if (_base64Data == base64Data) {
+      return;
+    }
+    _base64Data = base64Data;
+    try {
+      _bytes = base64Decode(base64Data);
+    } catch (_) {
+      _bytes = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final bytes = _decodeAttachmentBytes(attachment);
     return ClipRRect(
       key: const ValueKey<String>('ai_message_image_thumbnail'),
       borderRadius: BorderRadius.circular(14),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.20),
+          color: Colors.white.withValues(alpha: 0.28),
           borderRadius: BorderRadius.circular(14),
         ),
         child: SizedBox(
           width: 112,
           height: 112,
-          child: bytes == null
+          child: _bytes == null
               ? const Icon(Icons.image_not_supported_rounded)
               : Image.memory(
-                  bytes,
+                  _bytes!,
                   fit: BoxFit.cover,
+                  gaplessPlayback: true,
                   errorBuilder: (context, error, stackTrace) =>
                       const Icon(Icons.image_not_supported_rounded),
                 ),
@@ -2873,52 +2998,149 @@ class _AiMessageImageThumbnail extends StatelessWidget {
       ),
     );
   }
-
-  static Uint8List? _decodeAttachmentBytes(AiGatewayImageAttachment image) {
-    try {
-      return base64Decode(image.base64Data);
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
-class _AiAssistantLoadingBubble extends StatelessWidget {
-  const _AiAssistantLoadingBubble();
+class _AiAssistantLoadingBubble extends StatefulWidget {
+  const _AiAssistantLoadingBubble({
+    required this.hasText,
+    required this.hasAttachments,
+  });
+
+  final bool hasText;
+  final bool hasAttachments;
+
+  @override
+  State<_AiAssistantLoadingBubble> createState() =>
+      _AiAssistantLoadingBubbleState();
+}
+
+class _AiAssistantLoadingBubbleState extends State<_AiAssistantLoadingBubble> {
+  _AiLoadingProgressStage _stage = _AiLoadingProgressStage.sending;
+  final List<Timer> _timers = <Timer>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleStageTimers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AiAssistantLoadingBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hasText != widget.hasText ||
+        oldWidget.hasAttachments != widget.hasAttachments) {
+      _stage = _AiLoadingProgressStage.sending;
+      _scheduleStageTimers();
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelTimers();
+    super.dispose();
+  }
+
+  void _scheduleStageTimers() {
+    _cancelTimers();
+    _timers
+      ..add(
+        Timer(
+          const Duration(milliseconds: 1500),
+          () => _setStage(_AiLoadingProgressStage.waiting),
+        ),
+      )
+      ..add(
+        Timer(
+          const Duration(seconds: 6),
+          () => _setStage(_AiLoadingProgressStage.stillWaiting),
+        ),
+      )
+      ..add(
+        Timer(
+          const Duration(seconds: 12),
+          () => _setStage(_AiLoadingProgressStage.slow),
+        ),
+      );
+  }
+
+  void _cancelTimers() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    _timers.clear();
+  }
+
+  void _setStage(_AiLoadingProgressStage stage) {
+    if (!mounted || _stage == stage) {
+      return;
+    }
+    setState(() => _stage = stage);
+  }
+
+  String _label(BuildContext context) {
+    final strings = context.strings;
+    switch (_stage) {
+      case _AiLoadingProgressStage.sending:
+        if (widget.hasAttachments && widget.hasText) {
+          return strings.aiProgressSendingImagesAndText;
+        }
+        if (widget.hasAttachments) {
+          return strings.aiProgressSendingImageRequest;
+        }
+        return strings.aiProgressSendingText;
+      case _AiLoadingProgressStage.waiting:
+        if (widget.hasAttachments) {
+          return strings.aiProgressImageMayTakeLonger;
+        }
+        return strings.aiProgressWaitingForReply;
+      case _AiLoadingProgressStage.stillWaiting:
+        return strings.aiProgressStillWaiting;
+      case _AiLoadingProgressStage.slow:
+        return strings.aiProgressSlowResponse;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = _AiThemePalette.of(context);
+    final label = _label(context);
     return Align(
       key: const ValueKey<String>('ai_assistant_loading_bubble'),
       alignment: Alignment.centerLeft,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox.square(
-                dimension: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: palette.action,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.action,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                context.strings.aiThinkingStatus,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: palette.icon,
-                  fontWeight: FontWeight.w700,
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    label,
+                    key: const ValueKey<String>('ai_assistant_loading_label'),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.icon,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    softWrap: true,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

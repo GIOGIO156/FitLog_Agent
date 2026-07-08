@@ -113,6 +113,55 @@ void main() {
     expect(find.byKey(shieldKey), findsNothing);
   });
 
+  testWidgets('FitLogBottomNavBar stays fixed while keyboard insets change', (
+    tester,
+  ) async {
+    const navKey = ValueKey<String>('fitlog_bottom_nav_bar');
+
+    Future<Rect> pumpNav({
+      required double paddingBottom,
+      required double viewPaddingBottom,
+      required double viewInsetsBottom,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(390, 844),
+              padding: EdgeInsets.only(bottom: paddingBottom),
+              viewPadding: EdgeInsets.only(bottom: viewPaddingBottom),
+              viewInsets: EdgeInsets.only(bottom: viewInsetsBottom),
+            ),
+            child: Scaffold(
+              bottomNavigationBar: FitLogBottomNavBar(
+                currentIndex: RootTabIndex.ai,
+                onTap: (_) {},
+                surface: FitLogBottomNavSurface.glass,
+                items: _testNavItems,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return tester.getRect(find.byKey(navKey));
+    }
+
+    final restingRect = await pumpNav(
+      paddingBottom: 24,
+      viewPaddingBottom: 24,
+      viewInsetsBottom: 0,
+    );
+    final keyboardRect = await pumpNav(
+      paddingBottom: 0,
+      viewPaddingBottom: 24,
+      viewInsetsBottom: 336,
+    );
+
+    expect(keyboardRect.top, closeTo(restingRect.top, 0.1));
+    expect(keyboardRect.bottom, closeTo(restingRect.bottom, 0.1));
+  });
+
   testWidgets('FitLogBottomNavBar layout helpers separate screen and SafeArea', (
     tester,
   ) async {
