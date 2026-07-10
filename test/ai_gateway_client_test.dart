@@ -45,6 +45,22 @@ void main() {
   });
 
   test(
+    'TestAiGatewayClient preserves an error envelope thrown by SDK',
+    () async {
+      final client = TestAiGatewayClient((_) async {
+        throw _FunctionFailure(<String, dynamic>{
+          'error': <String, dynamic>{'code': 'provider_output_invalid'},
+        });
+      });
+
+      final response = await client.send(_request());
+
+      expect(response.isSuccess, isFalse);
+      expect(response.error?.code, AiGatewayErrorCode.providerOutputInvalid);
+    },
+  );
+
+  test(
     'TestAiGatewayClient maps thrown transport error to network failure',
     () async {
       final client = TestAiGatewayClient((_) async {
@@ -57,6 +73,12 @@ void main() {
       expect(response.error?.code, AiGatewayErrorCode.networkFailure);
     },
   );
+}
+
+class _FunctionFailure implements Exception {
+  const _FunctionFailure(this.details);
+
+  final Object? details;
 }
 
 AiGatewayRequest _request() {

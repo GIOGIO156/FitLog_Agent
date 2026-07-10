@@ -4,6 +4,10 @@ enum AiGatewayErrorCode {
   deviceReplaced,
   gatewayTimeout,
   providerFailure,
+  requestSchemaMismatch,
+  providerOutputInvalid,
+  providerRefusal,
+  providerIncomplete,
   recordSchemaMismatch,
   networkFailure,
   unknown,
@@ -22,6 +26,14 @@ extension AiGatewayErrorCodeValue on AiGatewayErrorCode {
         return 'gateway_timeout';
       case AiGatewayErrorCode.providerFailure:
         return 'provider_failure';
+      case AiGatewayErrorCode.requestSchemaMismatch:
+        return 'request_schema_mismatch';
+      case AiGatewayErrorCode.providerOutputInvalid:
+        return 'provider_output_invalid';
+      case AiGatewayErrorCode.providerRefusal:
+        return 'provider_refusal';
+      case AiGatewayErrorCode.providerIncomplete:
+        return 'provider_incomplete';
       case AiGatewayErrorCode.recordSchemaMismatch:
         return 'record_schema_mismatch';
       case AiGatewayErrorCode.networkFailure:
@@ -95,6 +107,14 @@ AiGatewayErrorCode aiGatewayErrorCodeFromValue(String? value) {
       return AiGatewayErrorCode.gatewayTimeout;
     case 'provider_failure':
       return AiGatewayErrorCode.providerFailure;
+    case 'request_schema_mismatch':
+      return AiGatewayErrorCode.requestSchemaMismatch;
+    case 'provider_output_invalid':
+      return AiGatewayErrorCode.providerOutputInvalid;
+    case 'provider_refusal':
+      return AiGatewayErrorCode.providerRefusal;
+    case 'provider_incomplete':
+      return AiGatewayErrorCode.providerIncomplete;
     case 'record_schema_mismatch':
       return AiGatewayErrorCode.recordSchemaMismatch;
     case 'network_failure':

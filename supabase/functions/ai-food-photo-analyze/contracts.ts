@@ -1,9 +1,24 @@
+import {
+  type FoodDraft,
+  type OutputValidationIssue,
+  parseFoodAnalysisEnvelope,
+} from "../_shared/ai_output_contract.ts";
+
+export type {
+  FoodDraft,
+  FoodDraftItem,
+} from "../_shared/ai_output_contract.ts";
+
 export type PhotoGatewayErrorCode =
   | "auth_required"
   | "subscription_required"
   | "device_replaced"
   | "gateway_timeout"
   | "provider_failure"
+  | "request_schema_mismatch"
+  | "provider_output_invalid"
+  | "provider_refusal"
+  | "provider_incomplete"
   | "record_schema_mismatch";
 
 export type PhotoGatewayStatus = "ok" | "blocked" | "error" | "timeout";
@@ -23,27 +38,6 @@ export interface PhotoAnalysisRequest {
   selectedDate: string;
   schemaVersion: "food_draft.v1";
   userNote: string | null;
-}
-
-export interface FoodDraft {
-  meal_name: string;
-  total_weight_g: number;
-  calories_kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  confidence: number | null;
-  estimation_notes: string;
-  items: FoodDraftItem[];
-}
-
-export interface FoodDraftItem {
-  name: string;
-  weight_g: number;
-  calories_kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
 }
 
 export interface ParsedProviderFoodResponse {
@@ -81,7 +75,7 @@ export function parsePhotoAnalysisRequest(
   const body = objectOrThrow(value);
   for (const field of unsupportedFutureFields) {
     if (field in body) {
-      throw new PhotoGatewayRequestError("record_schema_mismatch");
+      throw new PhotoGatewayRequestError("request_schema_mismatch");
     }
   }
 
@@ -90,21 +84,21 @@ export function parsePhotoAnalysisRequest(
 
   const language = stringOrEmpty(body.language).trim();
   if (language !== "zh" && language !== "en") {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
   if (stringOrEmpty(body.model_choice).trim() !== "qwen") {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
   if (stringOrEmpty(body.schema_version).trim() !== "food_draft.v1") {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
   const deviceId = stringOrEmpty(body.device_id).trim();
   const selectedDate = stringOrEmpty(body.selected_date).trim();
   if (deviceId === "" || selectedDate === "") {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
   return {
@@ -121,8 +115,13 @@ export function parsePhotoAnalysisRequest(
 export function buildQwenVisionRequestBody(params: {
   request: PhotoAnalysisRequest;
   model: string;
+  correction?: {
+    previousOutput: string;
+    issues: OutputValidationIssue[];
+  };
 }): Record<string, unknown> {
   const request = params.request;
+  const correction = params.correction;
   return {
     model: params.model,
     enable_thinking: false,
@@ -134,22 +133,29 @@ export function buildQwenVisionRequestBody(params: {
       },
       {
         role: "user",
-        content: [
-          { type: "text", text: userPrompt(request) },
-          ...request.images.map((image) => ({
-            type: "image_url",
-            image_url: {
-              url:
-                `data:${image.mimeType};base64,${image.base64Data}`,
-            },
-          })),
-        ],
+        content: correction === undefined
+          ? [
+            { type: "text", text: userPrompt(request) },
+            ...request.images.map((image) => ({
+              type: "image_url",
+              image_url: {
+                url: `data:${image.mimeType};base64,${image.base64Data}`,
+              },
+            })),
+          ]
+          : correctionPrompt(correction),
       },
     ],
   };
 }
 
-export function extractQwenContent(body: unknown): string {
+export interface QwenFoodCompletion {
+  status: "completed" | "refusal" | "incomplete";
+  content: string;
+  finishReason: string | null;
+}
+
+export function extractQwenCompletion(body: unknown): QwenFoodCompletion {
   const map = recordOrThrow(body);
   const choices = map.choices;
   if (!Array.isArray(choices) || choices.length === 0) {
@@ -157,51 +163,43 @@ export function extractQwenContent(body: unknown): string {
   }
   const first = recordOrThrow(choices[0]);
   const message = recordOrThrow(first.message);
+  const finishReason = typeof first.finish_reason === "string"
+    ? first.finish_reason
+    : null;
+  if (finishReason === "length" || finishReason === "incomplete") {
+    return {
+      status: "incomplete",
+      content: typeof message.content === "string" ? message.content : "",
+      finishReason,
+    };
+  }
+  if (
+    finishReason === "content_filter" || typeof message.refusal === "string"
+  ) {
+    return {
+      status: "refusal",
+      content: "",
+      finishReason: finishReason ?? "refusal",
+    };
+  }
   const content = message.content;
   if (typeof content !== "string" || content.trim() === "") {
     throw new Error("provider_failure");
   }
-  return content.trim();
+  return { status: "completed", content: content.trim(), finishReason };
 }
 
 export function parseProviderFoodDraftBody(
   content: string,
 ): ParsedProviderFoodResponse {
-  const root = parseJsonObjectFromContent(content);
-  if (root === null) {
-    throw new Error("record_schema_mismatch");
-  }
-  const needsClarification = root.needs_clarification === true;
-  const clarificationQuestions = stringList(root.clarification_questions);
-  const rawDraft = isRecord(root.draft)
-    ? root.draft
-    : isRecord(root.food_draft)
-    ? root.food_draft
-    : isRecord(root.data)
-    ? root.data
-    : isRecord(root.result)
-    ? root.result
-    : isRecord(root) && "meal_name" in root
-    ? root
-    : null;
-
-  if (needsClarification && rawDraft === null) {
-    return {
-      draft: null,
-      needsClarification: true,
-      clarificationQuestions,
-      schemaValidationStatus: "needs_clarification",
-    };
-  }
-  if (rawDraft === null) {
-    throw new Error("record_schema_mismatch");
-  }
-
+  const parsed = parseFoodAnalysisEnvelope(content);
   return {
-    draft: validateFoodDraft(rawDraft),
-    needsClarification: false,
-    clarificationQuestions: [],
-    schemaValidationStatus: "passed",
+    draft: parsed.draft,
+    needsClarification: parsed.needsClarification,
+    clarificationQuestions: parsed.clarificationQuestions,
+    schemaValidationStatus: parsed.needsClarification
+      ? "needs_clarification"
+      : "passed",
   };
 }
 
@@ -236,6 +234,14 @@ export function errorMessageForCode(code: PhotoGatewayErrorCode): string {
       return "The AI Gateway timed out.";
     case "provider_failure":
       return "The AI Gateway could not complete the request.";
+    case "request_schema_mismatch":
+      return "The AI food analysis request is not supported.";
+    case "provider_output_invalid":
+      return "The AI food analysis result could not be validated. Please try again.";
+    case "provider_refusal":
+      return "The AI provider declined this request.";
+    case "provider_incomplete":
+      return "The AI food analysis ended before it was complete. Please try again.";
     case "record_schema_mismatch":
       return "The AI food analysis request or draft schema is not supported.";
   }
@@ -275,55 +281,6 @@ export function stripImageDataForDebug(request: PhotoAnalysisRequest | null) {
   }));
 }
 
-function validateFoodDraft(value: Record<string, unknown>): FoodDraft {
-  const mealName = stringOrEmpty(value.meal_name).trim();
-  if (mealName === "") {
-    throw new Error("record_schema_mismatch");
-  }
-  const requestedTotals = {
-    total_weight_g: nonNegativeFiniteNumber(value.total_weight_g),
-    calories_kcal: nonNegativeFiniteNumber(value.calories_kcal),
-    protein_g: nonNegativeFiniteNumber(value.protein_g),
-    carbs_g: nonNegativeFiniteNumber(value.carbs_g),
-    fat_g: nonNegativeFiniteNumber(value.fat_g),
-  };
-  const items = foodDraftItems(value.items);
-  const totals = items.length === 0 ? requestedTotals : foodDraftTotals(items);
-  return {
-    meal_name: mealName,
-    total_weight_g: totals.total_weight_g,
-    calories_kcal: totals.calories_kcal,
-    protein_g: totals.protein_g,
-    carbs_g: totals.carbs_g,
-    fat_g: totals.fat_g,
-    confidence: value.confidence === null || value.confidence === undefined
-      ? null
-      : nullableNonNegativeFiniteNumber(value.confidence),
-    estimation_notes: stringOrEmpty(value.estimation_notes).trim(),
-    items,
-  };
-}
-function foodDraftItems(value: unknown): FoodDraftItem[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => {
-    const map = recordOrThrow(item);
-    const name = stringOrEmpty(map.name).trim();
-    if (name === "") {
-      throw new Error("record_schema_mismatch");
-    }
-    return {
-      name,
-      weight_g: nonNegativeFiniteNumber(map.weight_g),
-      calories_kcal: nonNegativeFiniteNumber(map.calories_kcal),
-      protein_g: nonNegativeFiniteNumber(map.protein_g),
-      carbs_g: nonNegativeFiniteNumber(map.carbs_g),
-      fat_g: nonNegativeFiniteNumber(map.fat_g),
-    };
-  });
-}
-
 function systemPrompt(language: PhotoLanguage): string {
   return language === "zh"
     ? "你是 FitLog 的 AI 食物分析助手。你只能根据本次请求的用户描述和零到三张图片生成可编辑食物草稿，不能写入正式记录，不能修改目标，不能调用 RAG。输出必须是严格 JSON。"
@@ -339,13 +296,29 @@ function userPrompt(request: PhotoAnalysisRequest): string {
     : "If the image or description is too unclear, set needs_clarification true, draft null, and include short clarification_questions.";
   return [
     "Return JSON with this shape:",
-    '{"needs_clarification":false,"clarification_questions":[],"draft":{"meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}',
+    '{"schema_version":"food_analysis_envelope.v1","needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"food_draft.v1","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}',
     "When items is non-empty, item values are totals for that item portion, not per-100g values; draft meal totals must equal the sum of items.",
     clarificationInstruction,
     "Use finite non-negative numbers. Estimate honestly and keep notes brief.",
     `Image count: ${request.images.length}`,
     `Selected date: ${request.selectedDate}`,
     note,
+  ].join("\n");
+}
+
+function correctionPrompt(params: {
+  previousOutput: string;
+  issues: OutputValidationIssue[];
+}): string {
+  const issues = params.issues
+    .slice(0, 12)
+    .map((item) => `${item.path}: ${item.reason}`)
+    .join("; ");
+  return [
+    "Correct the previous food analysis response.",
+    "Return exactly one food_analysis_envelope.v1 JSON object and no outside prose.",
+    `Validation errors: ${issues}`,
+    `Previous response: ${params.previousOutput.slice(0, 12000)}`,
   ].join("\n");
 }
 
@@ -359,11 +332,11 @@ function parseImages(
     ? []
     : [body.image];
   if (rawImages.length > maxImages) {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
   if (rawImages.length === 0) {
     if (userNote === null) {
-      throw new PhotoGatewayRequestError("record_schema_mismatch");
+      throw new PhotoGatewayRequestError("request_schema_mismatch");
     }
     return [];
   }
@@ -379,7 +352,7 @@ function parseImages(
       byteLength <= 0 ||
       byteLength > maxImageBytes
     ) {
-      throw new PhotoGatewayRequestError("record_schema_mismatch");
+      throw new PhotoGatewayRequestError("request_schema_mismatch");
     }
     return {
       mimeType: mimeType as "image/jpeg" | "image/png" | "image/webp",
@@ -389,42 +362,9 @@ function parseImages(
   });
 }
 
-function foodDraftTotals(items: FoodDraftItem[]) {
-  return items.reduce((totals, item) => ({
-    total_weight_g: totals.total_weight_g + item.weight_g,
-    calories_kcal: totals.calories_kcal + item.calories_kcal,
-    protein_g: totals.protein_g + item.protein_g,
-    carbs_g: totals.carbs_g + item.carbs_g,
-    fat_g: totals.fat_g + item.fat_g,
-  }), {
-    total_weight_g: 0,
-    calories_kcal: 0,
-    protein_g: 0,
-    carbs_g: 0,
-    fat_g: 0,
-  });
-}
-function nonNegativeFiniteNumber(value: unknown): number {
-  const number = typeof value === "number"
-    ? value
-    : Number.parseFloat(String(value ?? ""));
-  if (!Number.isFinite(number) || number < 0) {
-    throw new Error("record_schema_mismatch");
-  }
-  return number;
-}
-
-function nullableNonNegativeFiniteNumber(value: unknown): number | null {
-  try {
-    return nonNegativeFiniteNumber(value);
-  } catch (_) {
-    return null;
-  }
-}
-
 function objectOrThrow(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) {
-    throw new PhotoGatewayRequestError("record_schema_mismatch");
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
   return value;
 }
@@ -454,81 +394,4 @@ function nullableString(value: unknown): string | null {
 
 function numberOrNaN(value: unknown): number {
   return typeof value === "number" ? value : Number.parseInt(String(value), 10);
-}
-
-function stringList(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((item) => String(item));
-}
-
-function stripJsonFence(value: string): string {
-  const trimmed = value.trim();
-  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-  return fence?.[1]?.trim() ?? trimmed;
-}
-
-function parseJsonObjectFromContent(value: string): Record<string, unknown> | null {
-  for (const candidate of jsonObjectCandidates(value)) {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (isRecord(parsed)) {
-        return parsed;
-      }
-    } catch (_) {
-      // Try the next candidate.
-    }
-  }
-  return null;
-}
-
-function jsonObjectCandidates(value: string): string[] {
-  const trimmed = value.trim();
-  const candidates: string[] = [stripJsonFence(trimmed), trimmed];
-  const fencePattern = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
-  for (const match of trimmed.matchAll(fencePattern)) {
-    candidates.push(match[1].trim());
-  }
-  const balanced = firstBalancedJsonObject(trimmed);
-  if (balanced !== null) {
-    candidates.push(balanced);
-  }
-  return candidates.filter((candidate, index) =>
-    candidate !== "" && candidates.indexOf(candidate) === index
-  );
-}
-
-function firstBalancedJsonObject(value: string): string | null {
-  const start = value.indexOf("{");
-  if (start < 0) {
-    return null;
-  }
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < value.length; index += 1) {
-    const char = value[index];
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"') {
-      inString = true;
-    } else if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return value.slice(start, index + 1);
-      }
-    }
-  }
-  return null;
 }

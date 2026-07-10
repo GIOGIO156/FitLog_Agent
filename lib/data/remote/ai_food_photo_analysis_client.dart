@@ -47,8 +47,8 @@ class SupabaseAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
     } on FormatException catch (error) {
       return AiFoodPhotoAnalysisResponse(
         error: AiGatewayError(
-          code: AiGatewayErrorCode.recordSchemaMismatch,
-          rawCode: AiGatewayErrorCode.recordSchemaMismatch.value,
+          code: AiGatewayErrorCode.providerOutputInvalid,
+          rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
           message: error.message,
         ),
       );

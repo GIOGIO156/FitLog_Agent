@@ -67,13 +67,15 @@ References 不用于：
 | REF-AI-05 | Data minimization and privacy-by-design principles | 来自主要监管或标准来源的 privacy engineering / privacy-by-design 指南。 | 支持最小必要上下文和避免不必要原始历史上传。 | 实际上线地区的法律合规需要单独审查。 |
 | REF-AI-06 | Document chunking patterns | LangChain text splitter documentation and Unstructured chunking documentation. | header-aware、recursive、title/element-aware document chunking 的工程参考。 | 不证明 FitLog 的最佳 chunk size 或检索质量；需要本地 retrieval tests 验证。 |
 | REF-AI-07 | Contextual retrieval | Anthropic engineering note on Contextual Retrieval. | 支持在检索前为 chunks 增加文档级上下文。 | 供应商工程建议，不保证正确性；FitLog 的上下文必须保持确定性或经过审查。 |
+| REF-AI-08 | OpenAI Structured Outputs | [OpenAI Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs)。 | 支持 OpenAI Responses adapter 使用严格 provider-side JSON Schema generation。 | Structured output 不能替代 FitLog workflow、semantic、safety 和 write validation；实现时仍需核验配置模型支持。 |
+| REF-AI-09 | Qwen JSON Mode | [阿里云百炼 Structured output](https://help.aliyun.com/en/model-studio/qwen-structured-output)。 | 支持 Qwen JSON Mode 要求以及下游 schema validation/retry 指南。 | JSON Mode 只提供 JSON-oriented output，不证明 FitLog schema 或业务正确；支持模型和 thinking-mode 限制需要重新核验。 |
 
 FitLog-specific AI 产品边界：
 
 - AI Gateway 由服务端管理。
 - V1 不让用户填写模型 API key。
 - 登录后 Cloud Profile 是权威版本。
-- Phase 3 后，登录用户的 body/food/workout 正式记录以云端为 source of truth。
+- 登录用户的 body、food 和 workout 正式记录以云端为 source of truth。
 - 本地 SQLite 是 partial cache、草稿和运行期加速层，不是完整历史镜像。
 - V1 不做用户数据向量库和长期 semantic memory。
 - AI 生成草稿和解释；正式写入由用户确认 gating。

@@ -1,5 +1,16 @@
 # FitLog_Agent Phase 5 工程落地计划书
 
+## 部署状态
+
+已于 2026-07-10 更新链接的 Supabase 项目 `dyacqajcinjwrkbngeif`：
+
+- migrations `202607080001`、`202607090001` 和 `202607090002` 已应用并登记到远端 history；
+- generator v3 稳定文档 corpus 共 495 chunks、19 个 source paths，其中 `zh = 224`、`en = 271`；
+- `ai-chat-route` 已 ACTIVE，版本 16；
+- 双语 `search_document_chunks` smoke test 返回了预期的 AI Output Contract 和 RAG Design sources。
+
+这些结果只证明部署和数据库 retrieval 正常。本计划后续的 configured real-provider 与 App 内人工 prompt matrix 仍是产品验收要求。
+
 ## 1. 目标和边界
 
 本文是 Phase 5 的施工计划，不是 Phase 6 可靠性评测实验室计划，也不是 Phase 7 发布硬化计划。
@@ -156,6 +167,8 @@ docs/en/Methodology.md
 docs/en/Algorithm.md
 docs/en/Database.md
 docs/en/AgentDesign.md
+docs/en/AIOutputContract.md
+docs/en/RAGDesign.md
 docs/en/References.md
 docs/zh/Product.md
 docs/zh/AppGuide.md
@@ -163,6 +176,8 @@ docs/zh/Methodology.md
 docs/zh/Algorithm.md
 docs/zh/Database.md
 docs/zh/AgentDesign.md
+docs/zh/AIOutputContract.md
+docs/zh/RAGDesign.md
 docs/zh/References.md
 ```
 
@@ -577,6 +592,8 @@ At Phase 5 implementation completion, update:
 ```text
 docs/en/AgentDesign.md
 docs/zh/AgentDesign.md
+docs/en/RAGDesign.md
+docs/zh/RAGDesign.md
 docs/en/Algorithm.md
 docs/zh/Algorithm.md
 docs/en/Methodology.md
@@ -789,7 +806,7 @@ where doc_path like 'docs/local/%';
 Expected:
 
 - Both `zh` and `en` have chunks.
-- Current generated rows use `generator_version = 'phase5_document_chunks.v2'`.
+- Current generated rows use `generator_version = 'phase5_document_chunks.v3'`.
 - Chinese search returns only `README.md` or `docs/zh/*` sources relevant to the Chinese query.
 - English search returns only `README.md` or `docs/en/*` sources relevant to the English query.
 - `local_doc_chunks = 0`.

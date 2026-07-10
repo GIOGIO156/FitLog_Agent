@@ -19,7 +19,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 -> 最后根据评测证据做发布硬化
 ```
 
-本文件只写中文，因为它是项目内部工程施工计划。稳定产品事实仍维护在 `docs/en/*` 和 `docs/zh/*`；V1 目标设计源文档仍是 `docs/FitLog_Agent_V1_Implementation.md`。
+本文件只写中文，因为它是项目内部工程施工计划。稳定产品事实与当前技术合同维护在 `docs/en/*`、`docs/zh/*` 和 `docs/API_CONTRACT_DRAFT.md`；`docs/FitLog_Agent_V1_Implementation.md` 只保留总体决策理由与实施历史，不能覆盖稳定文档。
 
 ## 2. 当前源码基线
 
@@ -1156,6 +1156,10 @@ flutter build apk --debug
 - `docs/zh/Database.md`
 - `docs/en/AgentDesign.md`
 - `docs/zh/AgentDesign.md`
+- `docs/en/AIOutputContract.md`
+- `docs/zh/AIOutputContract.md`
+- `docs/en/RAGDesign.md`
+- `docs/zh/RAGDesign.md`
 - `README.md`
 - `CHANGELOG.md`
 
@@ -2413,7 +2417,8 @@ Android 版本：
 - 尚未实现的能力不能写成 shipped。
 - 稳定设计事实进入 `docs/en/*` 和 `docs/zh/*`。
 - 工程阶段计划进入 `docs/ROADMAP.md`。
-- V1 总设计源进入 `docs/FitLog_Agent_V1_Implementation.md`。
+- 模型 output contract 与 RAG 稳定设计分别进入双语 `AIOutputContract.md` 和 `RAGDesign.md`。
+- V1 总实施背景和阶段设计保留在 `docs/FitLog_Agent_V1_Implementation.md`；任何与稳定双语文档或当前 API contract 冲突的旧计划表述都不具当前权威。
 - 历史变化进入 `CHANGELOG.md`。
 - README 只做项目入口和文档索引。
 

@@ -1,36 +1,29 @@
-# FitLog_Agent V1 API Contract Draft
+# FitLog_Agent V1 API Contract
 
-本文是 Phase 0 的工程 contract 草案，用于把 Agent V1 的接口形状、数据边界和技术选择集中到一个文件。它不是 App 运行时存储，也不是云端数据库；手机 App 安装运行后不会把用户数据写入这个 Markdown 文件。真正的账号、Profile、chat、日志和云端记录由代码写入 Supabase/Postgres；当前 Add Food AI 食物分析只在请求内传输文字描述和可选压缩图片，不默认写入 Supabase Storage。这个文件只作为开发蓝图、接口约定和验收依据；已实现状态以 README、CHANGELOG 和稳定设计文档为准。
+## Purpose
 
-## Phase 0 Status
+This document owns the public Flutter-to-service transport shapes and compatibility boundaries for FitLog_Agent V1. It defines request/response envelopes, field constraints, authentication expectations, stable error categories, and retention-visible payloads.
 
-已经锁定：
+本文只维护 Flutter 与服务端之间实际跨越网络边界的 contract。它不是运行时存储或云端数据库；账号、Profile、records、chat 和 logs 由代码写入 Supabase/Postgres，不会写入本 Markdown 文件。文件名暂时保留历史上的 `DRAFT`，但正文按当前 wire contract 维护，不能再作为阶段 checklist 使用。
 
-- Local food、workout、weight、Profile、SQLite、算法和导出行为继续作为业务基线。
-- 后端选型为 Supabase：Auth + Postgres + Storage + Edge Functions。
-- 首版登录方式为 FitLog 自有邮箱密码登录 + 注册邮箱验证码；任意可接收验证码的邮箱都可用于账号创建。
-- 订阅方案为开发期内部 entitlement：种子账号和内部兑换码区分 subscribed / unsubscribed，不接真实支付 provider。
-- AI providers 锁定为 OpenAI/ChatGPT 和千问/Qwen 两种，由服务端 AI Gateway 调用；用户可在 AI Chat 输入区选择使用哪一种。
-- Add Food AI 食物分析使用文字描述和零到三张本机压缩后的 JPEG/PNG/WebP 图片，通过 `ai-food-photo-analyze` 请求体传给 Edge Function；服务端只转发给 Qwen provider，不默认保存原图、base64、完整自由文本说明或 provider raw response。
-- Agent V1 使用云端账号、订阅、Cloud Profile、Cloud Records、daily summaries、AI Gateway、chat history、request metadata 和 compact debug summaries。
-- 模型 API key 只能由服务端管理，App 内不提供用户自填 key。
-- Phase 3 Cloud Records Foundation 后，body/food/workout 正式记录以云端为 source of truth，本地 SQLite 只做 partial cache。
-- AI 请求只读取当前 workflow 所需的最小必要云端摘要。
-- Cloud Profile 是登录后的权威 Profile，本地 profile cache 只用于展示/缓存。
-- 离线时 Profile 可展示缓存，但不能保存。
-- AI 不能静默写正式记录、修改目标、修改策略、应用 carb taper 或删除数据。
-- Food Draft / Workout Draft 必须先进入草稿/预览/编辑/确认路径，确认后才写入正式 records。
-- Document RAG 只检索 App 文档和稳定帮助片段；用户业务数据不进入长期向量库、semantic memory 或 GraphRAG。
+Stable model-output governance lives in `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`. Stable context/RAG governance lives in `docs/en/RAGDesign.md` / `docs/zh/RAGDesign.md`. Provider prompts, validator internals, retrieval ranking, rollout steps, and implementation status must not be duplicated here.
 
-Phase 0 选型说明：
+## Contract Invariants
 
-- 选择 Supabase 是为了用一套较轻的 BaaS 覆盖邮箱密码认证、注册验证码、关系型 Cloud Profile / records / summary / chat / log 表和 Edge Function AI Gateway，避免 Phase 2-4 同时自建 auth、数据库和 API runtime；图片长期或临时对象存储仍是后续明确 retention 设计后才启用的能力。
-- 相比 Firebase，Supabase 的 Postgres 表结构更贴合 Cloud Profile、records、daily summaries、chat messages、request logs、debug summaries 和 document chunks 这些关系型数据。
-- 相比自建后端，Supabase 能更快落地 Phase 2-3，同时保留以后迁移或自托管的可能。
-- 开发期订阅只用于验证 gating 和调试账号，不代表生产支付方案已经完成；生产支付/IAP provider 是发布前商业化决策。
-- OpenAI 和 Qwen 的 API keys 只进入服务端 secrets；App 不保存模型 key，也不直接调用模型 provider。
+- Supabase provides Auth, Postgres, and Edge Function boundaries; the App never receives service-role or model-provider secrets.
+- Email/password sign-in and registration email code are the V1 account transport.
+- Subscription entitlement is server-owned. Internal redemption is a development contract, not a production payment provider.
+- OpenAI/ChatGPT and Qwen are called through the AI Gateway; exact model aliases remain server configuration.
+- Signed-in Cloud Profile and body/food/workout records are cloud-authoritative. Local SQLite is partial cache, draft storage, and runtime acceleration.
+- AI requests use only workflow-required context. Complete raw history is not a default request payload.
+- Add Food sends text plus zero to three compressed JPEG/PNG/WebP images inline. AI Chat sends up to three such images through Qwen. Neither path retains original images by default.
+- Food Draft and Workout Draft cross the boundary as typed, versioned data and remain drafts until normal editor confirmation.
+- AI cannot silently write official records, change Profile/targets/strategies, apply carb tapering, or delete data.
+- Document RAG accepts no client-supplied chunks or context objects. User business data does not enter long-term vector memory, semantic memory, or GraphRAG.
 
-结论：Phase 0 的产品边界、技术选型和 API 形状已经收敛，可进入 Phase 1。生产支付 provider、OpenAI/Qwen API key 创建、最终模型名和部署区域仍可在后续阶段按供应商限制调整，但不能改变 V1 的 server-managed key、subscription gating、草稿确认、用户可选模型和最小上下文边界。
+## Architectural Rationale
+
+Supabase keeps account identity, relational Profile/records/summaries/chat/log data, and Edge Function Gateway execution in one bounded backend while retaining a future migration or self-hosting path. Postgres matches the relational data model more directly than an unstructured document store. Development entitlement validates gating without pretending a production payment/IAP decision has been made. Server-managed provider secrets keep Flutter independent from model vendors and exact model aliases.
 
 ## Backend Boundary
 
@@ -63,7 +56,7 @@ Phase 0 选型说明：
 
 Locked backend mapping:
 
-| Concern | Phase 0 decision |
+| Concern | Current contract |
 | --- | --- |
 | Auth/session | Supabase Auth, email OTP only for V1 start |
 | Cloud database | Supabase Postgres |
@@ -131,8 +124,11 @@ image_upload_failed
 unsupported_attachment
 gateway_timeout
 provider_failure
-invalid_model_output
-schema_validation_failed
+request_schema_mismatch
+provider_output_invalid
+provider_refusal
+provider_incomplete
+record_schema_mismatch  # compatibility with older record/database paths
 rag_no_result
 write_confirmation_required
 write_not_allowed
@@ -401,8 +397,8 @@ Rules:
 - AI Gateway must reject unsupported writes unless user confirmation and schema validation have already happened.
 - The AI Gateway calls the selected provider through server-side adapters. Text, vision and structured-output model names must be environment-configured, not hard-coded in Flutter.
 - Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
-- Chat draft provider output should be one JSON envelope: user-facing explanation, estimate rationale, uncertainty, and review instructions go in `message.text`, while saveable Food Draft / Workout Draft data goes in `draft`. The Gateway may recover draft JSON from provider prose for robustness, but raw provider JSON must not be displayed as ordinary assistant Markdown.
-- The dedicated Add Food AI food-analysis workflow remains stricter than Chat: `ai-food-photo-analyze` expects pure structured Food Draft JSON and does not need chat-style explanation text.
+- Every Chat provider reply uses the internal versioned machine-readable envelope; user-facing Markdown remains inside `message.text`, and Flutter still receives the public response shape below. Exact schemas, provider mapping, validation, correction, and failure rules are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
+- The dedicated Add Food AI food-analysis workflow uses a narrower internal `food_analysis_envelope.v1` without chat-style explanation text while sharing the canonical `food_draft.v1` validator.
 - Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
 
 ## AI Gateway Response
@@ -451,6 +447,16 @@ If clarification is needed:
   "draft": null
 }
 ```
+
+If the request or final provider result fails, no draft/action is returned and `error.code` is one of:
+
+- `request_schema_mismatch`: invalid Flutter-to-Gateway request
+- `provider_output_invalid`: strict output validation still failed after zero or one eligible correction attempt
+- `provider_refusal`: the provider explicitly refused
+- `provider_incomplete`: generation ended before a complete contract result
+- `provider_failure`: provider/service failure without a valid result
+- `gateway_timeout`: the total request/provider deadline expired
+- `record_schema_mismatch`: compatibility code for older record/database paths
 
 ## AI Food Analysis Contract
 
@@ -518,51 +524,15 @@ Rules:
 - The Edge Function forwards the request-scoped text and optional images to Qwen through server-managed secrets.
 - The function may return either a schema-validated Food Draft or clarification questions.
 - A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
-- Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, schema status, provider, model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
+- Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, expected output, validator version, first-pass/final validation result, correction count, provider completion category, provider/model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
 
-## Food Draft Schema
+## Food Draft Payload
 
-Food Drafts are not official records.
+Food Drafts are transportable, editable proposals, not official records. The public Gateway payload carries meal name, meal totals, optional confidence/notes, and item portion totals. Item values are for the whole estimated portion, and the Gateway normalizes meal totals from items when items are present.
 
-```json
-{
-  "schema_version": "food_draft.v1",
-  "draft_id": "draft_...",
-  "source": "ai_photo",
-  "meal_name": "鸡腿饭",
-  "date": "2026-06-17",
-  "total_weight_g": 520.0,
-  "calories_kcal": 720.0,
-  "protein_g": 45.0,
-  "carbs_g": 88.0,
-  "fat_g": 20.0,
-  "confidence": 0.72,
-  "estimation_notes": "鸡腿按去皮估算，烹饪油不确定。",
-  "uncertain_fields": ["cooking_oil"],
-  "clarification_questions": [],
-  "items": [
-    {
-      "name": "去皮鸡腿",
-      "weight_g": 180.0,
-      "calories_kcal": 300.0,
-      "protein_g": 38.0,
-      "carbs_g": 0.0,
-      "fat_g": 14.0,
-      "notes": "肉类由用户确认，油量仍不确定。"
-    }
-  ]
-}
-```
+The shared strict `food_draft.v1` contract is defined in `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`. That document owns required fields, schema-version compatibility, exact types, bounds, unknown-field policy, normalization, provider mapping, and invalid-output handling. This API draft owns only where the draft appears in request/response/history transport.
 
-Validation rules:
-
-- Required numeric nutrition fields must be finite and non-negative.
-- If `items` is non-empty, item values are totals for each item portion and meal-level `total_weight_g`, `calories_kcal`, `protein_g`, `carbs_g`, and `fat_g` are normalized from the item sum before the draft is returned or saved.
-- Item names cannot be empty.
-- Missing key food facts should produce `clarification_questions` instead of a saveable draft.
-- Invalid schema must not show a save action.
-- Saving a draft requires explicit user confirmation.
-- Discarding a draft writes nothing.
+An invalid Food Draft must not create a save/review action. Saving requires explicit confirmation in Food Preview; discarding writes nothing.
 
 Allowed confirmed source markers for future official records:
 
@@ -574,64 +544,19 @@ ai_meal_decision
 
 Existing `ai_paste` remains the external JSON paste compatibility source.
 
-## Workout Draft Schema
+## Workout Draft Payload
 
-Workout Drafts are not official records. They rebuild the existing workout editor draft only after the user taps the Chat artifact review button, and the official workout record is written only when the user saves in that editor.
+Workout Drafts are transportable, editable proposals, not official records. The public payload carries `workout_draft.v1`, record name/date/notes, exercises, optional cardio metadata, and nullable set values. It rebuilds the existing workout editor only after the user taps the Chat artifact review action.
 
-Workout Draft clarification is capped at one turn. If the user reply is still incomplete or explicitly unknown, the provider should return a best-effort `workout_draft.v1` with missing numeric fields set to `null`, uncertainties listed in `uncertain_fields`, and explanatory notes in `estimation_notes`; it should not continue asking more clarification turns.
+The exact schema, best-effort null behavior, one-turn clarification cap, type/range checks, provider mapping, and invalid-output handling are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
 
-```json
-{
-  "schema_version": "workout_draft.v1",
-  "draft_id": "draft_...",
-  "source": "ai_chat",
-  "record_name": "散步 10 分钟",
-  "date": "2026-06-17",
-  "confidence": 0.74,
-  "estimation_notes": "用户确认强度为轻松，未提供距离或心率。",
-  "uncertain_fields": ["distance"],
-  "clarification_questions": [],
-  "exercises": [
-    {
-      "exercise_name": "散步",
-      "exercise_key": null,
-      "exercise_type": "cardio",
-      "body_part": "Cardio",
-      "duration_minutes": 10.0,
-      "active_duration_minutes": 10.0,
-      "cardio_intensity_basis": "low_60_plus",
-      "sets": []
-    }
-  ]
-}
-```
-
-Validation rules:
-
-- `schema_version` must be `workout_draft.v1`.
-- `record_name` and every exercise name must be non-empty.
-- A draft must contain at least one exercise.
-- Strength sets must have finite non-negative weight/reps values when present.
-- Cardio duration values must be finite and positive when present.
-- Invalid schema must not show an enabled review action.
-- Saving a draft requires explicit user confirmation in the workout editor.
-- Raw provider JSON must be parsed and rendered as a native artifact card. It must not be displayed to the user as ordinary assistant Markdown.
+An invalid Workout Draft must not create an enabled review action. The official workout record is written only when the user confirms through the normal workout editor save path. Raw provider JSON is never rendered as ordinary assistant Markdown.
 
 ## Context Objects
 
-Allowed Structured RAG context objects:
+Context objects are server-owned internal inputs, not fields Flutter may supply. The public request carries only the user-controlled record-summary permission; the Gateway route decides which typed objects are required and returns compact evidence/missing-dimension metadata.
 
-| Object | Source | Notes |
-| --- | --- | --- |
-| `profile_context` | Cloud Profile | Authoritative after login. |
-| `selected_day_summary` | Cloud `daily_summaries` / summary builder | Targets, intake, exercise and mode-specific remaining values. |
-| `recent_food_summary` | Cloud records summary builder | Windowed totals and coverage, not full rows by default. |
-| `recent_workout_summary` | Cloud records summary builder | Frequency, duration, estimated kcal and major body-part pattern. |
-| `body_metric_summary` | Cloud `body_metric_logs` summary builder | Weight, body-fat and waist availability by range. |
-| `weight_trend_summary` | Cloud `body_metric_logs` summary builder | Only when enough data exists. |
-| `strategy_context` | Profile strategy settings and deterministic calculators | Includes carb cycling/tapering state when relevant. |
-
-Context builders must preserve deterministic calculations. LLM output cannot replace target or summary calculations. The model must not receive a generic SQL tool or direct database access; it only receives typed context objects generated by known builders. Local SQLite cache can accelerate UI but must not be treated as authoritative context.
+Object families, authoritative sources, permissions, sanitization, context-size limits, deterministic mode semantics, Document RAG, evidence, and failure downgrade are owned by `docs/en/RAGDesign.md` / `docs/zh/RAGDesign.md`.
 
 ## Chat History Models
 
@@ -696,7 +621,7 @@ Context builders must preserve deterministic calculations. LLM output cannot rep
 
 Rules:
 
-- Phase 4 Step 1 defines the tables and Flutter JSON contract; Phase 4 Step 2 adds the mock Gateway server path; Phase 4 Steps 3/4 add the generalized text Gateway path, server-side provider routing, and AI-page send/history wiring after auth, subscription, and active-device checks; Phase 4 Step 5 adds `rename_ai_chat_session`.
+- Chat tables, Flutter JSON models, the Gateway path, provider routing, authenticated send/history operations, and `rename_ai_chat_session` must satisfy the same session/message contract below.
 - Chat history is cloud-stored after login once the Gateway path writes sessions and messages; the AI page reads the owning account's sessions/messages, supports inline rename through RPC, and requires confirmation before soft delete.
 - `archived_at` remains in the schema for compatibility with the earlier RPC, but the current AI page does not expose an archive entry because there is no archived-list recovery UI.
 - Messages are ordered by `message_sequence`, with `created_at` and `id` as deterministic secondary fields.
@@ -727,6 +652,12 @@ Rules:
   "latency_ms": 1200,
   "token_estimate": 1400,
   "image_count": 0,
+  "expected_output": "text",
+  "validator_version": "ai_output_validator.v1",
+  "first_pass_validation_status": "passed",
+  "correction_attempt_count": 0,
+  "final_validation_status": "passed",
+  "provider_completion_status": "completed",
   "created_at": "2026-06-17T00:00:00Z"
 }
 ```
@@ -783,72 +714,16 @@ Limits for the current image paths:
 
 Long-term original image libraries, Supabase Storage attachment retention, and more than three Chat images are out of scope until a separate privacy and retention design is approved.
 
-## Document RAG Contract
+## Document RAG Transport Boundary
 
-Document sources:
+The public Gateway does not accept client-supplied document chunks or RAG context. For app-logic questions, the server searches the stable same-language document corpus and returns bounded source/evidence metadata in the Gateway response.
 
-```text
-README.md
-docs/en/Product.md
-docs/en/AppGuide.md
-docs/en/Methodology.md
-docs/en/Algorithm.md
-docs/en/Database.md
-docs/en/AgentDesign.md
-docs/en/References.md
-docs/zh/Product.md
-docs/zh/AppGuide.md
-docs/zh/Methodology.md
-docs/zh/Algorithm.md
-docs/zh/Database.md
-docs/zh/AgentDesign.md
-docs/zh/References.md
-```
+The exact source allowlist, chunk schema, ingestion, retrieval ranking, language rules, status handling, evidence, update lifecycle, privacy boundary, and evaluation requirements are owned by `docs/en/RAGDesign.md` / `docs/zh/RAGDesign.md`. Persistent `document_chunks` fields remain documented in the bilingual Database design.
 
-Document chunks should include:
+## Contract Maintenance
 
-```text
-doc_path
-language
-heading
-heading_level
-section_id
-content
-updated_at
-tags
-```
-
-Rules:
-
-- Chinese query -> Chinese docs.
-- English query -> English docs.
-- Mixed language -> current App language or dominant query language.
-- Answers return source document and section metadata.
-- The answer must not claim planned V1 features are already implemented.
-
-## Phase 0 Pass Checklist
-
-| Requirement | Status |
-| --- | --- |
-| Backend scheme | Locked: Supabase Auth, Postgres, Storage, Edge Functions |
-| Login method | Locked: FitLog email-password sign-in and registration email-code flow |
-| Subscription scheme | Locked for development: internal entitlement table, seeded subscribed/unsubscribed accounts, and internal redeem codes |
-| AI provider/model calling | Locked: user-selectable OpenAI/ChatGPT and Qwen through server-side AI Gateway adapters |
-| Server-managed model API keys | Locked |
-| AI Gateway endpoint shape | Drafted |
-| Chat Session / Message model | Drafted |
-| AI request log / debug summary model | Drafted |
-| Cloud Profile fields | Drafted |
-| Cloud Profile and local cache relationship | Locked |
-| Cloud Records source of truth | Implemented foundation: active-device guard, Cloud Records migration, cloud-backed body/food/workout repositories, local SQLite partial cache |
-| Records API shape | Implemented in Flutter repositories for body/food/workout; formal service API can still wrap the same contract |
-| Daily summary API shape | Implemented in Phase 3 hardening: table created, app-side cloud upsert/recovery, confirmed local cache, warm cache, and eviction boundary landed |
-| Cache eviction boundary | Locked: recent/current/pending pinned; older visited cache evictable |
-| Offline Profile behavior | Locked |
-| Image upload/compression/temporary retention | Current Add Food path: text plus zero to three optional compressed JPEG/PNG/WebP inline payloads to `ai-food-photo-analyze`; current AI Chat path: up to three compressed JPEG/PNG/WebP inline image attachments to `ai-chat-route`; both hard reject each image above 4 MB and have no default Storage retention. Storage retention requires a later explicit design |
-| Document RAG strategy | Locked |
-| Structured RAG context objects | Locked |
-| Error code categories | Drafted |
-| V1 non-goals | Locked |
-
-Phase 0 is complete for engineering entry into Phase 1. Production payment provider, API key creation steps, and exact OpenAI/Qwen model names remain later implementation choices, but they must preserve this contract.
+- A public field or error-code change must update this file, the corresponding Flutter/server models, contract fixtures, stable owning design documents, and `CHANGELOG.md` together.
+- Additive compatibility is preferred. A breaking change requires a new schema/version boundary and an explicit stored-history migration or downgrade rule.
+- Provider-specific protocol changes belong in `AIOutputContract.md` unless they alter the public Flutter/Gateway envelope.
+- Context or evidence changes belong in `RAGDesign.md` unless they alter a public request/response field.
+- Production payment, long-term image retention, larger image limits, and new autonomous actions require separate product/privacy approval; they cannot be inferred from existing optional fields.

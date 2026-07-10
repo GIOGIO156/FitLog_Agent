@@ -123,6 +123,10 @@ class AiFoodDraft {
   final List<AiFoodDraftItem> items;
 
   factory AiFoodDraft.fromJson(Map<String, dynamic> json) {
+    final schemaVersion = json['schema_version']?.toString();
+    if (schemaVersion != null && schemaVersion != aiFoodDraftSchemaVersion) {
+      throw const FormatException('food_draft_unsupported_schema_version');
+    }
     final mealName = (json['meal_name'] ?? '').toString().trim();
     if (mealName.isEmpty) {
       throw const FormatException('food_draft_missing_meal_name');
@@ -134,9 +138,7 @@ class AiFoodDraft {
       proteinG: _nonNegativeFiniteNumber(json['protein_g']),
       carbsG: _nonNegativeFiniteNumber(json['carbs_g']),
       fatG: _nonNegativeFiniteNumber(json['fat_g']),
-      confidence: json['confidence'] == null
-          ? null
-          : _nonNegativeFiniteNumber(json['confidence']),
+      confidence: _confidenceOrNull(json['confidence']),
       estimationNotes: (json['estimation_notes'] ?? '').toString().trim(),
       items: _draftItems(json['items']),
     );
@@ -177,6 +179,7 @@ class AiFoodDraft {
   Map<String, dynamic> toJson() {
     final totals = _effectiveTotals;
     return <String, dynamic>{
+      'schema_version': aiFoodDraftSchemaVersion,
       'meal_name': mealName,
       'total_weight_g': totals.totalWeightG,
       'calories_kcal': totals.caloriesKcal,
@@ -321,13 +324,28 @@ double _nonNegativeFiniteNumber(Object? value) {
   return number;
 }
 
+double? _confidenceOrNull(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  final confidence = _nonNegativeFiniteNumber(value);
+  if (confidence > 1) {
+    throw const FormatException('food_draft_invalid_confidence');
+  }
+  return confidence;
+}
+
 List<AiFoodDraftItem> _draftItems(Object? value) {
   if (value is! List) {
     return const <AiFoodDraftItem>[];
   }
   return value
-      .whereType<Map>()
-      .map((item) => AiFoodDraftItem.fromJson(Map<String, dynamic>.from(item)))
+      .map((item) {
+        if (item is! Map) {
+          throw const FormatException('food_draft_invalid_item');
+        }
+        return AiFoodDraftItem.fromJson(Map<String, dynamic>.from(item));
+      })
       .toList(growable: false);
 }
 

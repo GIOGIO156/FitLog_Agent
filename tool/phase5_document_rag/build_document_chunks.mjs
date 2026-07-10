@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = process.cwd();
-const generatorVersion = "phase5_document_chunks.v2";
+const generatorVersion = "phase5_document_chunks.v3";
 const maxChunkLength = 1400;
 const sourcePaths = [
   "README.md",
@@ -13,6 +13,8 @@ const sourcePaths = [
   "docs/en/Algorithm.md",
   "docs/en/Database.md",
   "docs/en/AgentDesign.md",
+  "docs/en/AIOutputContract.md",
+  "docs/en/RAGDesign.md",
   "docs/en/References.md",
   "docs/zh/Product.md",
   "docs/zh/AppGuide.md",
@@ -20,6 +22,8 @@ const sourcePaths = [
   "docs/zh/Algorithm.md",
   "docs/zh/Database.md",
   "docs/zh/AgentDesign.md",
+  "docs/zh/AIOutputContract.md",
+  "docs/zh/RAGDesign.md",
   "docs/zh/References.md",
 ];
 
@@ -330,43 +334,47 @@ function addTag(tags, tag, source, needles) {
 }
 
 function statusFor(relativePath, headingPath, content) {
-  const source = `${relativePath}\n${headingPath.join(" ")}\n${content}`.toLowerCase();
+  const heading = headingPath.join(" ").toLowerCase();
+  const leadingContent = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .slice(0, 3)
+    .join(" ")
+    .toLowerCase();
+
+  if (relativePath.endsWith("References.md")) {
+    return "evidence";
+  }
   if (
-    source.includes("non-goal") ||
-    source.includes("non_goal") ||
-    source.includes("out of scope") ||
-    source.includes("not supported") ||
-    source.includes("不支持") ||
-    source.includes("不做") ||
-    source.includes("非目标")
+    heading.includes("non-goal") ||
+    heading.includes("non_goal") ||
+    heading.includes("out of scope") ||
+    heading.includes("不做") ||
+    heading.includes("非目标") ||
+    /^(?:\*\*)?(?:non-goals?|out of scope|非目标|不做)\s*[:：]/.test(leadingContent)
   ) {
     return "non_goal";
   }
   if (
-    source.includes("planned") ||
-    source.includes("future") ||
-    source.includes("not implemented") ||
-    source.includes("to be implemented") ||
-    source.includes("计划") ||
-    source.includes("后续") ||
-    source.includes("尚未实现")
+    heading.includes("planned") ||
+    heading.includes("future") ||
+    heading.includes("not implemented") ||
+    heading.includes("计划范围") ||
+    heading.includes("计划中") ||
+    heading.includes("未来范围") ||
+    heading.includes("尚未实现") ||
+    /^(?:\*\*)?(?:planned(?: scope)?|future scope|not implemented|计划(?:范围)?|尚未实现)\s*[:：]/.test(
+      leadingContent,
+    )
   ) {
     return "planned";
   }
   if (
-    relativePath.endsWith("References.md") ||
-    source.includes("reference") ||
-    source.includes("citation") ||
-    source.includes("证据") ||
-    source.includes("引用")
-  ) {
-    return "evidence";
-  }
-  if (
-    source.includes("local baseline") ||
-    source.includes("local version") ||
-    source.includes("local 版") ||
-    source.includes("本地版")
+    heading.includes("local baseline") ||
+    heading.includes("local version") ||
+    heading.includes("local 版") ||
+    heading.includes("本地版")
   ) {
     return "local_baseline";
   }

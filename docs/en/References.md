@@ -67,13 +67,15 @@ References are not needed for:
 | REF-AI-05 | Data minimization and privacy-by-design principles | Privacy engineering and privacy-by-design guidance from primary regulatory or standards sources. | Supports sending minimal necessary context and avoiding unnecessary raw-history upload. | Legal compliance must be reviewed separately for the actual launch region. |
 | REF-AI-06 | Document chunking patterns | LangChain text splitter documentation and Unstructured chunking documentation. | Engineering references for header-aware, recursive, and title/element-aware document chunking. | Does not prove the best chunk size or retrieval quality for FitLog; verify with local retrieval tests. |
 | REF-AI-07 | Contextual retrieval | Anthropic engineering note on Contextual Retrieval. | Supports adding document-level context around chunks before retrieval. | Vendor guidance, not a guarantee of correctness; FitLog must keep context deterministic or reviewed. |
+| REF-AI-08 | OpenAI Structured Outputs | [OpenAI Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs). | Supports strict provider-side JSON Schema generation for the OpenAI Responses adapter. | Structured output does not replace FitLog workflow, semantic, safety, or write validation; verify configured-model support during implementation. |
+| REF-AI-09 | Qwen JSON Mode | [Alibaba Cloud Model Studio Structured output](https://help.aliyun.com/en/model-studio/qwen-structured-output). | Supports Qwen JSON Mode requirements and downstream schema-validation/retry guidance. | JSON Mode produces JSON-oriented output but does not prove FitLog schema or business correctness; supported models and thinking-mode restrictions must be re-checked. |
 
 FitLog-specific AI decisions that are product boundaries:
 
 - AI Gateway is server-managed.
 - Users do not provide model API keys in V1.
 - Cloud Profile is authoritative after login.
-- After Phase 3, signed-in body/food/workout official records use the cloud as the source of truth.
+- Signed-in body, food, and workout official records use the cloud as the source of truth.
 - Local SQLite is partial cache, draft storage, and runtime acceleration, not a complete history mirror.
 - User-data vector databases and long-term semantic memory are out of scope for V1.
 - AI creates drafts and explanations; user confirmation gates official writes.

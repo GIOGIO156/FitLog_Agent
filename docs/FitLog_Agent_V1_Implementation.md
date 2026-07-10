@@ -1,5 +1,7 @@
 # 《FitLog_Agent V1 产品与实现设计书》
 
+> 本文保留 V1 实施时期的总体设计、阶段顺序和验收背景。当前稳定产品/Agent 事实以 `README.md`、`docs/en/*` 和 `docs/zh/*` 为准；模型 output 治理见双语 `AIOutputContract.md`，RAG/context/evidence 治理见双语 `RAGDesign.md`。不要把本文中的早期 planned 章节当作当前 shipped behavior。
+
 ## 0. V1 锁定结论
 
 FitLog_Agent V1 是在 FitLog Local 既有饮食、训练、Profile、算法和 SQLite 工作流基础上，新增一个由云端 AI Gateway 支撑的订阅制 AI Chat 页面。
@@ -2004,6 +2006,8 @@ docs/en/Methodology.md
 docs/en/Algorithm.md
 docs/en/Database.md
 docs/en/AgentDesign.md
+docs/en/AIOutputContract.md
+docs/en/RAGDesign.md
 docs/en/References.md
 docs/zh/Product.md
 docs/zh/AppGuide.md
@@ -2011,6 +2015,8 @@ docs/zh/Methodology.md
 docs/zh/Algorithm.md
 docs/zh/Database.md
 docs/zh/AgentDesign.md
+docs/zh/AIOutputContract.md
+docs/zh/RAGDesign.md
 docs/zh/References.md
 ```
 

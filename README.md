@@ -33,6 +33,7 @@ AI 只生成草稿、建议、复盘和解释。
 ### AI 与数据边界
 
 - 模型 API key 由服务端管理，用户不需要也不应该填写自己的模型 key。
+- OpenAI 与千问输出由服务端统一约束和严格校验；未通过最终校验的结果不会生成可审查/保存的 artifact。
 - AI 输出在确认前只是草稿、建议、复盘或解释。
 - AI 不会静默写入正式饮食、训练、Profile 或目标数据。
 - AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
@@ -125,14 +126,18 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | 产品目的、原则、模块、工作流、边界和代码引用。 |
 | [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | App 各区域如何工作，以及应该阅读哪些设计文件。 |
 | [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | 面向用户解释为什么这样设计饮食、训练、AI 和确认流程。 |
-| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | 公式、确定性算法、context builder、workflow 算法和算法边界。 |
+| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | 公式、确定性算法、workflow 算法和算法边界。 |
 | [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | SQLite、Cloud Profile、Cloud Records、AI Chat、日志和 Document RAG index 的 schema 与数据流。 |
-| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | AI Gateway、RAG、权限、草稿确认、请求留存和隐私边界。 |
+| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | Agent 定位、AI workflow、权限、草稿确认、请求留存和隐私边界。 |
+| [docs/en/AIOutputContract.md](docs/en/AIOutputContract.md) / [docs/zh/AIOutputContract.md](docs/zh/AIOutputContract.md) | Provider output envelope、draft schema、校验、归一化、失败、纠错、日志和确认边界。 |
+| [docs/en/RAGDesign.md](docs/en/RAGDesign.md) / [docs/zh/RAGDesign.md](docs/zh/RAGDesign.md) | 同会话 context、Structured RAG、Document RAG、source of truth、ingestion、retrieval、evidence 和评测。 |
 | [docs/en/References.md](docs/en/References.md) / [docs/zh/References.md](docs/zh/References.md) | 算法、工程、AI/RAG、隐私引用和证据边界。 |
 | [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | 云端/本地权威、cache、写入、读取、异常、冲突和修复规则。 |
+| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | 当前 Flutter-to-service wire contract、字段约束、稳定错误和兼容边界；文件名保留历史 `DRAFT`。 |
+| [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 架构决策、实施背景和仍有维护价值的历史上下文。 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 工程阶段计划、执行步骤、验证方式和人工审查清单。 |
-| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | API contract 草案和接口边界。 |
 | [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 工程计划、部署和验收说明。 |
+| [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | AI Output Contract 的分阶段实施、验证、灰度和回滚计划。 |
 
 Local 版本基线保留在 `docs/local/`。
 
@@ -178,6 +183,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 ### AI And Data Boundaries
 
 - Model API keys are server-managed; users do not provide model keys.
+- OpenAI and Qwen outputs use one server-owned strict contract; results that fail final validation never create a review/save artifact.
 - AI outputs are drafts, suggestions, reviews, or explanations until confirmed.
 - AI does not silently write official food, workout, Profile, or goal data.
 - AI does not automatically apply carb tapering, delete records, or change diet goals.
@@ -270,14 +276,18 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | Product purpose, principles, modules, workflows, boundaries, and code references. |
 | [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | How each app area works and which design files to read. |
 | [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | User-facing explanation of diet, workout, AI, and confirmation choices. |
-| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | Formulas, deterministic algorithms, context builders, workflow algorithms, and boundaries. |
+| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | Formulas, deterministic algorithms, workflow algorithms, and boundaries. |
 | [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | SQLite, Cloud Profile, Cloud Records, AI Chat, logs, and Document RAG index schema and data flow. |
-| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | AI Gateway, RAG, permissions, draft confirmation, request retention, and privacy boundaries. |
+| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | Agent positioning, AI workflows, permissions, draft confirmation, request retention, and privacy boundaries. |
+| [docs/en/AIOutputContract.md](docs/en/AIOutputContract.md) / [docs/zh/AIOutputContract.md](docs/zh/AIOutputContract.md) | Provider output envelopes, draft schemas, validation, normalization, failures, correction, logging, and confirmation boundaries. |
+| [docs/en/RAGDesign.md](docs/en/RAGDesign.md) / [docs/zh/RAGDesign.md](docs/zh/RAGDesign.md) | Same-chat context, Structured RAG, Document RAG, sources of truth, ingestion, retrieval, evidence, and evaluation. |
 | [docs/en/References.md](docs/en/References.md) / [docs/zh/References.md](docs/zh/References.md) | Algorithm, engineering, AI/RAG, privacy references, and evidence boundaries. |
 | [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | Cloud/local authority, cache, writes, reads, failures, conflicts, and repair rules. |
+| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Current Flutter-to-service wire contract, field constraints, stable errors, and compatibility boundaries; the legacy filename retains `DRAFT`. |
+| [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 architecture decisions, implementation background, and historical context that remains useful to maintainers. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Engineering phase plan, execution steps, validation, and manual review checklist. |
-| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | API contract draft and interface boundaries. |
 | [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 engineering plan, deployment, and acceptance notes. |
+| [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | Staged AI Output Contract implementation, validation, canary, and rollback plan. |
 
 The Local version baseline remains under `docs/local/`.
 

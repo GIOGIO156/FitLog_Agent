@@ -381,6 +381,16 @@ class AppStrings {
   );
   String get aiRequestUnsupported =>
       _t('This AI request is not supported yet.', '当前版本暂不支持这个 AI 请求。');
+  String get aiOutputInvalid => _t(
+    'AI returned an invalid result. Your input was kept; try again.',
+    'AI 返回结果未通过校验，输入已保留，请重试。',
+  );
+  String get aiProviderRefusal =>
+      _t('AI declined this request.', 'AI 服务拒绝了这次请求。');
+  String get aiProviderIncomplete => _t(
+    'AI response ended early. Your input was kept; try again.',
+    'AI 响应未完整生成，输入已保留，请重试。',
+  );
   String get aiNetworkFailure =>
       _t('Network failed. Your input was kept.', '网络连接失败，输入已保留。');
   String get aiChatNetworkFailure => _t(

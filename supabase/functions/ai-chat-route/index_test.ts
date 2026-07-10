@@ -1,17 +1,18 @@
 import {
   extractBearerToken,
   extractSessionIdFromAccessToken,
-  gatewayResponse,
   GatewayRequestError,
+  gatewayResponse,
   parseGatewayRequest,
   parseProviderGatewayBody,
 } from "./contracts.ts";
 import { buildPhase5Context } from "./context_builders.ts";
 import { MockProviderError, runMockProvider } from "./mock_provider.ts";
-import { extractOpenAiText } from "./openai_provider.ts";
+import { extractOpenAiCompletion } from "./openai_provider.ts";
 import type { Phase5WorkflowRoute } from "./phase5_types.ts";
 import { providerForChoice } from "./providers.ts";
-import { extractQwenText } from "./qwen_provider.ts";
+import { extractQwenCompletion } from "./qwen_provider.ts";
+import { OutputContractError } from "../_shared/ai_output_contract.ts";
 
 Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   const parsed = parseGatewayRequest({
@@ -241,10 +242,15 @@ Deno.test("buildPhase5Context does not fetch record summaries without permission
       read_only: true,
     };
 
-    const context = await buildPhase5Context({
-      supabaseUrl: "https://example.test",
-      supabaseServiceRoleKey: "service-key",
-    }, "acct_1", request, route);
+    const context = await buildPhase5Context(
+      {
+        supabaseUrl: "https://example.test",
+        supabaseServiceRoleKey: "service-key",
+      },
+      "acct_1",
+      request,
+      route,
+    );
 
     assertEquals(requestedUrls, []);
     assertEquals(context.called_tools, []);
@@ -292,7 +298,10 @@ Deno.test("gatewayResponse emits Step 1-compatible error envelope", () => {
   assertEquals(body.model_choice, "qwen");
   assertEquals(body.model_provider, null);
   assertEquals((body.message as Record<string, unknown>).language, "en");
-  assertEquals((body.error as Record<string, unknown>).code, "subscription_required");
+  assertEquals(
+    (body.error as Record<string, unknown>).code,
+    "subscription_required",
+  );
   assertEquals(body.draft, null);
 });
 
@@ -313,7 +322,8 @@ Deno.test("gatewayResponse emits Phase 5 evidence envelope", () => {
         chunk_count: 1,
         status: "implemented",
         score: 1.2,
-        context_prefix: "Source: docs/en/AgentDesign.md > Agent Design > Agent V1.",
+        context_prefix:
+          "Source: docs/en/AgentDesign.md > Agent Design > Agent V1.",
         context_note: null,
         excerpt: "Phase 5 uses controlled document retrieval.",
       }],
@@ -345,15 +355,22 @@ Deno.test("parseProviderGatewayBody parses multimodal JSON with food draft", () 
       byte_length: 128,
     }],
   });
-  const parsed = parseProviderGatewayBody(JSON.stringify({
-    message: { text: "Review this draft before saving." },
-    needs_clarification: false,
-    clarification_questions: [],
-    draft: validDraft(),
-  }), request);
+  const parsed = parseProviderGatewayBody(
+    JSON.stringify({
+      schema_version: "provider_gateway_envelope.v1",
+      message: { text: "Review this draft before saving." },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft: validDraft(),
+    }),
+    { ...request, expectedOutput: "food_draft" },
+  );
 
   assertEquals(parsed.messageText, "Review this draft before saving.");
-  assertEquals(parsed.draft?.meal_name, "Chicken rice");
+  assertEquals(
+    (parsed.draft as { meal_name: string }).meal_name,
+    "Chicken rice",
+  );
   assertEquals(parsed.needsClarification, false);
 });
 
@@ -365,18 +382,23 @@ Deno.test("parseProviderGatewayBody normalizes food draft meal totals from items
     workflow_hint: "food_logging",
     device_id: "device-a",
   });
-  const parsed = parseProviderGatewayBody(JSON.stringify({
-    message: { text: "Review this draft before saving." },
-    needs_clarification: false,
-    clarification_questions: [],
-    draft: mismatchedFoodDraft(),
-  }), request);
+  const parsed = parseProviderGatewayBody(
+    JSON.stringify({
+      schema_version: "provider_gateway_envelope.v1",
+      message: { text: "Review this draft before saving." },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft: mismatchedFoodDraft(),
+    }),
+    { ...request, expectedOutput: "food_draft" },
+  );
 
-  assertEquals(parsed.draft?.total_weight_g, 280);
-  assertEquals(parsed.draft?.calories_kcal, 315);
-  assertEquals(parsed.draft?.protein_g, 12);
-  assertEquals(parsed.draft?.carbs_g, 53);
-  assertEquals(parsed.draft?.fat_g, 5);
+  const draft = parsed.draft as ReturnType<typeof mismatchedFoodDraft>;
+  assertEquals(draft.total_weight_g, 280);
+  assertEquals(draft.calories_kcal, 315);
+  assertEquals(draft.protein_g, 12);
+  assertEquals(draft.carbs_g, 53);
+  assertEquals(draft.fat_g, 5);
 });
 
 Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
@@ -387,12 +409,16 @@ Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
     workflow_hint: "auto",
     device_id: "device-a",
   });
-  const parsed = parseProviderGatewayBody(JSON.stringify({
-    message: { text: "Review this workout draft before saving." },
-    needs_clarification: false,
-    clarification_questions: [],
-    draft: validWorkoutDraft(),
-  }), request);
+  const parsed = parseProviderGatewayBody(
+    JSON.stringify({
+      schema_version: "provider_gateway_envelope.v1",
+      message: { text: "Review this workout draft before saving." },
+      needs_clarification: false,
+      clarification_questions: [],
+      draft: validWorkoutDraft(),
+    }),
+    { ...request, expectedOutput: "workout_draft" },
+  );
 
   assertEquals(parsed.messageText, "Review this workout draft before saving.");
   assertEquals(
@@ -401,7 +427,7 @@ Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
   );
 });
 
-Deno.test("parseProviderGatewayBody extracts JSON object from provider prose", () => {
+Deno.test("parseProviderGatewayBody rejects Markdown fences and provider prose", () => {
   const request = parseGatewayRequest({
     message: { text: "I walked 10 minutes. Create a workout draft." },
     language: "en",
@@ -409,26 +435,15 @@ Deno.test("parseProviderGatewayBody extracts JSON object from provider prose", (
     workflow_hint: "auto",
     device_id: "device-a",
   });
-  const parsed = parseProviderGatewayBody([
-    "Sure, here is the editable draft:",
-    "```json",
-    JSON.stringify({
-      message: { text: "Review this workout draft before saving." },
-      needs_clarification: false,
-      clarification_questions: [],
-      draft: validWorkoutDraft(),
-    }),
-    "```",
-  ].join("\n"), request);
-
-  assertEquals(parsed.messageText, "Review this workout draft before saving.");
-  assertEquals(
-    (parsed.draft as { schema_version?: string } | null)?.schema_version,
-    "workout_draft.v1",
+  assertThrowsOutputContract(() =>
+    parseProviderGatewayBody("Sure\n```json\n{}\n```", {
+      ...request,
+      expectedOutput: "workout_draft",
+    })
   );
 });
 
-Deno.test("parseProviderGatewayBody extracts food draft JSON after friendly prose", () => {
+Deno.test("parseProviderGatewayBody rejects prose before valid food JSON", () => {
   const request = parseGatewayRequest({
     message: { text: "200ml 全脂牛奶，生成饮食草稿。" },
     language: "zh",
@@ -454,28 +469,15 @@ Deno.test("parseProviderGatewayBody extracts food draft JSON after friendly pros
       fat_g: 7.6,
     }],
   };
-  const parsed = parseProviderGatewayBody([
-    "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。",
-    "",
-    JSON.stringify({
-      message: {
-        text: "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。请确认后保存。",
-      },
-      needs_clarification: false,
-      clarification_questions: [],
-      draft,
-    }),
-  ].join("\n"), request);
-
-  assertEquals(
-    parsed.messageText,
-    "已为您生成 200ml 全脂牛奶的饮食记录草稿。按常见全脂牛奶营养数据估算，总热量约为 130 千卡。请确认后保存。",
+  assertThrowsOutputContract(() =>
+    parseProviderGatewayBody(`额外说明\n${JSON.stringify(draft)}`, {
+      ...request,
+      expectedOutput: "food_draft",
+    })
   );
-  assertEquals(parsed.draft?.meal_name, "全脂牛奶");
-  assertEquals(parsed.needsClarification, false);
 });
 
-Deno.test("parseProviderGatewayBody skips non-contract JSON before draft JSON", () => {
+Deno.test("parseProviderGatewayBody rejects multiple JSON objects", () => {
   const request = parseGatewayRequest({
     message: { text: "Log this milk." },
     language: "en",
@@ -483,18 +485,12 @@ Deno.test("parseProviderGatewayBody skips non-contract JSON before draft JSON", 
     workflow_hint: "food_logging",
     device_id: "device-a",
   });
-  const parsed = parseProviderGatewayBody([
-    'Example note object that should not become the response: {"note":"not a gateway"}',
-    JSON.stringify({
-      message: { text: "Review this food draft before saving." },
-      needs_clarification: false,
-      clarification_questions: [],
-      draft: validDraft(),
-    }),
-  ].join("\n"), request);
-
-  assertEquals(parsed.messageText, "Review this food draft before saving.");
-  assertEquals(parsed.draft?.meal_name, "Chicken rice");
+  assertThrowsOutputContract(() =>
+    parseProviderGatewayBody('{"note":"one"}\n{"note":"two"}', {
+      ...request,
+      expectedOutput: "food_draft",
+    })
+  );
 });
 
 Deno.test("runMockProvider returns fixed text and stable simulated failures", () => {
@@ -505,7 +501,7 @@ Deno.test("runMockProvider returns fixed text and stable simulated failures", ()
     workflow_hint: "auto",
     device_id: "device-a",
   });
-  assert(runMockProvider(baseRequest).includes("mock reply"));
+  assert(runMockProvider(baseRequest).content.includes("mock reply"));
 
   const timeoutRequest = parseGatewayRequest({
     message: { text: "[mock_timeout]" },
@@ -550,14 +546,89 @@ Deno.test("provider router maps stable choices to provider adapters", () => {
 });
 
 Deno.test("provider parsers extract text and reject invalid payloads", () => {
-  assertEquals(extractOpenAiText({ output_text: " hello " }), "hello");
   assertEquals(
-    extractQwenText({ choices: [{ message: { content: " 你好 " } }] }),
+    extractOpenAiCompletion({ output_text: " hello " }).content,
+    "hello",
+  );
+  assertEquals(
+    extractQwenCompletion({ choices: [{ message: { content: " 你好 " } }] })
+      .content,
     "你好",
   );
 
-  assertThrowsProviderFailure(() => extractOpenAiText({ output_text: "" }));
-  assertThrowsProviderFailure(() => extractQwenText({ choices: [] }));
+  assertThrowsProviderFailure(() =>
+    extractOpenAiCompletion({ output_text: "" })
+  );
+  assertThrowsProviderFailure(() => extractQwenCompletion({ choices: [] }));
+});
+
+Deno.test("provider completion parsers separate refusal and incomplete output", () => {
+  assertEquals(
+    extractOpenAiCompletion({
+      output: [{ content: [{ type: "refusal", refusal: "declined" }] }],
+    }).status,
+    "refusal",
+  );
+  assertEquals(
+    extractOpenAiCompletion({
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+      output_text: "{",
+    }).status,
+    "incomplete",
+  );
+  assertEquals(
+    extractQwenCompletion({
+      choices: [{ finish_reason: "length", message: { content: "{" } }],
+    }).status,
+    "incomplete",
+  );
+});
+
+Deno.test("OpenAI adapter sends the canonical strict Structured Outputs schema", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const provider = providerForChoice("chatgpt", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, async (_url, init) => {
+    capturedBody = JSON.parse(init?.body?.toString() ?? "{}");
+    return new Response(JSON.stringify({ output_text: "{}" }), { status: 200 });
+  });
+
+  await provider.generateText(parseGatewayRequest({
+    message: { text: "hello" },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "auto",
+    device_id: "device-a",
+  }));
+
+  const body = capturedBody as unknown as Record<string, unknown>;
+  const text = body.text as Record<string, unknown>;
+  const format = text.format as Record<string, unknown>;
+  assertEquals(format.type, "json_schema");
+  assertEquals(format.strict, true);
+  const schemaJson = JSON.stringify(format.schema);
+  assert(schemaJson.includes("provider_gateway_envelope.v1"));
+  for (
+    const unsupportedKeyword of [
+      '"const"',
+      '"minimum"',
+      '"maximum"',
+      '"minLength"',
+      '"maxLength"',
+      '"pattern"',
+      '"minItems"',
+      '"maxItems"',
+    ]
+  ) {
+    assertEquals(schemaJson.includes(unsupportedKeyword), false);
+  }
 });
 
 Deno.test("provider adapter builds safe request without leaking unsupported fields", async () => {
@@ -586,14 +657,15 @@ Deno.test("provider adapter builds safe request without leaking unsupported fiel
     device_id: "device-a",
   }));
 
-  const json = JSON.stringify(capturedBody);
-  assertEquals(result, "ok");
-  assertEquals(capturedBody?.model, "qwen-model");
-  assertEquals(capturedBody?.enable_thinking, false);
-  assert(json.includes("Put all user-facing explanation"));
+  const body = capturedBody as unknown as Record<string, unknown>;
+  const json = JSON.stringify(body);
+  assertEquals(result.content, "ok");
+  assertEquals(body.model, "qwen-model");
+  assertEquals(body.enable_thinking, false);
+  assert(json.includes("provider_gateway_envelope.v1"));
   assert(json.includes("message.text"));
-  assertEquals("attachments" in (capturedBody ?? {}), false);
-  assertEquals("context_objects" in (capturedBody ?? {}), false);
+  assertEquals("attachments" in body, false);
+  assertEquals("context_objects" in body, false);
 });
 
 Deno.test("Qwen provider adapter builds multimodal image request", async () => {
@@ -644,8 +716,9 @@ Deno.test("Qwen provider adapter builds multimodal image request", async () => {
     }],
   }));
 
-  const json = JSON.stringify(capturedBody);
-  assertEquals(capturedBody?.response_format, { type: "json_object" });
+  const body = capturedBody as unknown as Record<string, unknown>;
+  const json = JSON.stringify(body);
+  assertEquals(body.response_format, { type: "json_object" });
   assert(json.includes("data:image/webp;base64,base64-image"));
   assert(json.includes("data:image/png;base64,second-image"));
   assertEquals(json.includes("official_record_write"), false);
@@ -657,7 +730,10 @@ function assertThrowsGatewayRequest(action: () => void): void {
     action();
   } catch (error) {
     assert(error instanceof GatewayRequestError);
-    assertEquals((error as GatewayRequestError).code, "record_schema_mismatch");
+    assertEquals(
+      (error as GatewayRequestError).code,
+      "request_schema_mismatch",
+    );
     return;
   }
   throw new Error("Expected GatewayRequestError");
@@ -673,6 +749,16 @@ function assertThrowsProviderFailure(action: () => void): void {
   throw new Error("Expected provider failure");
 }
 
+function assertThrowsOutputContract(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    assert(error instanceof OutputContractError);
+    return;
+  }
+  throw new Error("Expected OutputContractError");
+}
+
 function fakeFetch(body: unknown): typeof fetch {
   return (() =>
     Promise.resolve(
@@ -682,6 +768,7 @@ function fakeFetch(body: unknown): typeof fetch {
 
 function validDraft() {
   return {
+    schema_version: "food_draft.v1",
     meal_name: "Chicken rice",
     total_weight_g: 320,
     calories_kcal: 520,
@@ -703,6 +790,7 @@ function validDraft() {
 
 function mismatchedFoodDraft() {
   return {
+    schema_version: "food_draft.v1",
     meal_name: "Rice and tofu",
     total_weight_g: 999,
     calories_kcal: 999,
@@ -761,7 +849,10 @@ function tokenFor(payload: Record<string, unknown>): string {
 }
 
 function encodeBase64Url(value: string): string {
-  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/g,
+    "",
+  );
 }
 
 function assert(value: boolean, message = "Assertion failed"): void {
@@ -772,6 +863,8 @@ function assert(value: boolean, message = "Assertion failed"): void {
 
 function assertEquals(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 }

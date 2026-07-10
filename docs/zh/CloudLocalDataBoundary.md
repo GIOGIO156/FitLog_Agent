@@ -8,9 +8,9 @@
 
 ## 适用范围
 
-这些规则适用于 Phase 3 Cloud Records Foundation 及其后的登录态 Agent 构建。当前工程已落地 root auth gate、active-device claim/assert、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 confirmed cache 元数据、cloud-backed repository、登录冷启动后台账号恢复、首屏本地记录读取前的 auth-session 账号绑定、Home 选中日期 daily summary confirmed cache 和 stale-while-revalidate 后台重算、App 侧 `daily_summaries` 云端 upsert/读取恢复、受控的近期 summary warm cache、confirmed cache 淘汰，以及基于云端正式 records 的导出完整性 hardening。更精细的 Body Trends partial-state polish 和完整 repair 面板可以后续继续做，但 Phase 3 主 cloud/local hardening 链路不再被这些事项阻塞。
+这些规则适用于所有登录态 Agent 构建，覆盖 root auth gate、active-device claim/assert、body/food/workout cloud-first 写入、账号绑定 confirmed-cache metadata、cloud-backed repositories、非阻塞启动恢复、首屏账号绑定、选中日期 summary cache、stale-while-revalidate 重建、云端 `daily_summaries`、有界 warm cache、cache eviction 和导出完整性。
 
-未登录前的 Local 风格行为仍以本地为主。Phase 3 不实现离线正式写入队列、完整双向同步、旧本机历史自动迁移，也不实现复杂跨设备合并 UI。
+登录前的兼容行为仍以本地为主。离线正式写入队列、完整双向同步、旧设备历史自动迁移和复杂跨设备 merge UI 不在本文边界内。更丰富的 repair presentation 可以演进，但必须继续遵守下述状态、权威和失败规则。
 
 ## 核心原则
 
@@ -56,7 +56,7 @@
 - 一个 slice 失败只能影响它负责的 UI 或能力。订阅失败只影响 AI 发送和订阅展示，不能阻断 Home/Food/Workout/Profile 的非 AI 数据页面。
 - Cloud Profile 刷新失败不能抹掉已经显示的 matching Profile cache；records 刷新失败不能抹掉已经显示的 records read model。
 - Warm cache 只影响下次打开和历史访问速度，不得控制页面是否可见、按钮是否可点或正式写入是否允许。
-- AI Gateway 可用性属于 Phase 4；Phase 3 的 Cloud Records 成功不应让 AI 发送按钮绕过 Gateway/entitlement 服务端校验。
+- Cloud Records ready 不能让 AI 发送按钮绕过 Gateway、active-device、provider 或服务端 entitlement 校验。
 - 每个 slice 都要有自己的 freshness、loading、error、stale 和 retry 状态；不得用一个全局 loading/error 覆盖整个 tab shell。
 
 ## Single Active Device Policy
@@ -113,7 +113,7 @@
 - 云端成功后，更新本地已确认 read model，并更新受影响的 `daily_summaries` projection/cache。
 - 云端写入失败时，保留原正式数据，并把用户草稿/编辑留在可重试的非正式状态。
 - AI 不得静默修改饮食目标、应用 carb tapering、删除记录或写正式记录；必须用户确认并走正式写入路径。
-- Phase 3 没有离线正式写入队列。离线编辑只能作为草稿，直到用户在线显式保存成功。
+- 当前没有离线正式写入队列。离线编辑只能作为草稿，直到用户在线显式保存成功。
 
 ## 用户操作反馈规则
 
@@ -195,7 +195,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 
 ## 流量与可见刷新控制
 
-云端 source of truth 不等于持续轮询。Phase 3 使用 stale-while-revalidate 风格：先显示本地 confirmed read model，再按受控条件校验云端。
+云端 source of truth 不等于持续轮询。FitLog 使用 stale-while-revalidate：先显示本地 confirmed read model，再按受控条件校验云端。
 
 - 不允许前台 records 无限轮询。自动刷新只能由 freshness 过期、app resume、日期/窗口切换、写入成功、显式刷新或修复流程触发。
 - 每次刷新必须限定账号和可见范围；默认不拉全历史，不为首屏强制拉最近 30 天详细 records。
@@ -211,7 +211,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - 默认 pin 最近 30 天 records 和 summaries。
 - 30 天外详细 records 每账号最多保留 180 个用户访问过的日期 bucket。
 - 本地可重建 summary/records cache 必须受限；当前实现会淘汰最近 30 天窗口外的 cloud-confirmed 本地 cache，并用云端 records/builders 恢复更早历史。
-- Body calendar 和 Body Trends 复用同一 cache 策略；Phase 3 不需要单独扩大容量。
+- Body calendar 和 Body Trends 复用同一 cache 策略，不需要单独扩大容量。
 - 最近 30 天不是唯一允许存在的 cache。某一天离开最近窗口后，可以作为旧历史访问日 bucket 继续保留，直到旧 bucket 容量或淘汰规则要求移除。
 - cache metadata 应尽量记录账号、日期/窗口、`cached_at`、source updated/version 字段、pending/confirmed 状态和 last access。
 - 只允许淘汰云端已确认、可重建的本地 cache。
@@ -344,9 +344,9 @@ AI：
 - 正确性以云端正式 records、云端 summaries 或 builders 为准。
 - 本地 cache 可以加速读取，但不能要求完整。
 
-## 实现职责
+## 实现映射
 
-当前实现职责和代码引用：
+以下组件负责执行本文边界：
 
 - Supabase migration：`supabase/migrations/202606260001_phase3_cloud_records.sql`。
 - 本地 SQLite schema：`lib/data/db/app_database.dart`。
@@ -362,9 +362,9 @@ AI：
 - Profile gate 必须把 `offline_readonly` 和“已有 matching cache 的 refresh error”当成可展示状态，不能整页错误覆盖。
 - AI 页面可以读取订阅展示 cache 做状态呈现，但真正发送能力仍受 Gateway 和服务端 entitlement 控制。
 
-## 回归覆盖
+## 验证不变量
 
-必须覆盖：
+自动测试和手动验收应保持以下不变量：
 
 - 后端未配置或网络失败时，登录/注册按钮不会 silent no-op。
 - 无 cache 的首次登录不会显示空 Home 后再跳变为真实 Home。
@@ -381,7 +381,7 @@ AI：
 - 本地 release/debug APK 应使用 `--dart-define-from-file=config/supabase.local.json`，或等价的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` defines 构建。
 - 没有这些 defines 的构建只是未配置 auth-shell 包；它不能验证 Supabase session 持久化、云端记录或云端/本地 cache 恢复。
 
-## 验收标准
+## 运行期验收不变量
 
 - 未登录启动时显示 root auth gate，且不显示底部导航。
 - 登录/注册/退出入口不依赖 records cache、warm cache、daily summary 或订阅刷新；点击后必须有可见反馈。

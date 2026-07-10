@@ -2,7 +2,7 @@
 
 ## Purpose
 
-FitLog_Agent V1 is a cloud-assisted AI food and workout logging app built from the FitLog Local baseline.
+FitLog_Agent V1 is a cloud-assisted food and workout logging product with deterministic planning rules and a user-controlled AI layer.
 
 Its value is not "AI replaces logging." Its value is that deterministic food, workout, diet-target, strategy, and export workflows remain stable, while a subscription-based AI Chat helps users estimate complex food, decide what to eat next, review recent behavior, and understand app rules.
 
@@ -16,9 +16,9 @@ Write official data only after the user confirms.
 
 ## Product Principles
 
-- Preserve Local behavior unless an Agent V1 requirement explicitly changes it.
+- Preserve proven logging, planning, and export behavior unless an explicit Agent requirement changes it.
 - Require sign-in before official record features in the Agent version.
-- Phase 3 Cloud Records Foundation connects signed-in body/food/workout official records to the cloud source of truth.
+- Signed-in body, food, and workout official records use the cloud source of truth.
 - Local SQLite is partial cache, draft storage, and runtime acceleration; it is not a full-history mirror.
 - Detailed cloud/local read, write, cache, refresh, conflict, and repair rules live in `CloudLocalDataBoundary.md`.
 - Signed-in startup should bind local record caches to the recovered auth account before active-device refresh finishes, so current-day Home/Food/Workout data can render from matching local cache.
@@ -41,19 +41,23 @@ System notifications are app-level transient feedback, not business logic.
 - Error and validation messages remain more visible and keep readable diagnostic detail, but float above the bottom navigation or keyboard instead of covering the current input focus.
 - Notifications that need user action must keep their action button and callback through the shared action notification API; they must not be downgraded to passive notices.
 - Notification colors and text styles come from the active FitLog theme, so Green and Black Orange keep consistent surfaces, accents, and `NotoSansSC` typography.
-- Android also mirrors an active unsaved workout editor draft with any selected exercise as a system "workout in progress" notification. It is not a background workout task and does not create a new workout record. When a next strength set exists, the title is the current exercise and the body is the next incomplete set using the draft's current weight/reps values; otherwise the body is a short return-to-continue prompt. The right-side image comes from the same exercise/body-part asset used in the workout editor. The focus follows the most recently checked completed set while that exercise still has unfinished sets; once that exercise is complete, it returns to the first unfinished strength exercise in workout order. Tapping the notification resumes the same local active draft in the workout editor. Save, discard, or deleting all exercises cancels it. The Android status-bar small icon may be monochrome because the platform tints notification small icons.
+- Android mirrors an active unsaved workout draft with any selected exercise as a system "workout in progress" notification. This is a draft-resume surface, not a background task or new official record.
+  - With a next strength set, the title is the current exercise and the body is the next incomplete set using current weight/reps values; otherwise it shows a short return-to-continue prompt.
+  - The right-side image reuses the workout editor exercise/body-part asset. The platform may tint the small status-bar icon monochrome.
+  - Focus follows the most recently checked set while that exercise remains unfinished, then returns to the first unfinished strength exercise in workout order.
+  - Tapping resumes the same local draft. Save, discard, or deleting every exercise cancels the notification.
 
 ## Product Modules
 
-| Module | V1 role | Implemented baseline | V1 planned additions |
+| Module | Product role | Current behavior | Durable boundary |
 | --- | --- | --- | --- |
-| Home | Selected-day dashboard. | Local daily summary, diet context, macro/kcal display, compact food/workout cards. | Builds daily summaries through cloud-backed record repositories, stores selected-day confirmed summary cache locally, refreshes Home with stale-while-revalidate, and upserts rebuildable `daily_summaries` to the cloud. |
-| Food Log | Official food-record management. | Manual food entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed `ai_photo` records from Add Food AI Food Analysis. | After sign-in, official records write cloud-first; later Chat draft workflows must keep the same user-confirmation boundary. |
-| Add Food | Food creation workflow. | AI Food Analysis is the first entry; it accepts a text-only food description or up to three optional images, while manual entry and external AI JSON paste remain available. | Future refinements may add more than three Chat images or richer editor-side draft refinement only with an explicit privacy and confirmation design. |
-| AI | Primary Agent entry. | The current AI page implements the centered tab, availability-gated chat page, editable composer, selectable message text, up to three Qwen image attachments, locally persisted provider selector, readiness-only status pill, account/subscription status sheet, subscription/Profile availability gating, user-record summary permission, compact same-chat context, Phase 5 read-only Structured RAG/Document RAG with evidence, Gateway client, server-side OpenAI/Qwen provider routing, Chat Food Draft and Workout Draft artifact cards, and cloud chat history with new/switch/inline rename/delete-with-confirmation. | Richer draft editing and later explicit personalization flows. |
-| Workout | Official workout-record management. | Workout records, custom exercises, draft editor, calorie heuristics. | After sign-in, official records write cloud-first; V1 AI may explain or review workout context but should not silently modify records. |
-| Profile | Account/profile/diet settings. | Local profile logic remains the compatibility baseline; signed-out users see the sign-in entry, and signed-in formal profile changes save through Cloud Profile. | Account deletion, production subscription management, and later AI personalization flows. |
-| Export | User-controlled data export. | XLSX and CSV ZIP export. | After Phase 3 hardening, export loads cloud official food, workout, and body metric records before building files; local cache may accelerate but is not required for completeness. |
+| Home | Selected-day dashboard. | Shows deterministic daily summaries and mode-appropriate kcal or macro signals; matching confirmed cache may render before background refresh. | It remains a dashboard, not an AI workbench. |
+| Food Log | Official food-record management. | Supports manual entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed AI-assisted records. | Signed-in official writes are cloud-first; every AI result remains a draft until save confirmation. |
+| Add Food | Food creation workflow. | AI Food Analysis is first and accepts a text-only description or up to three optional images; manual entry and external AI JSON paste remain available. | Higher image limits or richer refinement require an explicit privacy and confirmation design. |
+| AI | Primary Agent entry. | Provides gated ChatGPT/Qwen chat, cloud history, up to three Qwen images, validated Food/Workout Draft cards, scoped read-only RAG, and an Answer basis panel. | Provider credentials stay server-side; AI cannot silently write records or settings. |
+| Workout | Official workout-record management. | Supports workout records, custom exercises, a local editor draft, deterministic calorie heuristics, and draft-resume notification. | AI may draft or review but cannot silently change official records. |
+| Profile | Account, body, diet, and presentation settings. | Signed-out users see authentication; signed-in users edit one Cloud Profile draft plus separate historical body records. | Cloud Profile is authoritative; official diet changes occur only through Profile confirmation. |
+| Export | User-controlled data export. | Supports XLSX and CSV ZIP built from the authoritative record set. | Local cache may accelerate export but is not required for completeness or treated as backup. |
 
 ## AI Chat Experience
 
@@ -71,7 +75,11 @@ Required UI:
 - Theme-aware floating bottom-navigation pill; the navigation component itself does not paint a full-width strip outside the pill.
 - Non-AI pages use an opaque theme-surface nav pill with a same-width page-background lower shield from the pill midline to the screen bottom, so scrolling content is covered without adding a full-width strip. The AI page uses a glass nav pill without that shield so the animated background remains visible.
 - Explanation guide sheets, including the Home strategy guide and Profile current-plan method guide, open as root modal sheets. Their scrim covers and disables the bottom navigation, the sheet bottom stops 12 px above the nav pill footprint, the top keeps at least 64 px of focus space, and long guide text scrolls inside the sheet body instead of shrinking text or covering navigation.
-- The root shell does not shrink page bodies or paint a navigation-height strip. Floating-navigation geometry separates two coordinate systems: the screen-space footprint is the pill height plus `max(device bottom safe area, 12)`, while the SafeArea content-space clearance subtracts the bottom safe area already consumed by SafeArea. Home's first-viewport box uses SafeArea content height minus the nav clearance; the g/kg macro strip and energy-ratio cards stay inside that box instead of using nav reserve as internal spacing. In energy-ratio mode, the calorie card keeps its natural ring, typography, padding, and top placement; the macro card keeps its natural internal height at the bottom, and the middle space flexes. Scrollable bottom reading padding and fixed bottom controls use separate helpers. Food and Workout add CTAs are transparent overlays with their own scroll clearance; like the AI composer, they are anchored in screen coordinates to the nav pill top with the same fixed visual gap, and the AI page background extends behind navigation. The bottom navigation itself keeps the stable bottom `viewPadding` during keyboard inset animation, so the pill does not dip toward the physical screen bottom while fields or the AI composer move. The AI message list treats the composer as a real obstruction without relying on a full-width footer plate. Its viewport starts below the top action row and hard-clips old messages there; the bottom edge keeps a short soft fade so final bubbles remain clean. When the keyboard is closed, the AI composer keeps the normal exterior reading gap and the viewport ends above it; when the keyboard opens, the composer attaches to the keyboard top as a fully floating solid accessory and the viewport extends behind it to the keyboard top, leaving final-bubble clearance to the message list's own bottom padding rather than an extra footer band. During keyboard open/close transitions, the composer bottom offset is clamped to the larger of the keyboard inset and the closed navigation-resting clearance, so it never follows a closing keyboard below its normal resting position.
+- The root shell does not shrink page bodies or paint a navigation-height strip. Floating-navigation geometry separates screen-space footprint from SafeArea content-space clearance: the former is the pill height plus `max(device bottom safe area, 12)`, while the latter subtracts the safe area already consumed by `SafeArea`.
+- Home's first-viewport box uses SafeArea content height minus navigation clearance. Its g/kg macro strip and energy-ratio cards stay inside that box instead of treating navigation reserve as internal spacing. In `energy_ratio`, the calorie card keeps its natural ring, typography, padding, and top placement; the macro card keeps its natural bottom height while the middle space flexes.
+- Scrollable reading padding and fixed bottom controls use separate geometry. Food and Workout add CTAs are transparent overlays with their own scroll clearance; like the AI composer, they anchor to the navigation top in screen coordinates with the same visual gap.
+- Bottom navigation keeps stable bottom `viewPadding` during keyboard inset animation. The pill does not dip while fields or the AI composer move.
+- The AI message list treats the composer as a real obstruction without a full-width footer plate. Its viewport starts below the top action row, hard-clips old messages, and keeps a short bottom fade. With the keyboard closed, the viewport ends above the composer; with the keyboard open, it extends behind the floating solid composer to the keyboard top and uses list padding for final-bubble clearance. Composer offset is clamped to the larger of keyboard inset and normal navigation-resting clearance during transitions.
 - Full-screen programmatic liquid-gradient AI background; the empty landing state balances visible pink at the top and blue from the lower-middle to the bottom, while a slightly smaller mint center band wraps the center status text. The field uses whole-field warped color sampling, minimum transition widths, and moderate sampling density instead of localized moving blobs or blocky compressed strips. Pre-conversation typing keeps the visible landing motion; after the first message is sent, when a historical conversation is opened, or while a send is pending, the same full-screen field switches to quieter low-amplitude motion so the page never freezes and the background does not compete with chat reading.
 - Center status line using the saved Cloud Profile nickname when available.
 - Bottom composer.
@@ -81,13 +89,13 @@ Required UI:
 - No quick chips.
 - Compact privacy/status hint.
 
-Current AI page behavior:
+Interaction and runtime behavior:
 
 - The root navigation is `Home | Food | AI | Workout | Profile`.
 - The AI shell defaults to signed-out disabled state.
 - The composer is editable; send is enabled only when the user is logged in, online, subscribed, on the active device, and the Supabase Gateway provider is configured.
 - The model selector displays `ChatGPT` and `Qwen` and routes the selected provider to the server Gateway; exact model names and API keys are server-side configuration.
-- The account/subscription entry opens the current status sheet with sign-out and user-record summary permission. The permission controls whether Phase 5 meal-decision and review workflows may use cloud record summaries; when it is off, the Gateway can still use same-chat, Cloud Profile, and document context but reports record-summary dimensions as missing. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
+- The account/subscription entry opens the current status sheet with sign-out and user-record summary permission. The permission controls whether routed meal-decision and review workflows may use cloud record summaries; when it is off, the Gateway can still use same-chat, Cloud Profile, and document context but reports record-summary dimensions as missing. The center status text reads the saved Cloud Profile nickname before falling back to auth display name.
 - Supabase Auth, subscription status, and Cloud Profile access are wired when the build is configured with Supabase URL and anon key.
 - The history entry opens the cloud chat-history sidebar, supports creating a new chat, switching sessions, inline renaming through a server RPC, and soft-deleting sessions only after confirmation. The archive entry is not exposed because there is no archived-session recovery UI.
 - The AI page calls the `ai-chat-route` Edge Function for text turns and Qwen multimodal turns with up to three images, sends the language inferred from the current user message, then persists accepted user/assistant message text through server-owned RPCs.
@@ -97,12 +105,12 @@ Current AI page behavior:
 - When one user turn contains both image attachments and text, the message list renders the image attachments as bare rounded right-aligned media above a separate text bubble while keeping the request, pending state, retry, and cloud history as one turn. The floating composer uses a subtle hairline and layered shadow so it stays distinct from the AI background, and its keyboard-close motion stays within the range between the keyboard top and the normal navigation-resting position.
 - Assistant messages render through a maintained GitHub-flavored Markdown renderer with app styling, selectable text, no remote image loading, and no link actions. User messages remain selectable plain text. Copying uses the system text-selection menu rather than a separate per-message copy button.
 - The AI page can send up to three JPEG/PNG/WebP images through Qwen. Before opening the system camera/gallery picker for Chat image attachments, it stores a small local recovery marker so Android activity recreation can restore composer text and recovered attachments. Food Draft responses open Food Preview after user review, and Workout Draft responses open the existing workout editor draft after user review; both still require the user to save before any official record is written.
-- Phase 5 can run server-routed read-only Structured RAG and Document RAG for meal decisions, weekly review, and app-logic answers. It does not store images long-term, change goals automatically, or write official business records from the AI page.
+- Server-routed read-only Structured RAG and Document RAG support meal decisions, weekly review, and app-logic answers. They do not store images long-term, change goals automatically, or write official business records from the AI page.
 - Unsent composer text is a current-runtime device-local draft. Page switches and disabled states should not clear it automatically; user deletion, send start, logout, or account switch clears it, and a failed send restores the attempted draft.
 
-The current AI page can send text turns and up to three Qwen image attachments when all runtime gates are satisfied. It includes compact same-chat text and draft-artifact summaries in requests so the model can follow the active conversation. Phase 5 adds server-built context only after auth, subscription, and active-device checks: Cloud Profile and app-document snippets may be used for routed read-only workflows, while record summaries require the local user-record summary permission. Assistant messages can show an Answer basis panel. It separates reference docs, used data, missing info, and limited actions with human-readable labels; reference docs use file-name chips rather than full internal paths, and same-chat history is not shown as answer evidence.
+The AI page can send text turns and up to three Qwen image attachments when all runtime gates are satisfied. It includes compact same-chat text and draft-artifact summaries so the model can follow the active conversation. Server-built context is added only after auth, subscription, and active-device checks: Cloud Profile and app-document snippets may be used for routed read-only workflows, while record summaries require the local user-record summary permission. Assistant messages can show an Answer basis panel that separates reference docs, used data, missing info, and limited actions with human-readable labels. Reference documents use file-name chips rather than full internal paths, and same-chat history is not shown as answer evidence.
 
-For AI Chat draft creation, provider replies should use one validated envelope: `message.text` carries the friendly explanation and review instruction, while `draft` carries the structured Food Draft or Workout Draft. The app displays the explanation and native artifact card after server validation and should not show raw provider JSON as ordinary assistant Markdown. For Food Drafts with items, meal-level weight, calories, and macros are normalized from the item sum before review or save. The dedicated Add Food AI Food Analysis path remains stricter: it expects pure structured Food Draft JSON from `ai-food-photo-analyze` and opens Food Preview directly after validation.
+Every AI Chat provider reply uses one validated envelope: `message.text` carries the friendly explanation and review instruction, while `draft` carries a structured Food Draft or Workout Draft. OpenAI uses strict Structured Outputs and Qwen uses JSON Mode; the Gateway then applies shared exact validation and at most one bounded correction. The app displays an explanation/artifact only after final validation and never renders raw provider JSON as assistant Markdown. Food Draft item totals are normalized before review. The dedicated Add Food path uses its narrower versioned envelope and the same Food Draft validator before opening Food Preview.
 
 Availability states:
 
@@ -233,9 +241,15 @@ Profile should include the existing profile information needed by FitLog's diet 
 - carb-tapering settings
 - language preference when account-bound
 
-After Phase 3 Cloud Records Foundation, workout, food, and body metric records use the cloud as the official source, and local SQLite is only cache, draft storage, and runtime acceleration. AI reads cloud records/summary/context builders for record context instead of treating local cache as authoritative. Cache-first reads, prefetch, eviction, export correctness, and repair rules live in `CloudLocalDataBoundary.md`.
+For signed-in accounts, workout, food, and body metric records use the cloud as the official source, and local SQLite is only cache, draft storage, and runtime acceleration. AI reads cloud records or controlled summary/context builders instead of treating local cache as authoritative. Cache-first reads, prefetch, eviction, export correctness, and repair rules live in `CloudLocalDataBoundary.md`.
 
-The Profile body section shows the current Profile's six fields: age, height, weight, sex, body-fat percentage, and waist circumference. Current body fields are ordinary Profile draft fields and have no card-level save button; they persist only through the bottom Save Changes action. The Body Profile card provides the calendar/add body-record entry. The picker opens on today, selecting today returns to the current body profile view without showing a date badge, and only past dates enter the in-page historical body-record edit state. In that state, the exact date appears under the calendar action, with Chinese labels using a two-digit year and English labels using a four-digit year. Only weight, body-fat percentage, and waist circumference are highlighted and editable, while age, height, sex, the rest of the page, and bottom navigation are locked with stronger soft fading instead of extra block scrims. Existing historical records show a red delete control beside the date; deletion requires confirmation, uses a red destructive action instead of a green filled confirmation button, soft-deletes the cloud record and local cache mirror, refreshes Body Trends, and can affect future calibration/review results that use weight history. Past dates without a historical record leave the three editable metrics empty instead of copying current Profile values. Inline body-profile editors share the tile surface instead of painting separate filled input blocks, use a stable value slot so focusing a field does not resize the tile, and keyboard focus scrolls the active body-record editor above the keyboard instead of compressing the Profile card. Backfilling a past date does not silently modify the current Cloud Profile; setting a historical record as current body data requires explicit confirmation. The Body Trends card below is read-only and plots weight, body-fat, or waist records over 7/14/21/28-day windows. Trend controls stay at the bottom of the card, summary text stays above the chart, real record points extend from left to right by their real day spacing within the current window, insufficient-record messages appear inside the chart area, and tapping a real record dot shows that point's value inline.
+The Profile body section shows age, height, weight, sex, body-fat percentage, and waist circumference. These are ordinary Profile draft fields with no card-level save button; the bottom Save Changes action persists them with the complete Cloud Profile.
+
+The Body Profile calendar is a separate historical-record entry. It opens on today; choosing today returns to the current Profile without a date badge, while a past date enters the in-page historical editor. The exact date appears under the calendar action, using two-digit years in Chinese and four-digit years in English. Only weight, body-fat percentage, and waist circumference are highlighted and editable. Age, height, sex, the rest of the page, and bottom navigation remain locked with stronger soft fading rather than extra block scrims.
+
+Existing historical records expose a red destructive delete control with confirmation. Deletion soft-deletes the cloud row and local cache mirror, refreshes Body Trends, and may affect calibration or review that uses weight history. A past date without a row starts with empty editable metrics rather than copied current values. Inline editors share the tile surface, keep a stable value slot while focused, and scroll above the keyboard instead of compressing the card. Backfilling history never silently modifies the current Cloud Profile; promoting historical data to current values requires explicit confirmation.
+
+Body Trends is read-only and plots weight, body-fat, or waist over 7/14/21/28-day windows. Controls remain at the bottom, summary text remains above the chart, real points use real date spacing, insufficient-record states appear inside the chart area, and tapping a point reveals its value inline.
 
 The Profile theme card is a low-frequency setting placed before language settings. Current options are Green and Black, shown as independent tappable options rather than a two-part segmented control so future themes can be added without changing the interaction pattern. Green remains the default. Black uses the Black Orange palette with a dark page background, dark cards, and orange accent color. Orange is reserved for buttons, selected states, icon emphasis, and progress emphasis, not large card fills. The theme preference is stored only in local `SharedPreferences`, not SQLite or Cloud Profile.
 
@@ -254,8 +268,8 @@ V1 cloud data:
 - AI sessions
 - AI chat messages
 - final AI answers
-- Phase 5 app-document chunks
-- Phase 5 evidence snapshots
+- app-document chunks
+- AI evidence snapshots
 - compact debug/action summaries
 
 V1 local data:
@@ -281,9 +295,9 @@ AI output categories:
 | App logic answer | No | No write action. |
 | Profile/diet setting suggestion | No | Change requires Profile UI confirmation. |
 
-## Implemented Scope From Local
+## Core Logging And Planning Capabilities
 
-The copied Local baseline already implements:
+The product retains these deterministic capabilities:
 
 - local food CRUD
 - external AI JSON paste and local parsing
@@ -303,21 +317,20 @@ The copied Local baseline already implements:
 - local data clearing with confirmation
 - language switching
 
-## Implemented Agent Scope
+## AI And Account Capabilities
 
-The current Agent source now implements:
+The current product includes:
 
 - Android install identity separated from FitLog Local.
 - App label and Flutter app title `FitLog Agent`.
 - Five-tab root navigation: `Home | Food | AI | Workout | Profile`.
-- `RootTabIndex` constants so Home links continue routing Food to index `1` and Workout to index `3`.
-- Theme-aware floating bottom-navigation pill extracted into `FitLogBottomNavBar`.
+- Stable five-tab routing and a theme-aware floating bottom-navigation pill.
 - Full-screen AI shell at `lib/features/ai/ai_page.dart`.
 - Disabled AI state with editable prompt and disabled send button.
 - ChatGPT/Qwen provider selector with server-side Gateway routing and server-managed model credentials.
 - Cloud chat-history entry with new chat, session switching, inline rename, and delete confirmation; archive is not exposed in the current UI.
 - Chat send path with up to three Qwen image attachments, compact same-chat context, pending user bubbles, assistant loading feedback, semantic status indicators, selectable message text, maintained assistant Markdown rendering, Food Draft handoff to Food Preview, and Workout Draft handoff to the workout editor draft.
-- Phase 5 Gateway workflow routing, read-only Structured RAG/Document RAG, `document_chunks` seed/RPC path, Gateway evidence snapshots, and an AI Chat Answer basis panel for reference docs, used data, missing info, and limited actions.
+- Gateway workflow routing, read-only Structured RAG/Document RAG, the `document_chunks` seed/RPC path, Gateway evidence snapshots, and an AI Chat Answer basis panel for reference docs, used data, missing info, and limited actions.
 - Supabase configuration via `SUPABASE_URL` and `SUPABASE_ANON_KEY`, with local SharedPreferences-backed PKCE verifier storage for registration email codes.
 - Account controller and repository layer for Auth, subscription status, Cloud Profile, and user-record summary permission.
 - Profile auth screen with a solid theme background, no-star FitLog logo base asset, saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right with a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, app theme `NotoSansSC` typography with moderate sign-in text weights, top backend-configuration notice, a non-scrolling static landing state when the keyboard is closed, keyboard-aware compact scrolling while auth fields are focused, email-password sign-in, registration email code, password confirmation, no username requirement, automatic default Cloud Profile creation for accounts without a cloud row, cloud save path, and cached display fallback.
@@ -352,4 +365,4 @@ The current Agent source now implements:
 - Repositories: `lib/data/repositories/*`
 - Export: `lib/export/*`
 - Localization and prompts: `lib/core/localization/*`, `lib/core/constants/prompt_templates.dart`
-- Agent V1 source design: `docs/FitLog_Agent_V1_Implementation.md`
+- V1 implementation history and rationale: `docs/FitLog_Agent_V1_Implementation.md`

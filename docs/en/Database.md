@@ -4,19 +4,19 @@
 
 This document defines FitLog_Agent V1 schema, migrations, tables, fields, and storage concepts. Cloud/local authority, cache-first reads, write-success rules, refresh, failures, conflicts, and repair rules are defined in `CloudLocalDataBoundary.md`.
 
-The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, selected-day daily-summary local cache for Home stale-while-revalidate, app-side `daily_summaries` cloud upsert/recovery, bounded recent-summary warm cache, and confirmed-cache eviction. Phase 4 Step 1 adds the Supabase AI chat-history/request-log/debug-summary tables and Flutter AI Gateway contract models. Phase 4 Steps 2-4 add the `ai-chat-route` Gateway, service-owned chat-turn/session RPCs, OpenAI/Qwen text provider metadata, AI-page sending, and cloud history UI. Phase 5 adds the `document_chunks` table, `search_document_chunks` RPC, generated document seed SQL, server-side structured context builders, Gateway evidence snapshots, and debug-summary context fields. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. RAG and Food Draft workflows use cloud official records, `daily_summaries`, or summary builders rather than complete local SQLite.
+FitLog uses local SQLite for compatibility state, deterministic local services, drafts, and partial confirmed read models; Supabase owns signed-in account data, official records, AI history/operations, and the document index. After login, official records are cloud-authoritative. RAG, export, and AI draft workflows use cloud official records, `daily_summaries`, or controlled summary builders rather than assuming local SQLite contains complete history.
 
 ## Storage Overview
 
-| Storage | Purpose | Current status |
+| Storage | Purpose | Authority and lifecycle |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, selected-day `daily_summary_cache`, and partial cache. | Implemented from Local baseline; Phase 3 schema v15 carries cloud/cache metadata and selected-day summary cache. |
-| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes plus daily-summary upsert/recovery are wired through cloud-backed repositories. |
-| SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, Supabase registration-code PKCE verifier state, and tiny pending AI food analysis / AI Chat image picker-recovery markers, including AI Chat ready-background continuity state. | Implemented from Local baseline and Phase 2 account work; auth verifier, theme key, and picker recovery are local runtime/display state, not business record sync. |
-| Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
-| Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, AI chat sessions/messages, AI request logs, compact debug summaries, and document chunks. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; Phase 4 Step 1 adds protected AI chat/log/debug tables; Phase 4 Steps 2-4 add the Gateway Edge Function, server-owned chat-turn/session RPCs, real text provider metadata, and app-side cloud history reads; Phase 5 adds `document_chunks` and `search_document_chunks`. |
-| AI document index | Searchable app documentation chunks for Document RAG. | Implemented in Supabase Postgres with keyword/full-text/trigram retrieval and service-role-only writes. |
-| In-memory providers | Selected date, refresh version, app services, language state, runtime summaries. | Implemented from Local baseline. |
+| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v15. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
+| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
+| SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
+| Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
+| Cloud account and AI storage | Supabase Auth identity, subscription entitlement, Cloud Profile, AI chat sessions/messages, request logs, compact debug summaries, evidence/artifact snapshots, and document chunks. | Account-bound or service-owned cloud data protected by RLS/RPC/service boundaries. |
+| AI document index | Searchable stable documentation chunks for Document RAG. | Supabase Postgres keyword/full-text/trigram retrieval with service-role-only writes. |
+| In-memory providers | Selected date, refresh version, app services, language state, and runtime summaries. | Ephemeral runtime coordination only. |
 
 Current local database name: `fitlog_local.db`.
 
@@ -47,7 +47,7 @@ Local migrations must remain additive and compatible.
 | 11 | Added `custom_exercises`, exercise snapshots, cardio-intensity metadata, and raw-vs-calculation workout-set fields. |
 | 12 | Added body fat and waist fields to `user_profile`, and account-scoped body metric fields to `user_weight_logs`. |
 | 13 | Added cloud confirmed-read-model metadata to local food/workout/body caches: `account_id`, `cloud_id`, `record_version`, `cloud_updated_at`, `deleted_at`, `cache_confirmed`, `cached_at`, plus `daily_summary_cache`. |
-| 14 | Re-runs the idempotent Phase 3 cache-column migration so devices that installed an intermediate v13 build still receive the cloud/cache columns without clearing local data. |
+| 14 | Re-runs the idempotent cloud-cache column migration so devices that installed an intermediate v13 build receive the missing columns without clearing local data. |
 | 15 | Adds an idempotent `daily_summary_cache` repair for devices that installed an intermediate v14 build before the selected-day summary JSON cache columns, unique index, and cache-write downgrade were complete. |
 
 Compatibility rules:
@@ -243,7 +243,7 @@ Rules:
 
 ### `user_weight_logs`
 
-Purpose: current local daily body metric history. After Phase 3, cloud `body_metric_logs` is the official source and local `user_weight_logs` should be compatibility/cache only; new official signed-in records belong to the cloud account.
+Purpose: local compatibility/cache for daily body metric history. Cloud `body_metric_logs` is authoritative for signed-in accounts; new official signed-in records belong to the cloud account.
 
 Fields:
 
@@ -319,7 +319,7 @@ The following service-side storage concepts support Agent V1 account, subscripti
 
 Purpose: authenticated user identity.
 
-Phase 2 uses Supabase Auth for this layer rather than a custom public `accounts` table. Email and password credentials, sessions, and email verification state belong to Supabase Auth. FitLog does not store passwords in `cloud_profiles`, and it does not require a username for registration.
+Supabase Auth provides account identity rather than a custom public `accounts` table. Email/password credentials, sessions, and email verification belong to Supabase Auth. FitLog does not store passwords in `cloud_profiles`, and registration does not require a username.
 
 Fields:
 
@@ -335,7 +335,7 @@ Fields:
 
 Purpose: user AI entitlement.
 
-Phase 2 implements this as a Supabase Postgres table keyed by `account_id = auth.uid()`. Clients may read their own row through RLS. Client inserts/updates are denied; development entitlements and server-side acceptance setup are seeded or maintained with service-role tooling.
+This Supabase Postgres table is keyed by `account_id = auth.uid()`. Clients may read their own row through RLS. Client inserts/updates are denied; development entitlements and server-side acceptance setup are seeded or maintained with service-role tooling.
 
 Fields:
 
@@ -353,7 +353,7 @@ User-visible V1 product rule: subscription gating only, no visible per-message q
 
 Purpose: development-only internal redeem codes that activate AI entitlement for the currently signed-in account.
 
-Phase 2 stores only hashed codes in Supabase. Clients cannot read or update this table. A signed-in client calls the `redeem_internal_subscription_code(input_code text)` RPC, which validates the hash, expiry and redemption count, records one redemption per account/code pair, and upserts the account's `subscriptions` row. This keeps entitlement writes server-side without placing Supabase service-role credentials in the app.
+Supabase stores only hashed redemption codes. Clients cannot read or update this table. A signed-in client calls the `redeem_internal_subscription_code(input_code text)` RPC, which validates the hash, expiry, and redemption count, records one redemption per account/code pair, and upserts the account's `subscriptions` row. Entitlement writes stay server-side without placing service-role credentials in the app.
 
 Fields:
 
@@ -382,7 +382,7 @@ Fields:
 
 Purpose: V1 single-active-device boundary. It records which app install/device/session has taken over the account so older devices cannot continue official writes. It is not a realtime online-presence table and is not a multi-device sync system.
 
-Phase 3 implementation: after sign-in succeeds, the client calls the `claim_active_device` RPC to update the account's active device/session to the current device. Official body/food/workout records, Cloud Profile saves, and later AI Gateway requests call `assert_active_device` at the server/RPC boundary. Requests from older devices return the stable `device_replaced` error code.
+After sign-in succeeds, the client calls `claim_active_device` to bind the account's active device/session to the current device. Official body/food/workout writes, Cloud Profile saves, and AI Gateway requests call `assert_active_device` at the server/RPC boundary. Requests from older devices return the stable `device_replaced` code.
 
 Recommended fields:
 
@@ -412,9 +412,9 @@ Rules:
 
 Purpose: authoritative account-bound profile.
 
-Phase 2 implements this as a Supabase Postgres table with own-row select/insert/update RLS and algorithm-preserving field checks.
+This Supabase Postgres table uses own-row select/insert/update RLS and algorithm-preserving field checks.
 
-Projects that already created `cloud_profiles` from an earlier Phase 2 SQL file must also run `202606230002_cloud_profile_schema_compat.sql`; `create table if not exists` does not add columns to an existing table. Existing projects that only need the current body metric columns can run `202606230003_cloud_profile_body_metrics.sql` as a narrow patch.
+Projects that created `cloud_profiles` from the earlier SQL shape must also run `202606230002_cloud_profile_schema_compat.sql`; `create table if not exists` does not add columns to an existing table. Projects that only lack current body metric columns can run `202606230003_cloud_profile_body_metrics.sql` as a narrow patch.
 
 Recommended fields mirror current profile concepts:
 
@@ -445,14 +445,14 @@ Rules:
 - Cloud Profile is authoritative.
 - Device cache is display/cache only.
 - Profile page edits are local drafts until Save Changes succeeds; cloud writes upsert one complete `cloud_profiles` snapshot and increment `profile_version`.
-- Current body metrics in Profile are saved in Cloud Profile. Historical weight, body-fat, and waist records move to cloud `body_metric_logs` after Phase 3; the local history table is cache/compatibility only.
+- Current body metrics in Profile are saved in Cloud Profile. Historical weight, body-fat, and waist records use cloud `body_metric_logs`; the local history table is cache/compatibility only.
 - Offline profile saves are disabled in V1.
 - Account deletion deletes Cloud Profile.
 - The mapper must preserve `diet_goal_phase`, `diet_calculation_mode`, and `diet_plan_strategy` as user-controlled algorithm fields; it must not convert between `energy_ratio` and `gram_per_kg`.
 
 ### `body_metric_logs`
 
-Purpose: account-level historical body metric records and the official source after Phase 3.
+Purpose: authoritative account-level historical body metric records.
 
 Fields:
 
@@ -514,7 +514,7 @@ Fields should cover:
 
 Rules:
 
-- Phase 3 creates the cloud `daily_summaries` table. The current app-side `DailySummaryService` builds deterministic summaries on demand from cloud-backed record repositories, recovers missing local summary cache from cloud `daily_summaries`, upserts rebuilt summaries to cloud, and persists selected-day confirmed summaries into local `daily_summary_cache` for Home stale-while-revalidate. AI/export must not depend on complete local SQLite.
+- `DailySummaryService` builds deterministic summaries on demand from cloud-backed record repositories, recovers missing local summary cache from cloud `daily_summaries`, upserts rebuilt summaries, and persists selected-day confirmed summaries into local `daily_summary_cache` for Home stale-while-revalidate. AI and export must not depend on complete local SQLite.
 - AI wrappers should prefer summaries or summary builders over scanning full raw records.
 
 ### `ai_chat_sessions`
@@ -535,8 +535,8 @@ Fields:
 
 Rules:
 
-- Phase 4 Step 1 creates the table with account-bound RLS for client reads.
-- Phase 4 Steps 2-4 allow the server-side Gateway to create or reuse sessions only after auth, subscription, and active-device checks.
+- Account-bound RLS protects client reads.
+- The server-side Gateway may create or reuse sessions only after auth, subscription, and active-device checks.
 - The service-role grants are limited to server Gateway, entitlement maintenance, and acceptance use; ordinary authenticated clients still do not receive direct write access.
 - Client reads exclude soft-deleted sessions.
 - Direct client writes are not opened; Gateway writes are server-owned through the Edge Function and `record_ai_chat_turn` RPC.
@@ -566,9 +566,9 @@ Fields:
 
 Rules:
 
-- Phase 4 Step 1 creates the table with account-bound RLS for client reads.
-- Phase 4 Steps 2-4 Gateway writes one user message and one assistant message per accepted text turn; Phase 4 Step 6 keeps accepted image chat persisted as text messages while up to three images are forwarded only through the Gateway request.
-- `final_answer_json` may store a lightweight `ai_chat_artifacts.v1` snapshot for validated returned artifacts such as `food_draft.v1`, and may also store `ai_chat_evidence.v1` or an `evidence` object that summarizes retrieved Phase 5 context. Artifact snapshots rebuild Preview pages after the user taps a review button; evidence is read-only display/debug context. Neither is an official record or a background draft queue.
+- Account-bound RLS protects client reads.
+- The Gateway writes one user message and one assistant message per accepted turn. Accepted image Chat persists as text messages while up to three images are forwarded only in the current Gateway request.
+- `final_answer_json` may store a lightweight `ai_chat_artifacts.v1` snapshot for validated artifacts such as `food_draft.v1`, plus `ai_chat_evidence.v1` or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue.
 - `role` is limited to `user` and `assistant`; `message_type` remains text-only for persisted chat history. Image bytes/base64 are not stored in `ai_chat_messages`.
 - Message order is deterministic by `message_sequence`, with timestamps and ids available as stable secondary fields.
 - A message must match its parent session's `account_id`.
@@ -596,9 +596,20 @@ Fields:
 - `latency_ms`
 - `token_estimate`
 - `image_count`
+- `expected_output`
+- `validator_version`
+- `first_pass_validation_status`
+- `correction_attempt_count`
+- `final_validation_status`
+- `provider_completion_status`
 - `created_at`
 
-Phase 4 Step 1 creates this table as a server-side operational record. Phase 4 chat writes Gateway success, blocked, timeout, provider failure, and error metadata from the server path, including sanitized provider/model metadata when available. Phase 5 chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2` for `ai-chat-route` turns. Add Food AI food analysis writes `workflow_type = food_logging`, `model_choice = qwen`, `model_provider = qwen`, `schema_version = food_draft.v1`, and the accepted `image_count` for text-only requests (`0`) or up to three optional image requests. AI Chat image requests forward up to three images to Qwen through `ai-chat-route`, write the accepted `image_count`, and persist text plus validated artifact/evidence snapshots in chat history without storing original image bytes or base64 payloads. Authenticated clients do not receive direct table read policies. Production logs should prefer metadata and sanitized summaries over raw sensitive payloads.
+This table is a server-side operational record:
+
+- The additive `202607100001_ai_output_contract_observability.sql` migration idempotently adds output-family, validator, first-pass/final validation, correction-count, and provider completion-category fields. It does not change SQLite `AppDatabase.dbVersion`.
+- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v1`.
+- Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
+- Authenticated clients have no direct read policy.
 
 ### `ai_debug_summaries`
 
@@ -622,7 +633,7 @@ Fields:
 
 Rules:
 
-- Phase 4 Step 1 creates this table as a server-side operational record. Chat writes compact Gateway summaries. Phase 5 patches chat debug rows with routed intent confidence, called tools, retrieved dimensions, missing dimensions, safety flags, schema-validation status, and final action. Add Food AI food analysis writes compact `food_photo_analysis` summaries with input kind, selected date, note presence, image count, image mime type and compressed byte length when present, schema validation status, and safety/error flags only. Authenticated clients do not receive direct table read policies.
+- This server-side operational table stores compact Gateway summaries. Chat debug rows include routed intent confidence, called tools, retrieved dimensions, missing dimensions, safety flags, schema-validation status, and final action. Add Food stores compact `food_photo_analysis` summaries with input kind, selected date, note presence, image count, optional mime type/compressed byte length, validation status, and safety/error flags. Authenticated clients have no direct read policy.
 - JSON fields are compact arrays, not unrestricted traces.
 - Production stores compact sanitized summaries.
 - User-facing UI shows final messages and draft cards, not debug traces.
@@ -655,43 +666,22 @@ Fields:
 
 Allowed sources:
 
-- `docs/en/*`
-- `docs/zh/*`
+- the explicit stable bilingual source allowlist maintained by the Document RAG ingestion tool
 - root `README.md`
-- stable help snippets derived from design docs
 
 Rules:
 
-- Phase 5 creates this table in `202607080001_phase5_document_rag_index.sql`.
+- Migration `202607080001_phase5_document_rag_index.sql` creates this table.
 - `search_document_chunks(input_language, input_query, input_limit)` is a service-role RPC that filters by language and ranks by full-query text search, trigram signals, and keyword-term overlap over heading, heading path, deterministic context prefix, optional reviewed context note, and chunk content. The term-overlap fallback keeps long natural-language questions from returning no rows when the exact full sentence does not match a chunk.
 - `supabase/seed_phase5_document_chunks.sql` is generated from stable docs by `tool/phase5_document_rag/build_document_chunks.mjs`; apply it manually after the migration in Supabase SQL editor.
 - Authenticated clients do not read or write this table directly. It is for documents, not user business data.
-- The migration name contains `document_rag_index` because only Document RAG needs new persistent SQL structure in Phase 5. Structured RAG reuses existing Cloud Profile, Cloud Records, and summary tables through `ai-chat-route` context builders.
+- Only Document RAG requires a dedicated persistent index. Structured RAG reuses Cloud Profile, Cloud Records, and summary tables through `ai-chat-route` context builders.
 
-Ingestion maintenance rules:
+The exact source allowlist, chunking, contextual metadata, status semantics, retrieval behavior, seed-refresh lifecycle, privacy boundary, and RAG evaluation rules live in [RAGDesign.md](RAGDesign.md). Database owns only the persisted schema and RPC data flow.
 
-- Changes to `README.md` or indexed `docs/en/*` / `docs/zh/*` files do not automatically update cloud rows. Regenerate `supabase/seed_phase5_document_chunks.sql` and apply it to Supabase when the changed text affects App Logic Q&A.
-- A docs-only seed refresh does not require a Flutter rebuild or Edge Function redeploy. Redeploy the Edge Function only when retrieval, prompt, response schema, or evidence code changes.
-- Current Phase 5 ingestion uses Markdown header chunking plus recursive splitting inside each heading section. It splits by paragraphs first, then sentence or language-aware punctuation, then hard character limits.
-- The generator keeps non-empty short sections instead of dropping them by character threshold, adds deterministic contextual metadata through `heading_path`, `chunk_index`, `chunk_count`, and `context_prefix`, and reserves nullable `context_note` for future reviewed offline notes.
-- Regenerated seed SQL deletes the managed document corpus for the indexed source paths before inserting current chunks, so renamed or deleted headings do not remain searchable.
+## Structured RAG Storage Boundary
 
-## Structured RAG Context Objects
-
-Structured RAG passes compact typed objects, not arbitrary database access. Phase 5 builds these objects inside `ai-chat-route`; the Flutter client must not upload its own context object payload. There is no separate `structured_rag` SQL table because these objects are bounded runtime summaries over existing authoritative cloud sources. The SQL requirement is service-role read access to the underlying Cloud Profile, Cloud Records, and `daily_summaries` tables, plus service-role update access for `ai_debug_summaries`; `202607090001_phase5_structured_rag_service_role_grants.sql` provides those grants. User record-summary objects require `allow_record_summary_context = true` from the app's per-account permission; otherwise those dimensions stay missing and no record-summary table reads are performed.
-
-Recommended context objects:
-
-| Object | Source | Notes |
-| --- | --- | --- |
-| `profile_context` | Cloud Profile. | Authoritative profile comes from cloud after login. |
-| `selected_day_summary` | Cloud `daily_summaries` or summary builder. | Food totals, workout totals, target context. |
-| `recent_food_summary` | Cloud records summary builder. | Windowed totals and coverage, not full rows by default. |
-| `recent_workout_summary` | Cloud records summary builder. | Frequency, duration, estimated kcal, major body-part pattern. |
-| `body_metric_summary` | Cloud `body_metric_logs` summary builder. | Weight, body-fat, and waist availability. |
-| `weight_trend_summary` | Cloud `body_metric_logs` summary builder. | Trend only when enough data exists. |
-| `strategy_context` | Profile strategy settings and deterministic calculator output. | Includes `carb_cycling` or `carb_tapering` state when relevant. |
-| `document_context` | `document_chunks` through `search_document_chunks`. | Source document path, section id, heading path, chunk position, status, score, context prefix, optional context note, and excerpt. |
+Structured RAG has no separate `structured_rag` SQL table. It builds bounded runtime objects over Cloud Profile, Cloud Records, and `daily_summaries`; service-role grants provide required reads and compact debug-summary update access. Flutter cannot upload its own context-object payload. Object schemas, permission behavior, missing dimensions, sanitization, and evidence are defined in [RAGDesign.md](RAGDesign.md).
 
 ## Source Of Truth Summary
 
@@ -700,16 +690,16 @@ The complete authority boundary for Cloud Profile, Cloud Records, daily summarie
 | Data | V1 source of truth |
 | --- | --- |
 | Account identity | Cloud |
-| Active device | Cloud after Phase 3 |
+| Active device | Cloud |
 | Subscription | Cloud |
 | Cloud Profile | Cloud |
-| Body metric logs | Cloud after Phase 3; local SQLite cache only |
-| Food records | Cloud after Phase 3; local SQLite cache only |
-| Workout records | Cloud after Phase 3; local SQLite cache only |
-| Daily summaries | Cloud summary table/service after Phase 3 |
+| Body metric logs | Cloud; local SQLite cache only |
+| Food records | Cloud; local SQLite cache only |
+| Workout records | Cloud; local SQLite cache only |
+| Daily summaries | Cloud summary table/service |
 | AI chat history | Cloud after login |
 | AI request logs | Cloud/service logs |
-| Document RAG index | Cloud `document_chunks` after Phase 5; generated seed from stable docs |
+| Document RAG index | Cloud `document_chunks`; generated seed from stable docs |
 | Export files | Local user-controlled files |
 
 Cache capacity, eviction eligibility, cache-first reads, `auth_required` handling, and repair policy live in `CloudLocalDataBoundary.md`.
@@ -720,7 +710,7 @@ Cache capacity, eviction eligibility, cache-first reads, `auth_required` handlin
 - User may edit unfinished prompt text but cannot send.
 - Profile page may display cached profile but cannot save.
 - V1 does not allow pending offline profile edits.
-- After Phase 3, official food/workout/body writes require cloud access; offline official-write queues are outside the default Cloud Records Foundation scope, with handling defined in `CloudLocalDataBoundary.md`.
+- Official food/workout/body writes require cloud access; offline official-write queues are outside the current boundary, with handling defined in `CloudLocalDataBoundary.md`.
 
 ## Export Coverage
 
@@ -738,7 +728,7 @@ Export should continue to cover:
 - self-check fields
 - diet adjustment review history
 
-After Phase 3 hardening, export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. The current export builder fetches cloud-backed food, workout, and body metric records before building XLSX/CSV tables and includes a Body Metrics table. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
+Export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. The export builder fetches cloud-backed food, workout, and body metric records before building XLSX/CSV tables and includes a Body Metrics table. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and request logs are not part of record export unless a separately designed account-data export adds them.
 
 ## Storage Non-goals
 
@@ -757,8 +747,8 @@ After Phase 3 hardening, export correctness comes from cloud official records, c
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
 - AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`
-- Supabase AI Gateway: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`
+- Supabase AI Gateway: `supabase/functions/_shared/ai_output_contract.ts`, `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
 - Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat and AI food analysis repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`
 - Export: `lib/export/xlsx_export_service.dart`, `lib/export/csv_export_service.dart`

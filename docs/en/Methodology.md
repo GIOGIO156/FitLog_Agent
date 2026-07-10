@@ -69,7 +69,7 @@ FitLog_Agent uses two scoped retrieval patterns:
 - Structured RAG: known functions build compact summaries from cloud official records, daily summaries, or controlled summary builders.
 - Document RAG: the app retrieves relevant FitLog documentation snippets.
 
-Document RAG may use keyword, full-text, vector, semantic, or hybrid retrieval. However, vector search over app documents does not mean user food/workout/weight records become a user-data vector database. Long-term semantic memory over business records is out of scope for V1.
+Current Document RAG uses keyword, full-text, trigram, and term-overlap retrieval. Vector or semantic retrieval may be evaluated later for app documents only; it would not authorize a user food/workout/weight vector database. Long-term semantic memory over business records is out of scope for V1. Engineering details live in `RAGDesign.md`.
 
 ## Why AI Asks Questions
 
@@ -244,7 +244,7 @@ Agent V1 needs account-bound AI personalization:
 
 Therefore, after login, Cloud Profile is the authoritative profile. The device may cache it for display. Offline profile saving is disabled in V1 so there is no profile merge conflict.
 
-After Phase 3, signed-in body, food, and workout official records also use the cloud as the authoritative source. Local SQLite is only partial cache, draft storage, and runtime acceleration; it is not a complete history mirror. When AI needs recent context, the app should send compact summaries from cloud summary/context builders instead of uploading complete raw history. Engineering rules live in `CloudLocalDataBoundary.md`.
+For signed-in accounts, body, food, and workout official records use the cloud as the authoritative source. Local SQLite is only partial cache, draft storage, and runtime acceleration; it is not a complete history mirror. When AI needs recent context, FitLog sends compact summaries from controlled cloud builders instead of complete raw history. Engineering rules live in `CloudLocalDataBoundary.md`.
 
 ## Why User Confirmation Is Required
 
@@ -284,4 +284,6 @@ Only confirmed drafts or confirmed normal UI actions become official data.
 - Algorithm formulas: `Algorithm.md`
 - Storage boundaries: `Database.md`
 - AI and Agent boundary: `AgentDesign.md`
+- AI output contract and validation: `AIOutputContract.md`
+- Context, retrieval, and evidence: `RAGDesign.md`
 - Evidence boundaries: `References.md`

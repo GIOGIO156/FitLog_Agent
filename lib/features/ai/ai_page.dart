@@ -1009,8 +1009,15 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         return strings.aiGatewayTimeout;
       case AiGatewayErrorCode.providerFailure:
         return strings.aiProviderFailure;
+      case AiGatewayErrorCode.requestSchemaMismatch:
       case AiGatewayErrorCode.recordSchemaMismatch:
         return strings.aiRequestUnsupported;
+      case AiGatewayErrorCode.providerOutputInvalid:
+        return strings.aiOutputInvalid;
+      case AiGatewayErrorCode.providerRefusal:
+        return strings.aiProviderRefusal;
+      case AiGatewayErrorCode.providerIncomplete:
+        return strings.aiProviderIncomplete;
       case AiGatewayErrorCode.networkFailure:
         return strings.aiChatNetworkFailure;
       case AiGatewayErrorCode.unknown:

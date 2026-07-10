@@ -1,5 +1,10 @@
 import { buildPhase5Context } from "./context_builders.ts";
 import {
+  OutputContractError,
+  type OutputValidationIssue,
+  outputValidatorVersion,
+} from "../_shared/ai_output_contract.ts";
+import {
   type AiGatewayErrorCode,
   type AiGatewayStatus,
   errorMessageForCode,
@@ -7,9 +12,9 @@ import {
   extractBearerToken,
   extractSessionIdFromAccessToken,
   type GatewayDraft,
-  gatewayResponse,
   type GatewayRequest,
   GatewayRequestError,
+  gatewayResponse,
   logStatusForCode,
   parseGatewayRequest,
   parseProviderGatewayBody,
@@ -18,14 +23,29 @@ import {
 } from "./contracts.ts";
 import type { Phase5Evidence } from "./phase5_types.ts";
 import {
+  type ProviderCompletion,
   ProviderError,
   providerForChoice,
   readProviderRuntimeConfig,
 } from "./providers.ts";
+import { resolveExpectedOutput } from "./expected_output.ts";
 import { routeGatewayWorkflow } from "./workflow_router.ts";
 
 const phase5PromptVersion = "phase5_rag_readonly_v1";
 const phase5SchemaVersion = "ai_chat_response.v2";
+const minimumCorrectionBudgetMs = 1500;
+
+interface OutputContractTelemetry {
+  expectedOutput: "text" | "food_draft" | "workout_draft";
+  firstPassValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
+  correctionAttemptCount: 0 | 1;
+  finalValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
+  providerCompletionStatus:
+    | "not_called"
+    | "completed"
+    | "refusal"
+    | "incomplete";
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,8 +74,8 @@ Deno.serve(async (request) => {
     return jsonResponse(
       gatewayResponse({
         error: {
-          code: "record_schema_mismatch",
-          message: errorMessageForCode("record_schema_mismatch"),
+          code: "request_schema_mismatch",
+          message: errorMessageForCode("request_schema_mismatch"),
         },
       }),
       405,
@@ -66,6 +86,7 @@ Deno.serve(async (request) => {
   let env: GatewayEnv | null = null;
   let accountId: string | null = null;
   let parsedRequest: GatewayRequest | null = null;
+  let outputTelemetry: OutputContractTelemetry = defaultOutputTelemetry();
 
   try {
     env = readGatewayEnv();
@@ -84,7 +105,7 @@ Deno.serve(async (request) => {
     try {
       body = await request.json();
     } catch (_) {
-      throw new GatewayRequestError("record_schema_mismatch");
+      throw new GatewayRequestError("request_schema_mismatch");
     }
     parsedRequest = parseGatewayRequest(body);
 
@@ -98,10 +119,28 @@ Deno.serve(async (request) => {
     };
     parsedRequest = {
       ...parsedRequest,
-      phase5Context: await buildPhase5Context(env, accountId, parsedRequest, route),
+      phase5Context: await buildPhase5Context(
+        env,
+        accountId,
+        parsedRequest,
+        route,
+      ),
+    };
+    parsedRequest = {
+      ...parsedRequest,
+      expectedOutput: resolveExpectedOutput(parsedRequest),
+    };
+    outputTelemetry = {
+      ...outputTelemetry,
+      expectedOutput: parsedRequest.expectedOutput,
     };
 
     if (route.safety_flags.length > 0) {
+      outputTelemetry = {
+        ...outputTelemetry,
+        firstPassValidationStatus: "blocked",
+        finalValidationStatus: "blocked",
+      };
       const assistantText = readOnlyBoundaryMessage(parsedRequest.language);
       const evidence = evidenceFromRequest(parsedRequest, "blocked");
       const persisted = await recordChatTurn(
@@ -120,6 +159,11 @@ Deno.serve(async (request) => {
         parsedRequest,
         evidence,
         providerIdForChoice(parsedRequest.modelChoice) ?? "openai",
+      );
+      await updateOutputContractTelemetry(
+        env,
+        persisted.requestId,
+        outputTelemetry,
       );
 
       return jsonResponse(
@@ -142,16 +186,80 @@ Deno.serve(async (request) => {
       );
     }
 
+    const providerConfig = readProviderRuntimeConfig();
     const provider = providerForChoice(
       parsedRequest.modelChoice,
-      readProviderRuntimeConfig(),
+      providerConfig,
     );
-    const providerContent = await provider.generateText(parsedRequest);
-    const parsedProvider = parseProviderGatewayBody(
-      providerContent,
+    const deadlineAt = startedAt + providerConfig.timeoutMs;
+    let completion = await provider.generateText(parsedRequest, {
+      timeoutMs: remainingDeadline(deadlineAt),
+    });
+    outputTelemetry = {
+      ...outputTelemetry,
+      providerCompletionStatus: completion.status,
+    };
+    assertCompleted(completion);
+
+    let parsedProvider;
+    try {
+      parsedProvider = parseProviderGatewayBody(
+        completion.content,
+        parsedRequest,
+      );
+      outputTelemetry = {
+        ...outputTelemetry,
+        firstPassValidationStatus: "passed",
+        finalValidationStatus: "passed",
+      };
+    } catch (error) {
+      if (!(error instanceof OutputContractError)) throw error;
+      outputTelemetry = {
+        ...outputTelemetry,
+        firstPassValidationStatus: "failed",
+      };
+      const remaining = deadlineAt - Date.now();
+      if (remaining < minimumCorrectionBudgetMs) {
+        outputTelemetry = {
+          ...outputTelemetry,
+          finalValidationStatus: "failed",
+        };
+        throw error;
+      }
+      outputTelemetry = { ...outputTelemetry, correctionAttemptCount: 1 };
+      completion = await provider.generateText(parsedRequest, {
+        timeoutMs: remaining,
+        correction: {
+          previousOutput: completion.content,
+          issues: error.issues,
+        },
+      });
+      outputTelemetry = {
+        ...outputTelemetry,
+        providerCompletionStatus: completion.status,
+      };
+      assertCompleted(completion);
+      try {
+        parsedProvider = parseProviderGatewayBody(
+          completion.content,
+          parsedRequest,
+        );
+        outputTelemetry = {
+          ...outputTelemetry,
+          finalValidationStatus: "passed",
+        };
+      } catch (correctionError) {
+        outputTelemetry = {
+          ...outputTelemetry,
+          finalValidationStatus: "failed",
+        };
+        throw correctionError;
+      }
+    }
+    const providerGuard = guardProviderOutput(
+      parsedProvider.messageText,
       parsedRequest,
     );
-    const providerGuard = guardProviderOutput(parsedProvider.messageText, parsedRequest);
     const assistantText = providerGuard.messageText;
     const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
     const evidence = evidenceFromRequest(
@@ -175,6 +283,11 @@ Deno.serve(async (request) => {
       parsedRequest,
       evidence,
       provider.providerId,
+    );
+    await updateOutputContractTelemetry(
+      env,
+      persisted.requestId,
+      outputTelemetry,
     );
 
     return jsonResponse(
@@ -212,6 +325,7 @@ Deno.serve(async (request) => {
         code: gatewayError.code,
         status: logStatusForCode(gatewayError.code),
         latencyMs: Date.now() - startedAt,
+        telemetry: outputTelemetry,
       });
     }
 
@@ -240,8 +354,8 @@ interface GatewayEnv {
 function readGatewayEnv(): GatewayEnv {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  const supabaseServiceRoleKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    "";
   if (
     supabaseUrl.trim() === "" ||
     supabaseAnonKey.trim() === "" ||
@@ -336,7 +450,8 @@ async function recordChatTurn(
   finalAnswerJson: Record<string, unknown> | null,
   latencyMs: number,
 ): Promise<PersistedTurn> {
-  const userMessageText = request.messageText.trim() || imageOnlyMessage(request);
+  const userMessageText = request.messageText.trim() ||
+    imageOnlyMessage(request);
   const response = await fetch(
     `${env.supabaseUrl}/rest/v1/rpc/record_ai_chat_turn`,
     {
@@ -373,6 +488,7 @@ async function recordChatTurn(
 
   const result = await response.json();
   return {
+    requestId: stringField(result, "request_id"),
     sessionId: stringField(result, "session_id"),
     assistantMessageId: stringField(result, "assistant_message_id"),
     debugSummaryId: stringField(result, "debug_summary_id"),
@@ -438,7 +554,8 @@ function evidenceFromRequest(
   ]);
   return {
     workflow: request.workflowType,
-    context_objects: context?.context_objects.map((object) => object.type) ?? [],
+    context_objects: context?.context_objects.map((object) => object.type) ??
+      [],
     document_sources: context?.document_sources ?? [],
     missing_dimensions: context?.missing_dimensions ?? [],
     safety_flags: safetyFlags,
@@ -540,36 +657,47 @@ async function writeGatewayFailureLog(
     code: AiGatewayErrorCode;
     status: AiGatewayStatus;
     latencyMs: number;
+    telemetry: OutputContractTelemetry;
   },
 ): Promise<void> {
   const requestId = crypto.randomUUID();
   const request = params.request;
-  const logResponse = await fetch(`${env.supabaseUrl}/rest/v1/ai_request_logs`, {
-    method: "POST",
-    headers: {
-      ...serviceHeaders(env),
-      prefer: "return=minimal",
+  const logResponse = await fetch(
+    `${env.supabaseUrl}/rest/v1/ai_request_logs`,
+    {
+      method: "POST",
+      headers: {
+        ...serviceHeaders(env),
+        prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        request_id: requestId,
+        account_id: params.accountId,
+        session_id: null,
+        workflow_type: request?.workflowType ?? "auto",
+        model_choice: request?.modelChoice ?? null,
+        model_provider: providerIdForChoice(request?.modelChoice ?? null),
+        model: null,
+        prompt_version: phase5PromptVersion,
+        schema_version: phase5SchemaVersion,
+        profile_version: request?.profileVersion ?? null,
+        status: params.status,
+        error_code: params.code,
+        latency_ms: params.latencyMs,
+        token_estimate: request === null
+          ? null
+          : Math.ceil(request.messageText.length / 4),
+        image_count: request?.attachments.length ?? 0,
+        expected_output: params.telemetry.expectedOutput,
+        validator_version: outputValidatorVersion,
+        first_pass_validation_status:
+          params.telemetry.firstPassValidationStatus,
+        correction_attempt_count: params.telemetry.correctionAttemptCount,
+        final_validation_status: params.telemetry.finalValidationStatus,
+        provider_completion_status: params.telemetry.providerCompletionStatus,
+      }),
     },
-    body: JSON.stringify({
-      request_id: requestId,
-      account_id: params.accountId,
-      session_id: null,
-      workflow_type: request?.workflowType ?? "auto",
-      model_choice: request?.modelChoice ?? null,
-      model_provider: providerIdForChoice(request?.modelChoice ?? null),
-      model: null,
-      prompt_version: phase5PromptVersion,
-      schema_version: phase5SchemaVersion,
-      profile_version: request?.profileVersion ?? null,
-      status: params.status,
-      error_code: params.code,
-      latency_ms: params.latencyMs,
-      token_estimate: request === null
-        ? null
-        : Math.ceil(request.messageText.length / 4),
-      image_count: request?.attachments.length ?? 0,
-    }),
-  });
+  );
 
   if (!logResponse.ok) {
     return;
@@ -612,7 +740,70 @@ function toGatewayHttpError(error: unknown): GatewayHttpError {
       error.code === "gateway_timeout" ? 504 : 502,
     );
   }
+  if (error instanceof OutputContractError) {
+    return new GatewayHttpError("provider_output_invalid", 502);
+  }
   return new GatewayHttpError("provider_failure", 502);
+}
+
+function defaultOutputTelemetry(): OutputContractTelemetry {
+  return {
+    expectedOutput: "text",
+    firstPassValidationStatus: "not_attempted",
+    correctionAttemptCount: 0,
+    finalValidationStatus: "not_attempted",
+    providerCompletionStatus: "not_called",
+  };
+}
+
+function remainingDeadline(deadlineAt: number): number {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new GatewayHttpError("gateway_timeout", 504);
+  return remaining;
+}
+
+function assertCompleted(completion: ProviderCompletion): void {
+  switch (completion.status) {
+    case "completed":
+      return;
+    case "refusal":
+      throw new GatewayHttpError("provider_refusal", 422);
+    case "incomplete":
+      throw new GatewayHttpError("provider_incomplete", 502);
+  }
+}
+
+async function updateOutputContractTelemetry(
+  env: GatewayEnv,
+  requestId: string,
+  telemetry: OutputContractTelemetry,
+): Promise<void> {
+  try {
+    const response = await fetch(
+      `${env.supabaseUrl}/rest/v1/ai_request_logs?request_id=eq.${requestId}`,
+      {
+        method: "PATCH",
+        headers: { ...serviceHeaders(env), prefer: "return=minimal" },
+        body: JSON.stringify({
+          expected_output: telemetry.expectedOutput,
+          validator_version: outputValidatorVersion,
+          first_pass_validation_status: telemetry.firstPassValidationStatus,
+          correction_attempt_count: telemetry.correctionAttemptCount,
+          final_validation_status: telemetry.finalValidationStatus,
+          provider_completion_status: telemetry.providerCompletionStatus,
+        }),
+      },
+    );
+    if (!response.ok) {
+      console.warn("output_contract_telemetry_patch_failed", {
+        status: response.status,
+      });
+    }
+  } catch (error) {
+    console.warn("output_contract_telemetry_patch_error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function jsonResponse(body: Record<string, unknown>, status: number): Response {
@@ -668,7 +859,9 @@ function imageOnlyMessage(request: GatewayRequest): string {
   if (request.attachments.length === 0) {
     return request.messageText;
   }
-  return request.language === "zh" ? "请分析这些图片。" : "Please analyze these images.";
+  return request.language === "zh"
+    ? "请分析这些图片。"
+    : "Please analyze these images.";
 }
 
 function unique(values: string[]): string[] {

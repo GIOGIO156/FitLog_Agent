@@ -82,6 +82,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - After code changes, run:
   - flutter analyze
   - flutter test
+- After Supabase Edge Function or shared AI contract changes, also run the repository's deterministic Edge checks. On Windows without a native Deno install, use the npm-distributed Deno runner:
+  - `npm.cmd exec --yes deno -- check supabase/functions/ai-chat-route/index.ts supabase/functions/ai-food-photo-analyze/index.ts`
+  - `npm.cmd exec --yes deno -- test supabase/functions/_shared/ai_output_contract_test.ts supabase/functions/ai-chat-route/expected_output_test.ts supabase/functions/ai-chat-route/index_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts`
 - When rebuilding APKs for manual testing, default to the configured split build:
   - `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`
   Use an unconfigured APK build only when explicitly requested.
@@ -102,6 +105,59 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 Design docs are maintained as finished source-of-truth documents, not as running notes.
 
+### Formal Document Charters
+
+Do not create a separate mega-document that repeats every documentation rule. `AGENTS.md` is the contributor-facing maintenance index; each design file remains the source of truth for its own subject. When a task changes a durable fact, update the owning file and its language pair in the same task. Other files should keep only the minimum context needed for their reader and link to the owning document.
+
+| File | Primary reader and question | Owns | Maintenance style |
+| --- | --- | --- | --- |
+| `README.md` | First-time reader: what is FitLog_Agent, why use it, how do I start? | Product promise, major capabilities, top-level privacy/AI boundaries, setup, document map | Product-led and skimmable; no release ledger, migration narrative, or architecture dump |
+| `CHANGELOG.md` | Maintainer/user: what shipped, why, and how was it validated? | Concise dated Added/Changed/Fixed/Validation history | Historical and factual; never the current architecture, roadmap, or agent memory |
+| `Product.md` | Product/design/engineering reader: what behavior does the product promise? | Product principles, module responsibilities, user-visible workflows, durable UX invariants, supported scope, non-goals | Declarative product specification; preserve important interaction rationale, but move exact implementation mechanics and release chronology elsewhere |
+| `AppGuide.md` | User, QA, or new engineer: where is a capability and what happens when I use it? | App-area navigation, entry points, core flows, visible states, confirmation/failure behavior, links to deeper design | Area-oriented guide written as complete prose; retain user-observable principles, but do not duplicate formulas, schemas, provider internals, or pixel-level implementation notes |
+| `Methodology.md` | User or reviewer: why does FitLog use these methods and what are their limitations? | Understandable rationale for diet modes, strategies, exercise calories, confirmation, and evidence limitations | Explanatory and evidence-aware; no implementation status, wire schema, or code-level formula contract |
+| `Algorithm.md` | Engineer/reviewer: exactly how are deterministic results calculated? | Inputs, formulas, mode/phase/strategy separation, calibration, self-check, workflow decision logic, invariants | Precise present-tense specification with examples and code references; never merge `gram_per_kg` and `energy_ratio` or become UI/release notes |
+| `Database.md` | Data engineer/maintainer: what is persisted and what does each field mean now? | Current SQLite/cloud schemas, field semantics, aggregates, migration compatibility, data flows, export coverage | Current-schema reference plus compact migration lineage; phase history belongs in plans/changelog, while compatibility rationale must be preserved |
+| `CloudLocalDataBoundary.md` | Engineer/reviewer: which store is authoritative and how do cache, offline, conflict, and repair behave? | Source-of-truth rules, account binding, cloud/local read-write order, cache lifecycle, failure downgrade, conflict/repair | Invariant- and state-machine-oriented; do not duplicate table field catalogs from `Database.md` or general product walkthroughs |
+| `AgentDesign.md` | Product/security/AI engineer: what may the Agent know, do, retain, and ask the user to confirm? | Agent capabilities, entry points, workflow permissions, context boundaries, privacy, retention, write authority, safety | Capability and permission architecture; summarize and link rather than copying full output schemas or retrieval algorithms |
+| `AIOutputContract.md` | AI/backend/client engineer: what exact provider result is accepted and exposed? | Provider-independent envelopes, expected-output families, draft contracts, strict/domain validation, normalization, correction, error taxonomy, versioning, observability, confirmation boundary | A stable engineering contract written in declarative present tense; implemented protocol is the main structure, not a status legend, completion checklist, or rollout diary |
+| `RAGDesign.md` | AI/data engineer: how is authorized context built, indexed, retrieved, cited, and downgraded? | Same-chat context, Structured RAG, Document RAG corpus, ingestion, retrieval/ranking, evidence, privacy, failure, evaluation | A stable retrieval architecture; describe current pipelines and invariants directly, with rollout/status detail kept in engineering plans |
+| `References.md` | Writer/reviewer: which claim is supported by which source and how narrowly may it be used? | Stable reference IDs, narrow claim boundaries, internal-decision versus external-evidence rules | Citation index, not a literature review, product design, or changelog |
+| `API_CONTRACT_DRAFT.md` | Client/backend engineer: what crosses the public cloud/Edge boundary? | Actual request/response envelopes, field constraints, stable error codes, endpoint and retention shapes | Current wire-contract reference even while the legacy filename contains `DRAFT`; never restore phase status, provider prompt internals, or an implementation checklist |
+| `FitLog_Agent_V1_Implementation.md` | Maintainer/reviewer: what V1 decisions and implementation background led to the current system? | Historical target architecture, major decision rationale, and implementation context that remains useful | Preserve as an implementation-history source with links to current stable docs; early planned wording must not override current behavior |
+| `ROADMAP.md` and phase/engineering plan files | Implementer/reviewer: what remains, in what order, and how is it accepted or rolled back? | Risks, ordered work, acceptance gates, rollout, rollback, deployment/canary status, and explicit progress | Status-led by design; completed durable facts must flow into the owning stable docs rather than making a plan the current source of truth |
+
+### Value-Preserving Refinement Workflow
+
+Documentation cleanup is a refactor, not a deletion exercise. Improved readability must not silently erase constraints, rationale, edge cases, regression knowledge, privacy boundaries, or compatibility decisions.
+
+Before rewriting a stable document:
+
+1. Inventory its headings and classify each meaningful block as one of: canonical fact, rationale/invariant, user-visible behavior, implementation mechanism, compatibility/migration rule, failure/edge case, historical incident, rollout task, evidence/reference, or duplicate.
+2. Decide the destination before removing text. Rewrite canonical material in place; move misplaced stable material to its owning document and leave a concise link; move historical incidents to `CHANGELOG.md`; move ordered rollout/acceptance work to an engineering plan; keep code-specific regression mechanics in tests/code comments while retaining the user-visible invariant in design docs.
+3. Delete text only when it is demonstrably duplicated, contradicted by the current source of truth, or obsolete after a replacement has been preserved elsewhere. When uncertain, keep it and mark the ownership question for review instead of silently dropping it.
+4. Preserve the strongest surviving statement of every formula, field semantic, source-of-truth rule, user flow, state/failure behavior, privacy/write boundary, migration constraint, non-goal, and code reference.
+
+Refinement quality rules:
+
+- Write stable design in cohesive present-tense prose. A section should explain the capability or invariant, not narrate how a task was completed.
+- Replace status-led structures such as `Status Legend`, `Current Implementation`, phase diaries, and completed checklists with capability-oriented sections. Keep an explicit planned/non-goal note only when it materially defines the current boundary.
+- Split mega-paragraphs by concern. Prefer a short overview followed by named subsections, complete bullet sentences, or a comparison table when the relationship is genuinely tabular.
+- Preserve valuable design reasoning. Concision means removing repetition and improving placement, not flattening important “why,” tradeoffs, downgrade behavior, or platform constraints.
+- Distinguish durable behavior from implementation technique. User-observable outcomes and safety invariants belong in stable docs; exact layout arithmetic, one-off debug history, and transient implementation sequencing belong in code/tests, changelog, or plans unless they are themselves a maintained contract.
+- Keep bilingual files aligned in outline, meaning, fields, constraints, and links. They need not be literal sentence-by-sentence translations, but neither language may lose a rule carried by the other.
+- During broad cleanup, refine the owning technical contracts first, then replace duplicate downstream text with summaries and links. Do not independently paraphrase the same rule in several files.
+- Do not regenerate or upload Document RAG chunks until the whole intended documentation-refinement batch has passed ownership, preservation, bilingual, link, and stale-wording checks.
+- After refinement, compare the before/after content inventory and diff. Report what was rewritten, moved, intentionally retained, or deleted and why.
+
+Cross-file update triggers:
+
+- A public AI output/error change normally updates `AIOutputContract.md`, `API_CONTRACT_DRAFT.md`, both `AgentDesign.md` files when capability boundaries change, Flutter mappings/tests, and `CHANGELOG.md`.
+- A persisted observability field updates the migration plus both `Database.md` files; SQLite docs/version change only when local persisted schema or semantics change.
+- A stable indexed design-doc change requires regenerating the Document RAG seed and checking bilingual heading/section alignment.
+- Engineering plans must mark completed work accurately but must not copy their phase checklists into stable design docs.
+- If no owning file fits, first decide whether the information is stable design, shipped history, or execution planning. Add a narrowly responsible extra file only when that responsibility cannot be represented without duplication.
+
 Required structure:
 
 ```text
@@ -114,7 +170,10 @@ docs/
     Methodology.md
     Algorithm.md
     Database.md
+    CloudLocalDataBoundary.md
     AgentDesign.md
+    AIOutputContract.md
+    RAGDesign.md
     References.md
   zh/
     Product.md
@@ -122,7 +181,10 @@ docs/
     Methodology.md
     Algorithm.md
     Database.md
+    CloudLocalDataBoundary.md
     AgentDesign.md
+    AIOutputContract.md
+    RAGDesign.md
     References.md
 ```
 
@@ -130,19 +192,22 @@ File responsibilities:
 
 - `README.md`: project face and quick-start overview. Keep Chinese first and English second in the same file because the project primarily serves Chinese users. The two language sections must match in facts, scope, commands, and links. Do not append date-based update sections. The README should tell a first-time reader what problem FitLog_Agent solves, who it is for, the product promise, major capabilities, privacy/AI boundaries, setup commands, and where to read detailed docs. Mention FitLog Local only as provenance/baseline when useful; do not frame the README primarily as a Local variant or migration status report.
 - `CHANGELOG.md`: English only. Record dated changes under Added/Changed/Fixed/Validation style headings. State what changed, why it changed, and what problem it solved, but keep entries concise. Concise implementation details, engineering rationale, and complex bug/debugging lessons are allowed when they explain a shipped fix or help future maintainers diagnose similar failures. Do not store broad product design, architecture explanations, future notes, roadmap details, implementation plans, or agent memory here.
-- `docs/en/Product.md` and `docs/zh/Product.md`: stable product design. Cover purpose, product principles, modules, workflows, UX behavior, implemented scope, non-goals, and code references. Do not write release notes here.
-- `docs/en/AppGuide.md` and `docs/zh/AppGuide.md`: app-area guide. Explain what each app module does, how it works at a high level, and which design file to read for details. Keep it navigational; do not duplicate all Product/Algorithm/Database content.
+- `docs/en/Product.md` and `docs/zh/Product.md`: stable product design. Cover purpose, product principles, modules, workflows, durable user-visible UX behavior, supported scope, non-goals, and code references. Preserve meaningful interaction rationale, but do not write release notes or low-level implementation diaries here.
+- `docs/en/AppGuide.md` and `docs/zh/AppGuide.md`: app-area guide. Explain where each capability lives, its core user flow, visible states/failures/confirmation behavior, and which design file owns deeper detail. Keep valuable user-observable interaction principles as polished prose, but do not duplicate complete Product/Algorithm/Database/Agent contracts or accumulate transient implementation mechanics.
 - `docs/en/Methodology.md` and `docs/zh/Methodology.md`: user-facing method explanation. Explain why the app uses `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, net exercise calories, and strength calorie heuristics. Keep it understandable, evidence-aware, and honest about limitations.
 - `docs/en/Algorithm.md` and `docs/zh/Algorithm.md`: stable algorithm design. Cover inputs, formulas, diet phase/mode/strategy separation, workout calorie logic, calibration, self-check, boundaries, and code references. Do not merge `gram_per_kg` and `energy_ratio`.
 - `docs/en/Database.md` and `docs/zh/Database.md`: stable database design. Cover current schema version, additive migrations, tables, fields, runtime aggregates, data flows, export coverage, non-implemented storage capabilities, and code references. Preserve migration compatibility.
-- `docs/en/AgentDesign.md` and `docs/zh/AgentDesign.md`: current AI/Agent boundary and Agent V1 design boundary. Distinguish implemented behavior from planned Agent V1 behavior. External AI prompt copy and JSON paste are not app-internal AI. Agent V1 AI Gateway, remote LLM calls, structured retrieval, document retrieval, request/response retention, cloud profile handling, and confirmation rules must be documented without claiming unimplemented features are already shipped.
+- `docs/en/CloudLocalDataBoundary.md` and `docs/zh/CloudLocalDataBoundary.md`: stable cloud/local source-of-truth and cache behavior. Cover account binding, cloud-first writes, cache reads/refresh/eviction, offline downgrade, conflicts, repair, privacy, and acceptance invariants without duplicating table catalogs.
+- `docs/en/AgentDesign.md` and `docs/zh/AgentDesign.md`: current AI/Agent capability and permission boundary. External AI prompt copy and JSON paste are not app-internal AI. AI Gateway, remote LLM calls, context access, retention, cloud profile handling, confirmation, and write rules belong here at capability level; full output and RAG mechanics belong in their dedicated contracts.
+- `docs/en/AIOutputContract.md` and `docs/zh/AIOutputContract.md`: stable output engineering contract. Present the implemented envelope, output families, schemas, validation/normalization, provider mapping, correction, errors, observability, versioning, and user-confirmation boundary as a coherent protocol, not a completed todo list. Deployment sequence and acceptance status belong in `AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md`.
+- `docs/en/RAGDesign.md` and `docs/zh/RAGDesign.md`: stable context/retrieval engineering contract. Present current authorized context sources, ingestion, indexing, retrieval, evidence, downgrade, privacy, and evaluation as architecture and invariants; phase status and rollout belong in engineering plans.
 - `docs/en/References.md` and `docs/zh/References.md`: evidence and citation boundaries. Keep reference IDs stable. Cite narrow claims only. Do not turn this file into a literature review or changelog.
 
 Language and sync rules:
 
 - `CHANGELOG.md` stays English only.
 - `README.md` is bilingual in one file: Chinese first, English second, with matching content.
-- All other design docs live in both `docs/en` and `docs/zh`; when one changes, update the other in the same task.
+- Stable design docs in the bilingual tree live in both `docs/en` and `docs/zh`; when one changes, update the other in the same task. English-only `CHANGELOG.md` and explicitly single-language root plans/contracts are exceptions by responsibility, not permission to let bilingual stable facts drift.
 - Keep docs concise but complete: every important field, mode, formula, boundary, and non-goal must appear exactly where it belongs.
 - New feature details should be integrated into the stable section they affect, not appended as "2026-xx update" blocks.
 - Historical implementation details belong in `CHANGELOG.md`; durable design facts belong in `README.md` or `docs/*`.
@@ -153,9 +218,9 @@ Structure and content rules:
 - Implementation phase names may appear as compact status labels only when they clarify current behavior. They should not dominate the document title, opening summary, or section structure. Detailed phase order, acceptance checklists, and rollout instructions belong in roadmap or phase plan files, not README/Product/AppGuide/Algorithm/Database/AgentDesign/References.
 - Keep README first-screen content product-led: problem, goal, value, boundaries, and how to start. Move long implementation-status paragraphs, UI micro-detail, migration history, and release chronology into the responsible design doc, engineering plan, or changelog.
 - Avoid mega-paragraphs in Markdown docs. If a paragraph mixes multiple modules, phases, UI details, backend details, and validation notes, split it or move details to the proper doc. A README overview should be skimmable before setup commands.
-- Product docs should describe user-visible behavior and product principles. AppGuide should help navigate app areas. Algorithm should hold formulas and decision logic. Database should hold schema/data-flow/source-of-truth facts. AgentDesign should hold AI boundaries, prompts/context/RAG/write rules. References should hold narrow citations only.
+- Product should describe user-visible behavior and product principles. AppGuide should navigate app areas and core flows. Methodology should explain rationale. Algorithm should hold formulas and deterministic decisions. Database should hold schema and persisted semantics. CloudLocalDataBoundary should hold authority/cache/failure rules. AgentDesign should hold Agent capability and permission boundaries. AIOutputContract should hold accepted model-output protocol. RAGDesign should hold context/retrieval architecture. References should hold narrow citations only.
 - Future work can be documented only as explicit planned scope or non-goal boundaries. Do not let planned sections read as shipped behavior, and do not store broad future architecture in `CHANGELOG.md`.
-- Extra design files outside the required tree, such as cloud/local boundary docs or phase plans, must have a clear responsibility and link target. If an extra file becomes a phase log, acceptance checklist, or rollout plan, keep it outside stable product/design docs and avoid duplicating its content in README.
+- Extra files outside the required stable tree, such as API contracts, implementation books, or phase plans, must have a clear responsibility and link target. If a file is a phase log, acceptance checklist, or rollout plan, keep it outside stable product/design docs and avoid duplicating its content in README.
 
 Encoding and terminal-output rules:
 

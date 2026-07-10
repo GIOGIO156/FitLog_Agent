@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-07-10 AI Output Contract Engineering Landing And RAG Documentation
+
+### Added
+
+- Added bilingual `AIOutputContract.md` as the stable source for provider envelopes, draft schemas, validation/normalization, failure semantics, bounded correction, logging, versioning, evaluation, and user-confirmed write boundaries.
+- Added bilingual `RAGDesign.md` as the stable source for same-chat context, Structured RAG, Document RAG, source-of-truth rules, permissions, ingestion, retrieval, evidence, downgrade behavior, and evaluation.
+- Added `AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md` with staged contract, provider, error, correction, observability, canary, and rollback work.
+- Added one canonical provider-facing schema/validator module shared by AI Chat and Add Food, plus a server-owned expected-output resolver and strict contract fixtures.
+- Added the additive `ai_request_logs` output-observability migration for expected output, validator version, first/final validation status, bounded correction count, and provider completion category.
+
+### Changed
+
+- Reduced duplicate Output/RAG detail in AgentDesign, Algorithm, Database, AppGuide, Methodology, and the API contract draft, replacing it with responsibility-specific summaries and links to the new source documents.
+- Added the new bilingual stable documents to the Document RAG ingestion allowlist and refreshed the generated seed.
+- Clarified that the V1 implementation book and phase plans preserve implementation history while stable current design lives in the bilingual design tree.
+- Switched OpenAI Chat to strict Responses API Structured Outputs and all Qwen Chat paths to non-thinking JSON Mode using the same versioned envelope.
+- Replaced permissive provider prose/fence extraction and numeric coercion with exact types, unknown-field rejection, bounded strings/arrays, real-date checks, Food total normalization, and one in-deadline correction attempt without image retransmission.
+- Separated provider refusal, incomplete generation, invalid provider output, and request-schema errors across Edge Functions, Flutter models, and bilingual user messages while preserving the older compatibility code.
+- Expanded `AGENTS.md` with formal reader/question/ownership charters for every stable and planning document, plus a value-preserving refinement workflow that requires classifying, moving, and auditing useful content before deletion instead of creating another duplicated mega-document.
+- Refactored the bilingual AppGuide, Product, AgentDesign, Database, CloudLocalDataBoundary, AIOutputContract, and RAGDesign sources from phase/status-led development notes into durable product, capability, storage, and engineering contracts. Preserved interaction rationale, failure states, compatibility rules, workflow detail, and code references while moving duplicate ownership to concise summaries and links.
+- Reframed the legacy-named `API_CONTRACT_DRAFT.md` as the current Flutter-to-service wire contract and removed its completed Phase 0 checklist; phase plans and the V1 implementation book now explicitly defer to the stable bilingual documents and current API contract.
+- Tightened Document RAG status inference so only status-bearing headings or explicit leading labels mark a section as planned/non-goal. Incidental words inside current design text no longer misclassify whole Home, provider-validation, ingestion, or evidence sections.
+
+### Validation
+
+- Confirmed the required bilingual documentation tree and new cross-document links.
+- Regenerated `supabase/seed_phase5_document_chunks.sql` with 495 value-preserving, less-duplicated chunks from the updated stable-document allowlist using generator v3 status semantics.
+- Checked stable documents for stale paths, replacement characters, duplicate ownership wording, and obvious English/Chinese heading drift.
+- Ran Deno type checks for both Edge Function entry points and 46 deterministic Edge contract tests; all passed.
+- `flutter analyze`: no issues.
+- `flutter test`: all 200 tests passed.
+- Built configured split debug APKs with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing all three ABI APKs under `build/app/outputs/flutter-apk`.
+- SQLite schema and `AppDatabase.dbVersion` were unchanged; output observability is an additive Supabase migration.
+- Applied and registered remote migrations `202607080001`, `202607090001`, `202607090002`, and `202607100001` on linked project `dyacqajcinjwrkbngeif`; the first three reconciled existing idempotent RAG objects and the last added six output-observability columns.
+- Deployed `ai-chat-route` version 16 and `ai-food-photo-analyze` version 11, uploaded all 495 generator v3 document chunks across 19 source paths, and verified bilingual search-RPC results. Real-provider canary prompts remain a separate operational acceptance step.
+
 ## 2026-07-10 AI Chat Send Anchor Stability
 
 ### Fixed

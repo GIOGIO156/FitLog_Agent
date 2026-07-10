@@ -345,7 +345,12 @@ async function fetchRecentFoodSummary(
     env,
     `food_records?select=date,calories_kcal,protein_g,carbs_g,fat_g&account_id=eq.${encodeURIComponent(accountId)}&date=gte.${range.start}&date=lte.${range.end}&deleted_at=is.null&order=date.asc`,
   );
-  const totals = rows.reduce((sum, row) => ({
+  const totals = rows.reduce<{
+    kcal: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  }>((sum, row) => ({
     kcal: sum.kcal + numberValue(row.calories_kcal),
     protein_g: sum.protein_g + numberValue(row.protein_g),
     carbs_g: sum.carbs_g + numberValue(row.carbs_g),

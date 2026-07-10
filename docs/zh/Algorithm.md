@@ -20,9 +20,9 @@
 | `daily_energy_goal_kcal` | 根据阶段解释为 deficit 或 surplus。 | `energy_ratio` |
 | `protein_ratio_percent`, `carbs_ratio_percent`, `fat_ratio_percent` | 宏量能量百分比。 | `energy_ratio` |
 | `diet_plan_strategy` | `none`、`carb_cycling` 或 `carb_tapering`。 | 策略层 |
-| Food records | 每日摄入；Phase 3 后正式来源为云端记录。 | Daily summary、AI context summaries |
-| Workout sessions/sets | 已保存训练热量和容量输入；Phase 3 后正式来源为云端记录。 | 训练热量、daily summary、AI context summaries |
-| Body metric logs | 体重、体脂、腰围历史；Phase 3 后正式来源为云端 `body_metric_logs`。 | 校准、taper review、weekly review context |
+| Food records | 每日摄入；登录后的正式记录来自云端存储。 | Daily summary、AI context summaries |
+| Workout sessions/sets | 已保存训练热量和容量输入；登录后的正式记录来自云端存储。 | 训练热量、daily summary、AI context summaries |
+| Body metric logs | 体重、体脂、腰围历史；登录后的正式历史来自云端 `body_metric_logs`。 | 校准、taper review、weekly review context |
 | Cloud Profile | Agent V1 中账号绑定的 profile。 | AI 个性化和上下文 |
 
 Agent V1 规则：AI 应接收由 Cloud Profile、Cloud Records、daily summaries 或受控 summary builder 构建的紧凑摘要。它不能直接发明正式目标，也不能覆盖确定性计算；本地 SQLite cache 不能作为 AI 或产品权威来源。
@@ -361,22 +361,9 @@ Training-frequency self-check 根据训练历史检查共享 `training_frequency
 
 ## Agent Context Builders
 
-Agent V1 使用 context builders，把紧凑摘要发送给 AI Gateway。Phase 3 后，用户记录上下文应来自云端正式记录、`daily_summaries` 或受控 summary builder，而不是本地 SQLite cache 的完整性。
+Context builders 把确定性计算结果和有界摘要提供给 AI Gateway。登录后，用户记录上下文来自云端正式记录、`daily_summaries` 或受控 summary builder，而不是本地 SQLite cache 的完整性。本文负责这些数值的计算和 mode-specific interpretation；[RAGDesign.md](RAGDesign.md) 负责 context object schemas、权限、来源选择、sanitization、文档检索、evidence 和 context-size boundaries。
 
-推荐 builder 输出：
-
-| Context | Contents |
-| --- | --- |
-| `profile_context` | Cloud Profile、饮食阶段、模式、策略、训练频率、self-check 设置。 |
-| `selected_day_summary` | 摄入、训练消耗、目标上下文、剩余值或宏量缺口。 |
-| `recent_food_summary` | 窗口平均值、覆盖率、宏量稳定性、缺失日期。 |
-| `recent_workout_summary` | 频率、估算热量、训练部位模式、稳定性。 |
-| `body_metric_summary` | 体重、体脂、腰围覆盖率和缺失情况。 |
-| `weight_trend_summary` | 数据足够时的趋势、缺失数据状态、简单速率计算。 |
-| `strategy_context` | 相关时的 carb cycling day type 或 taper review state。 |
-| `document_context` | 用户语言对应的 App 文档检索片段。 |
-
-AI Gateway 只应接收当前 workflow 需要的上下文。
+AI Gateway 只接收 routed workflow 必需的上下文。缺失维度保持缺失，不能由模型推理重建。
 
 ## Workflow 算法
 
@@ -413,7 +400,7 @@ AI Gateway 只应接收当前 workflow 需要的上下文。
 1. 检测语言。
 2. 检索同语言文档。
 3. 使用检测到的用户消息语言，根据文档和当前 App 上下文回答。
-4. 区分已实现行为和计划中的 Agent V1 行为。
+4. 区分当前产品行为和明确标记的未来范围。
 
 ## 算法边界
 
@@ -421,8 +408,8 @@ AI Gateway 只应接收当前 workflow 需要的上下文。
 - AI 可以消费计算输出。
 - AI 不能静默修改正式 profile、target、strategy、food、workout 或 weight records。
 - AI 饮食估算在用户确认前只是草稿 workflow。
-- 用户数据 RAG 应使用云端结构化摘要，不做开放式原始数据库访问，也不读取完整原始历史作为默认上下文。
-- Document RAG 可以对 App 文档使用关键词、全文、向量或混合检索。
+- 用户数据 RAG 使用云端结构化摘要，不做开放式原始数据库访问，也不读取完整原始历史作为默认上下文。
+- 当前 Document RAG 对 App 文档使用关键词、全文、trigram 和 term-overlap 检索；未来 vector/semantic retrieval 仍是需要单独评测的文档侧增强。
 - 用户业务数据向量库不在 V1 范围内。
 
 ## 代码引用

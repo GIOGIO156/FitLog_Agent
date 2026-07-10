@@ -8,9 +8,9 @@ This document is the source of truth for how FitLog_Agent relates cloud data, lo
 
 ## Scope
 
-These rules apply to the Phase 3 Cloud Records Foundation and signed-in Agent builds after it. The current project has landed the root auth gate, active-device claim/assert, Cloud Records migration, body/food/workout cloud-first writes, local v15 confirmed-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, auth-session account binding for first-render local record reads, Home selected-day daily-summary confirmed cache with stale-while-revalidate background rebuilds, app-side `daily_summaries` cloud upsert/read recovery, bounded recent-summary warm cache, confirmed-cache eviction, and export completeness hardening through cloud official records. Fuller Body Trends partial-state polish and richer repair screens may continue later, but the Phase 3 main cloud/local hardening chain is no longer blocked by those items.
+These rules apply to every signed-in Agent build. They cover the root auth gate, active-device claim/assert, cloud-first body/food/workout writes, account-bound confirmed-cache metadata, cloud-backed repositories, non-blocking startup recovery, first-render account binding, selected-day summary cache, stale-while-revalidate rebuilds, cloud `daily_summaries`, bounded warm cache, cache eviction, and export completeness.
 
-Pre-login Local-style behavior remains local. Phase 3 does not implement offline official-write queues, complete two-way sync, automatic old-device-history migration, or complex cross-device merge UI.
+Pre-login compatibility behavior remains local. Offline official-write queues, complete two-way sync, automatic old-device-history migration, and complex cross-device merge UI are outside this boundary. Richer repair presentation may evolve, but it must continue to obey the state, authority, and failure rules below.
 
 ## Core Principles
 
@@ -56,7 +56,7 @@ Transition rules:
 - A failed slice may affect only its own UI or capability. Subscription failure affects AI send and subscription display; it must not block non-AI Home/Food/Workout/Profile data pages.
 - Cloud Profile refresh failure must not wipe a matching displayed Profile cache; records refresh failure must not wipe an already displayed records read model.
 - Warm cache affects next-open and history-navigation speed only. It must not control page visibility, button enabled state, or official write permission.
-- AI Gateway availability belongs to Phase 4; successful Phase 3 Cloud Records work must not let the AI send button bypass Gateway/server entitlement checks.
+- Cloud Records readiness must not let the AI send button bypass Gateway, active-device, provider, or server entitlement checks.
 - Each slice needs its own freshness, loading, error, stale, and retry state; a single global loading/error must not cover the whole tab shell.
 
 ## Single Active Device Policy
@@ -113,7 +113,7 @@ Transition rules:
 - After cloud success, update the local confirmed read model and the affected `daily_summaries` projection/cache.
 - If cloud write fails, preserve the previous official state and keep any user draft/edit in a retryable non-official state.
 - AI cannot silently modify diet goals, apply carb tapering, delete records, or write official records; user confirmation and the official write path are required.
-- Phase 3 has no offline official-write queue. Offline user edits remain drafts until an explicit online save succeeds.
+- There is no offline official-write queue. Offline user edits remain drafts until an explicit online save succeeds.
 
 ## User Action Feedback Rules
 
@@ -195,7 +195,7 @@ Rules:
 
 ## Traffic And Visible Refresh Control
 
-Cloud source of truth does not mean continuous polling. Phase 3 uses a stale-while-revalidate style: render the local confirmed read model first, then validate the cloud under controlled conditions.
+Cloud source of truth does not mean continuous polling. FitLog uses stale-while-revalidate: render the local confirmed read model first, then validate the cloud under controlled conditions.
 
 - Foreground records polling without bounds is not allowed. Automatic refresh may be triggered only by freshness expiry, app resume, date/window change, successful write, explicit refresh, or repair flow.
 - Every refresh must be scoped to the account and visible range. The app does not pull full history by default and does not require detailed recent 30-day records before first render.
@@ -211,7 +211,7 @@ Cloud source of truth does not mean continuous polling. Phase 3 uses a stale-whi
 - Pin the recent 30 days of records and summaries by default.
 - Keep detailed records for at most 180 older user-visited day buckets per account.
 - Keep rebuildable local summary/record cache bounded; the current implementation prunes cloud-confirmed cache older than the recent 30-day window and relies on cloud records/builders for older history reconstruction.
-- Body calendar and Body Trends reuse the same cache policy; they do not require a separate larger cache in Phase 3.
+- Body calendar and Body Trends reuse the same cache policy; they do not require a separate larger cache.
 - The recent 30-day window is not the only cache that may exist. When a day falls outside the recent window, it may remain as an older visited day bucket until older-bucket capacity or eviction rules require removal.
 - Cache metadata should track account id, date/window, `cached_at`, source updated/version fields, pending/confirmed status, and last access when available.
 - Eviction may delete only cloud-confirmed, rebuildable, local cache entries.
@@ -344,9 +344,9 @@ Export and repair:
 - Use cloud official records, cloud summaries, or builders for correctness.
 - Local cache may accelerate reads but must not be required for completeness.
 
-## Implementation Responsibilities
+## Implementation Map
 
-Current implementation responsibilities and code references:
+The following components enforce this boundary:
 
 - Supabase migration: `supabase/migrations/202606260001_phase3_cloud_records.sql`.
 - Local SQLite schema: `lib/data/db/app_database.dart`.
@@ -362,9 +362,9 @@ Current implementation responsibilities and code references:
 - The Profile gate must treat `offline_readonly` and refresh errors with matching cache as renderable states, not full-page errors.
 - The AI page may read subscription display cache for status presentation, while real send capability remains controlled by Gateway and server entitlement checks.
 
-## Regression Coverage
+## Verification Invariants
 
-Required coverage:
+Automated tests and manual acceptance should preserve these invariants:
 
 - When backend configuration or network is missing, sign-in/registration buttons do not silent no-op.
 - First signed-in render without cache does not show an empty Home and then jump to real Home.
@@ -381,7 +381,7 @@ Required coverage:
 - Local release/debug APKs should be built with `--dart-define-from-file=config/supabase.local.json` or equivalent `SUPABASE_URL` and `SUPABASE_ANON_KEY` defines.
 - A build without these defines is an unconfigured auth-shell build; it cannot verify persisted Supabase sessions, cloud records, or cloud/local cache recovery.
 
-## Acceptance Standards
+## Runtime Acceptance Invariants
 
 - Signed-out startup shows the root auth gate without the bottom navigation.
 - Sign-in, registration, and sign-out entries do not depend on records cache, warm cache, daily summaries, or subscription refresh; taps must produce visible feedback.

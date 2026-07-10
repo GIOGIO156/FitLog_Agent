@@ -1,11 +1,12 @@
 import {
   buildQwenVisionRequestBody,
-  extractQwenContent,
+  extractQwenCompletion,
   parsePhotoAnalysisRequest,
   parseProviderFoodDraftBody,
   PhotoGatewayRequestError,
   stripImageDataForDebug,
 } from "./contracts.ts";
+import { OutputContractError } from "../_shared/ai_output_contract.ts";
 
 Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported images", () => {
   const parsed = parsePhotoAnalysisRequest({
@@ -154,33 +155,62 @@ Deno.test("buildQwenVisionRequestBody supports text-only provider requests", () 
   assertEquals(json.includes("data:image/"), false);
 });
 
-Deno.test("parseProviderFoodDraftBody accepts valid and fenced JSON", () => {
+Deno.test("food correction request does not resend image data", () => {
+  const request = parsePhotoAnalysisRequest({
+    images: [{
+      mime_type: "image/jpeg",
+      base64_data: "secret-image",
+      byte_length: 128,
+    }],
+    language: "en",
+    model_choice: "qwen",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v1",
+  });
+  const body = buildQwenVisionRequestBody({
+    request,
+    model: "qwen-vl",
+    correction: {
+      previousOutput: "not-json",
+      issues: [{ path: "$", reason: "expected one JSON object" }],
+    },
+  });
+  const json = JSON.stringify(body);
+  assertEquals(json.includes("secret-image"), false);
+  assert(json.includes("expected one JSON object"));
+  assert(json.includes("not-json"));
+});
+
+Deno.test("parseProviderFoodDraftBody accepts one strict JSON object", () => {
   const json = JSON.stringify({
+    schema_version: "food_analysis_envelope.v1",
     needs_clarification: false,
     clarification_questions: [],
     draft: validDraft(),
   });
-  const parsed = parseProviderFoodDraftBody(`\`\`\`json\n${json}\n\`\`\``);
+  const parsed = parseProviderFoodDraftBody(json);
 
   assertEquals(parsed.schemaValidationStatus, "passed");
   assertEquals(parsed.draft?.meal_name, "Chicken rice");
   assertEquals(parsed.draft?.items.length, 1);
 });
 
-Deno.test("parseProviderFoodDraftBody extracts JSON object from provider prose", () => {
+Deno.test("parseProviderFoodDraftBody rejects fences and provider prose", () => {
   const json = JSON.stringify({
+    schema_version: "food_analysis_envelope.v1",
     needs_clarification: false,
     clarification_questions: [],
     draft: validDraft(),
   });
-  const parsed = parseProviderFoodDraftBody(`已生成草稿：\n\`\`\`json\n${json}\n\`\`\``);
-
-  assertEquals(parsed.schemaValidationStatus, "passed");
-  assertEquals(parsed.draft?.meal_name, "Chicken rice");
+  assertThrowsProviderSchema(() =>
+    parseProviderFoodDraftBody(`已生成草稿：\n\`\`\`json\n${json}\n\`\`\``)
+  );
 });
 
 Deno.test("parseProviderFoodDraftBody normalizes food draft meal totals from items", () => {
   const parsed = parseProviderFoodDraftBody(JSON.stringify({
+    schema_version: "food_analysis_envelope.v1",
     needs_clarification: false,
     clarification_questions: [],
     draft: mismatchedFoodDraft(),
@@ -195,6 +225,7 @@ Deno.test("parseProviderFoodDraftBody normalizes food draft meal totals from ite
 
 Deno.test("parseProviderFoodDraftBody supports clarification without draft", () => {
   const parsed = parseProviderFoodDraftBody(JSON.stringify({
+    schema_version: "food_analysis_envelope.v1",
     needs_clarification: true,
     clarification_questions: ["How much rice did you eat?"],
     draft: null,
@@ -208,6 +239,7 @@ Deno.test("parseProviderFoodDraftBody supports clarification without draft", () 
 Deno.test("parseProviderFoodDraftBody rejects invalid numeric draft fields", () => {
   assertThrowsProviderSchema(() =>
     parseProviderFoodDraftBody(JSON.stringify({
+      schema_version: "food_analysis_envelope.v1",
       needs_clarification: false,
       clarification_questions: [],
       draft: { ...validDraft(), calories_kcal: -1 },
@@ -215,9 +247,10 @@ Deno.test("parseProviderFoodDraftBody rejects invalid numeric draft fields", () 
   );
 });
 
-Deno.test("extractQwenContent reads OpenAI-compatible chat completion content", () => {
+Deno.test("extractQwenCompletion reads OpenAI-compatible chat completion content", () => {
   assertEquals(
-    extractQwenContent({ choices: [{ message: { content: " ok " } }] }),
+    extractQwenCompletion({ choices: [{ message: { content: " ok " } }] })
+      .content,
     "ok",
   );
 });
@@ -268,6 +301,7 @@ Deno.test("stripImageDataForDebug keeps compact text-only metadata", () => {
 
 function validDraft() {
   return {
+    schema_version: "food_draft.v1",
     meal_name: "Chicken rice",
     total_weight_g: 320,
     calories_kcal: 520,
@@ -289,6 +323,7 @@ function validDraft() {
 
 function mismatchedFoodDraft() {
   return {
+    schema_version: "food_draft.v1",
     meal_name: "Rice and tofu",
     total_weight_g: 999,
     calories_kcal: 999,
@@ -320,7 +355,10 @@ function assertThrowsRequest(action: () => void): void {
     action();
   } catch (error) {
     assert(error instanceof PhotoGatewayRequestError);
-    assertEquals((error as PhotoGatewayRequestError).code, "record_schema_mismatch");
+    assertEquals(
+      (error as PhotoGatewayRequestError).code,
+      "request_schema_mismatch",
+    );
     return;
   }
   throw new Error("Expected request error");
@@ -330,7 +368,7 @@ function assertThrowsProviderSchema(action: () => void): void {
   try {
     action();
   } catch (error) {
-    assertEquals((error as Error).message, "record_schema_mismatch");
+    assert(error instanceof OutputContractError);
     return;
   }
   throw new Error("Expected provider schema error");
@@ -344,6 +382,8 @@ function assert(value: boolean, message = "Assertion failed"): void {
 
 function assertEquals(actual: unknown, expected: unknown): void {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    throw new Error(
+      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
   }
 }

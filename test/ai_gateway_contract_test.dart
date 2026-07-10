@@ -292,12 +292,34 @@ void main() {
       final unknown = AiGatewayResponse.fromJson(<String, dynamic>{
         'error': <String, dynamic>{'code': 'provider_raw_500'},
       });
+      final outputInvalid = AiGatewayResponse.fromJson(<String, dynamic>{
+        'error': <String, dynamic>{'code': 'provider_output_invalid'},
+      });
+      final refusal = AiGatewayResponse.fromJson(<String, dynamic>{
+        'error': <String, dynamic>{'code': 'provider_refusal'},
+      });
+      final incomplete = AiGatewayResponse.fromJson(<String, dynamic>{
+        'error': <String, dynamic>{'code': 'provider_incomplete'},
+      });
+      final requestMismatch = AiGatewayResponse.fromJson(<String, dynamic>{
+        'error': <String, dynamic>{'code': 'request_schema_mismatch'},
+      });
 
       expect(replaced.isSuccess, isFalse);
       expect(replaced.error?.code, AiGatewayErrorCode.deviceReplaced);
       expect(replaced.error?.isDeviceReplaced, isTrue);
       expect(unknown.error?.code, AiGatewayErrorCode.unknown);
       expect(unknown.error?.rawCode, 'provider_raw_500');
+      expect(
+        outputInvalid.error?.code,
+        AiGatewayErrorCode.providerOutputInvalid,
+      );
+      expect(refusal.error?.code, AiGatewayErrorCode.providerRefusal);
+      expect(incomplete.error?.code, AiGatewayErrorCode.providerIncomplete);
+      expect(
+        requestMismatch.error?.code,
+        AiGatewayErrorCode.requestSchemaMismatch,
+      );
     });
   });
 
@@ -379,6 +401,29 @@ void main() {
       );
     });
 
+    test(
+      'supports legacy missing version and rejects unsupported draft version',
+      () {
+        final legacy = <String, dynamic>{..._validDraftJson()}
+          ..remove('schema_version');
+        expect(AiFoodDraft.fromJson(legacy).mealName, 'Chicken rice');
+        expect(
+          () => AiFoodDraft.fromJson(<String, dynamic>{
+            ..._validDraftJson(),
+            'schema_version': 'food_draft.v2',
+          }),
+          throwsFormatException,
+        );
+        expect(
+          () => AiFoodDraft.fromJson(<String, dynamic>{
+            ..._validDraftJson(),
+            'confidence': 1.1,
+          }),
+          throwsFormatException,
+        );
+      },
+    );
+
     test('normalizes draft meal totals from item sums', () {
       final draft = AiFoodDraft.fromJson(<String, dynamic>{
         ..._validDraftJson(),
@@ -413,6 +458,7 @@ void main() {
       expect(draft.carbsG, closeTo(53.4, 0.0001));
       expect(draft.fatG, closeTo(5.3, 0.0001));
       expect(draft.toJson()['calories_kcal'], 315);
+      expect(draft.toJson()['schema_version'], aiFoodDraftSchemaVersion);
 
       final record = draft.toFoodRecord(date: '2026-07-01');
       expect(record.totalWeightG, 280);
@@ -487,6 +533,7 @@ Map<String, dynamic> _gatewayEvidenceJson() {
 
 Map<String, dynamic> _validDraftJson() {
   return <String, dynamic>{
+    'schema_version': aiFoodDraftSchemaVersion,
     'meal_name': 'Chicken rice',
     'total_weight_g': 320,
     'calories_kcal': 520,

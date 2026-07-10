@@ -289,8 +289,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         return strings.aiGatewayTimeout;
       case AiGatewayErrorCode.providerFailure:
         return strings.aiProviderFailure;
+      case AiGatewayErrorCode.requestSchemaMismatch:
       case AiGatewayErrorCode.recordSchemaMismatch:
         return strings.aiRequestUnsupported;
+      case AiGatewayErrorCode.providerOutputInvalid:
+        return strings.aiOutputInvalid;
+      case AiGatewayErrorCode.providerRefusal:
+        return strings.aiProviderRefusal;
+      case AiGatewayErrorCode.providerIncomplete:
+        return strings.aiProviderIncomplete;
       case AiGatewayErrorCode.networkFailure:
         return strings.photoAiNetworkFailure;
       case AiGatewayErrorCode.unknown:
