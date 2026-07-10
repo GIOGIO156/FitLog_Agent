@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app.dart';
+import '../../core/localization/app_strings.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
@@ -18,6 +19,7 @@ import '../../core/widgets/fitlog_notifications.dart';
 import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_availability.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
+import '../../domain/models/ai_gateway_evidence.dart';
 import '../../domain/models/ai_gateway_error.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/ai_workout_draft.dart';
@@ -45,11 +47,10 @@ const String _selectedAiProviderPreferenceKey = 'fitlog.ai.selected_provider';
 const int _maxChatImages = 3;
 const int _maxChatImageBytes = 4 * 1024 * 1024;
 const double _aiTopBarHeight = 58;
-const double _aiMessageTopGap = 4;
+const double _aiMessageTopGap = 2;
 const double _aiMessageBottomGap = 10;
-const double _aiMessageListTopPadding = 4;
+const double _aiMessageListTopPadding = 0;
 const double _aiMessageListBottomSafePadding = 14;
-const double _aiMessageTopSoftEdgeHeight = 52;
 const double _aiMessageBottomSoftEdgeHeight = 12;
 const double _aiDefaultComposerHeight = 88;
 const double _aiSendingTurnEstimatedHeight = 96;
@@ -689,15 +690,18 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     if (sentImages.isNotEmpty) {
       setState(() => _attachedImages = const <PickedFoodImage>[]);
     }
+    _prepareMessageListForSend();
     final sendFuture = chatController.sendText(
       text: trimmed,
-      language: strings.isChinese ? 'zh' : 'en',
+      language: _languageForMessage(trimmed, strings),
       modelChoice: _modelChoiceFor(_provider),
       deviceId: deviceId!,
       selectedDate: DateUtilsX.todayKey(),
       profileVersion: cloudProfile == null
           ? null
           : 'profile_${cloudProfile.profileVersion}',
+      allowRecordSummaryContext:
+          accountController.localContextPermission?.allowed ?? false,
       attachments: attachments,
     );
     final success = await sendFuture;
@@ -714,6 +718,16 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       if (sentImages.isNotEmpty) {
         setState(() => _attachedImages = sentImages);
       }
+    }
+  }
+
+  void _prepareMessageListForSend() {
+    if (!_messageScrollController.hasClients) {
+      return;
+    }
+    final position = _messageScrollController.position;
+    if ((position.maxScrollExtent - position.pixels).abs() > 0.5) {
+      _messageScrollController.jumpTo(position.maxScrollExtent);
     }
   }
 
@@ -1121,7 +1135,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     final contentTopPadding = hasConversation
         ? _aiTopBarHeight + _aiMessageTopGap
         : 74.0;
-    final messageListTopPadding = contentTopPadding + _aiMessageListTopPadding;
+    const messageListTopPadding = _aiMessageListTopPadding;
     final viewportHeight =
         screenSize.height -
         screenPadding.top -
@@ -1138,7 +1152,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
           if (hasConversation)
             Positioned(
               left: 18,
-              top: 0,
+              top: contentTopPadding,
               right: 18,
               bottom: messageViewportBottomObstruction,
               child: _AiMessageViewport(
@@ -2324,6 +2338,7 @@ class _AiMessageList extends StatelessWidget {
           attachments: controller.runtimeAttachmentsFor(message),
           foodDraft: controller.foodDraftArtifactFor(message),
           workoutDraft: controller.workoutDraftArtifactFor(message),
+          evidence: message.gatewayEvidence,
           onOpenFoodDraft: onOpenFoodDraft,
           onOpenWorkoutDraft: onOpenWorkoutDraft,
         ),
@@ -2407,27 +2422,37 @@ class _AiMessageViewport extends StatelessWidget {
             colors: <Color>[Colors.black, Colors.black],
           ).createShader(bounds);
         }
-        final topStop = (_aiMessageTopSoftEdgeHeight / height)
-            .clamp(0.0, 0.32)
-            .toDouble();
         final bottomStop = (_aiMessageBottomSoftEdgeHeight / height)
             .clamp(0.0, 0.12)
             .toDouble();
         return LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: const <Color>[
-            Colors.transparent,
-            Colors.black,
-            Colors.black,
-            Colors.transparent,
-          ],
-          stops: <double>[0.0, topStop, 1 - bottomStop, 1.0],
+          colors: const <Color>[Colors.black, Colors.black, Colors.transparent],
+          stops: <double>[0.0, 1 - bottomStop, 1.0],
         ).createShader(bounds);
       },
       child: child,
     );
   }
+}
+
+String _languageForMessage(String messageText, AppStrings strings) {
+  final characters = messageText.runes.toList(growable: false);
+  final cjkCount = characters.where((code) {
+    return (code >= 0x4e00 && code <= 0x9fff) ||
+        (code >= 0x3400 && code <= 0x4dbf);
+  }).length;
+  final asciiLetterCount = characters.where((code) {
+    return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+  }).length;
+  if (cjkCount > 0 && cjkCount >= asciiLetterCount * 0.2) {
+    return 'zh';
+  }
+  if (asciiLetterCount > 0) {
+    return 'en';
+  }
+  return strings.isChinese ? 'zh' : 'en';
 }
 
 void _scheduleSendAnchorScroll(
@@ -2443,10 +2468,6 @@ void _scheduleSendAnchorScroll(
     )) {
       return;
     }
-    if (!scrollController.hasClients) {
-      return;
-    }
-    scrollController.jumpTo(scrollController.position.maxScrollExtent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _alignSendAnchorToReadableTop(
         scrollController,
@@ -2494,6 +2515,7 @@ class _AiMessageBubble extends StatelessWidget {
     required this.attachments,
     required this.foodDraft,
     required this.workoutDraft,
+    required this.evidence,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
   });
@@ -2502,6 +2524,7 @@ class _AiMessageBubble extends StatelessWidget {
   final List<AiGatewayImageAttachment> attachments;
   final AiFoodDraftArtifact? foodDraft;
   final AiWorkoutDraftArtifact? workoutDraft;
+  final AiGatewayEvidence? evidence;
   final ValueChanged<AiFoodDraft> onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
 
@@ -2514,6 +2537,7 @@ class _AiMessageBubble extends StatelessWidget {
       attachments: attachments,
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
+      evidence: evidence,
       onOpenFoodDraft: onOpenFoodDraft,
       onOpenWorkoutDraft: onOpenWorkoutDraft,
     );
@@ -2548,6 +2572,7 @@ class _AiBubbleSurface extends StatelessWidget {
     this.attachments = const <AiGatewayImageAttachment>[],
     this.foodDraft,
     this.workoutDraft,
+    this.evidence,
     this.onOpenFoodDraft,
     this.onOpenWorkoutDraft,
   });
@@ -2558,6 +2583,7 @@ class _AiBubbleSurface extends StatelessWidget {
   final List<AiGatewayImageAttachment> attachments;
   final AiFoodDraftArtifact? foodDraft;
   final AiWorkoutDraftArtifact? workoutDraft;
+  final AiGatewayEvidence? evidence;
   final ValueChanged<AiFoodDraft>? onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft>? onOpenWorkoutDraft;
 
@@ -2604,6 +2630,10 @@ class _AiBubbleSurface extends StatelessWidget {
                 : () => onOpenWorkoutDraft!(workoutDraft!.draft!),
           ),
         ],
+        if (_aiEvidenceHasDisplayableContent(evidence)) ...[
+          const SizedBox(height: 10),
+          _AiEvidencePanel(evidence: evidence!),
+        ],
       ],
     );
     return Align(
@@ -2619,6 +2649,298 @@ class _AiBubbleSurface extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: content,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiEvidencePanel extends StatelessWidget {
+  const _AiEvidencePanel({required this.evidence});
+
+  final AiGatewayEvidence evidence;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    final theme = Theme.of(context);
+    final palette = _AiThemePalette.of(context);
+    final sources = evidence.documentSources.take(4).toList(growable: false);
+    final contextObjects = evidence.contextObjects
+        .where((item) => item != 'document_context')
+        .map((item) => _aiEvidenceDimensionLabel(strings, item))
+        .take(5)
+        .toList(growable: false);
+    final missing = evidence.missingDimensions
+        .where(
+          (item) =>
+              item != 'document_context' ||
+              _aiEvidenceShouldShowMissingDocument(evidence, sources.isEmpty),
+        )
+        .map((item) => _aiEvidenceMissingLabel(strings, item))
+        .take(4)
+        .toList(growable: false);
+    final safety = evidence.safetyFlags
+        .map((item) => _aiEvidenceSafetyLabel(strings, item))
+        .take(3)
+        .toList(growable: false);
+    if (sources.isEmpty &&
+        contextObjects.isEmpty &&
+        missing.isEmpty &&
+        safety.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      key: const ValueKey<String>('ai_phase5_evidence'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Divider(height: 1, color: palette.artifactBorder),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              Icons.manage_search_rounded,
+              size: 16,
+              color: palette.markdownAuxText,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              strings.aiEvidenceTitle,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: palette.markdownAuxText,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+        if (sources.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          _AiEvidenceLabel(text: strings.aiEvidenceSourcesTitle),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: sources
+                .map(
+                  (source) => _AiEvidenceChip(
+                    label: strings.aiEvidenceSourceLabel(
+                      _aiEvidenceDocFileName(source.docPath),
+                      source.heading,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+        if (contextObjects.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          _AiEvidenceLabel(text: strings.aiEvidenceContextTitle),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: contextObjects
+                .map((item) => _AiEvidenceChip(label: item))
+                .toList(growable: false),
+          ),
+        ],
+        if (missing.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          _AiEvidenceLabel(text: strings.aiEvidenceMissingTitle),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: missing
+                .map((item) => _AiEvidenceChip(label: item))
+                .toList(growable: false),
+          ),
+        ],
+        if (safety.isNotEmpty) ...[
+          const SizedBox(height: 7),
+          _AiEvidenceLabel(text: strings.aiEvidenceSafetyTitle),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: safety
+                .map((item) => _AiEvidenceChip(label: item))
+                .toList(growable: false),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+bool _aiEvidenceHasDisplayableContent(AiGatewayEvidence? evidence) {
+  if (evidence == null) {
+    return false;
+  }
+  if (evidence.documentSources.isNotEmpty ||
+      evidence.contextObjects.any((item) => item != 'document_context') ||
+      evidence.safetyFlags.isNotEmpty) {
+    return true;
+  }
+  return evidence.missingDimensions.any(
+    (item) =>
+        item != 'document_context' ||
+        _aiEvidenceShouldShowMissingDocument(evidence, true),
+  );
+}
+
+bool _aiEvidenceShouldShowMissingDocument(
+  AiGatewayEvidence evidence,
+  bool sourcesEmpty,
+) {
+  return sourcesEmpty && evidence.workflow == 'app_logic_answer';
+}
+
+String _aiEvidenceDocFileName(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  final fileName = normalized.split('/').last.trim();
+  if (fileName.toLowerCase().endsWith('.md')) {
+    return fileName.substring(0, fileName.length - 3);
+  }
+  return fileName.isEmpty ? path : fileName;
+}
+
+String _aiEvidenceDimensionLabel(AppStrings strings, String key) {
+  switch (key) {
+    case 'profile_context':
+      return strings.isChinese ? '个人档案' : 'Profile';
+    case 'selected_day_summary':
+      return strings.isChinese ? '当日饮食汇总' : 'Selected-day summary';
+    case 'strategy_context':
+      return strings.isChinese ? '饮食策略设置' : 'Diet strategy';
+    case 'recent_food_summary':
+      return strings.isChinese ? '近期饮食摘要' : 'Recent food summary';
+    case 'recent_workout_summary':
+      return strings.isChinese ? '近期训练摘要' : 'Recent workout summary';
+    case 'body_metric_summary':
+      return strings.isChinese ? '身体数据摘要' : 'Body-metric summary';
+    case 'weight_trend_summary':
+      return strings.isChinese ? '体重趋势' : 'Weight trend';
+    case 'document_context':
+      return strings.isChinese ? '文档来源' : 'Document sources';
+    default:
+      return _humanizeEvidenceKey(key);
+  }
+}
+
+String _aiEvidenceMissingLabel(AppStrings strings, String key) {
+  switch (key) {
+    case 'document_context':
+      return strings.isChinese ? '未找到相关文档来源' : 'No matching document source';
+    case 'profile_context':
+      return strings.isChinese ? '缺少个人档案' : 'Profile unavailable';
+    case 'selected_day_summary':
+      return strings.isChinese
+          ? '缺少当日饮食汇总'
+          : 'Selected-day summary unavailable';
+    case 'strategy_context':
+      return strings.isChinese ? '缺少饮食策略设置' : 'Diet strategy unavailable';
+    case 'recent_food_summary':
+      return strings.isChinese ? '缺少近期饮食摘要' : 'Recent food summary unavailable';
+    case 'recent_workout_summary':
+      return strings.isChinese
+          ? '缺少近期训练摘要'
+          : 'Recent workout summary unavailable';
+    case 'body_metric_summary':
+      return strings.isChinese ? '缺少身体数据摘要' : 'Body-metric summary unavailable';
+    case 'weight_trend_summary':
+      return strings.isChinese ? '缺少体重趋势' : 'Weight trend unavailable';
+    case 'artifact_review':
+      return strings.isChinese ? '缺少草稿复核' : 'Artifact review unavailable';
+    default:
+      return _humanizeEvidenceKey(key);
+  }
+}
+
+String _aiEvidenceSafetyLabel(AppStrings strings, String key) {
+  switch (key) {
+    case 'record_summary_context_not_allowed':
+      return strings.isChinese ? '记录摘要未授权' : 'Record-summary permission off';
+    case 'strategy_write_requested':
+      return strings.isChinese
+          ? '策略修改需手动确认'
+          : 'Strategy changes need confirmation';
+    case 'food_write_requested':
+      return strings.isChinese ? '饮食写入需手动确认' : 'Food writes need confirmation';
+    case 'workout_write_requested':
+      return strings.isChinese
+          ? '训练写入需手动确认'
+          : 'Workout writes need confirmation';
+    case 'profile_write_requested':
+      return strings.isChinese
+          ? '档案修改需手动确认'
+          : 'Profile changes need confirmation';
+    case 'provider_claimed_write_blocked':
+      return strings.isChinese ? '已拦截模型写入声明' : 'Provider write claim blocked';
+    default:
+      return _humanizeEvidenceKey(key);
+  }
+}
+
+String _humanizeEvidenceKey(String key) {
+  return key
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+}
+
+class _AiEvidenceLabel extends StatelessWidget {
+  const _AiEvidenceLabel({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: palette.markdownAuxText,
+        fontWeight: FontWeight.w700,
+        height: 1.2,
+      ),
+    );
+  }
+}
+
+class _AiEvidenceChip extends StatelessWidget {
+  const _AiEvidenceChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _AiThemePalette.of(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.markdownCodeBlockBackground.withValues(alpha: 0.76),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: palette.artifactBorder),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: palette.markdownAuxText,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
           ),
         ),
       ),

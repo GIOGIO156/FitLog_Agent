@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../core/utils/number_utils.dart';
 import 'ai_food_photo_analysis.dart';
+import 'ai_gateway_evidence.dart';
 import 'ai_workout_draft.dart';
 
 enum AiChatMessageRole { user, assistant }
@@ -73,6 +74,8 @@ class AiChatMessage {
       workoutDraftArtifactSnapshot?.draft;
   AiWorkoutDraftArtifact? get workoutDraftArtifactSnapshot =>
       _workoutArtifactFromFinalAnswer(finalAnswerJson);
+  AiGatewayEvidence? get gatewayEvidence =>
+      _evidenceFromFinalAnswer(finalAnswerJson);
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
@@ -260,6 +263,21 @@ AiWorkoutDraftArtifact? _workoutArtifactFromFinalAnswer(
         draft: null,
       );
     }
+  }
+  return null;
+}
+
+AiGatewayEvidence? _evidenceFromFinalAnswer(Map<String, dynamic>? value) {
+  if (value == null) {
+    return null;
+  }
+  final rawEvidence = value['evidence'];
+  final evidence = AiGatewayEvidence.fromJsonOrNull(rawEvidence);
+  if (evidence?.hasVisibleEvidence == true) {
+    return evidence;
+  }
+  if (value['schema_version'] == 'ai_chat_evidence.v1') {
+    return evidence;
   }
   return null;
 }

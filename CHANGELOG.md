@@ -1,5 +1,121 @@
 # Changelog
 
+## 2026-07-10 AI Chat Send Anchor Stability
+
+### Fixed
+
+- Positioned the message list at the existing conversation's real end before adding send-time active-turn fill, and removed the later blind jump to the filled maximum scroll extent. This prevents the pending user bubble from briefly moving above the top controls or disappearing before settling.
+- Added frame-by-frame keyboard-open and keyboard-closed widget coverage that requires the pending bubble to remain at or below the readable boundary, settle on the next layout frame, and stay fixed afterward.
+
+### Changed
+
+- Tightened the settled pending-bubble clearance below the top controls from 16 px to 10 px while preserving hard clipping above the message viewport.
+- Updated bilingual Product and AppGuide documents with the stable send-anchor and top-clearance behavior.
+
+### Validation
+
+- Ran `dart format lib/features/ai/ai_page.dart test/ai_page_test.dart`.
+- Ran `flutter test test/ai_page_test.dart`; all 37 AI page tests passed, including frame-by-frame keyboard-open and keyboard-closed send anchoring.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all 198 tests passed.
+- Ran `git diff --check`; only existing LF/CRLF working-copy warnings were reported.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing all three ABI APKs under `build/app/outputs/flutter-apk`.
+- Ran `node tool/phase5_document_rag/build_document_chunks.mjs` and `node --check tool/phase5_document_rag/build_document_chunks.mjs`; regenerated 462 document chunks after the stable design-doc updates.
+- Applied `supabase/seed_phase5_document_chunks.sql` to the linked Supabase project. No migration was required because this change did not alter the Document RAG schema or RPC.
+- Verified the cloud corpus contains 462 chunks across 15 document paths and 2 languages; a Chinese send-anchor query retrieves the updated Product guidance.
+
+## 2026-07-09 Phase 5 Structured RAG Acceptance Fix
+
+### Fixed
+
+- Added service-role grants for Phase 5 Structured RAG source tables and `ai_debug_summaries` updates, fixing the case where Document RAG worked but Cloud Profile, daily summary, and record-summary context silently appeared missing.
+- Made `ai-chat-route` log Structured RAG table-fetch and debug-summary patch failures, and preserved both provider id and Phase 5 context tools in `called_tools_json`.
+- Changed AI Chat evidence chips into an Answer basis panel that separates reference docs, used data, missing info, and limited actions, uses file-name source chips instead of full paths, and suppresses irrelevant missing-document chips for structured meal answers.
+- Fixed Document RAG long-question retrieval by adding keyword-term overlap and title-phrase weighting to `search_document_chunks`, so natural app-logic questions no longer require exact full-sentence matches.
+
+### Changed
+
+- AI Chat now enforces the request language in provider prompts so English questions can receive English answers even when same-chat history or retrieved docs contain Chinese.
+- Meal-decision prompts now make `gram_per_kg` macro gaps primary and kcal auxiliary, while `energy_ratio` keeps kcal remaining primary.
+- The AI message viewport now starts below the top action row and hard-clips older messages there, while keeping only the bottom soft fade above the composer.
+
+### Validation
+
+- Ran `dart format lib/features/ai/ai_page.dart lib/core/localization/app_strings.dart test/ai_page_test.dart`.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test test/ai_page_test.dart`; all AI page tests passed.
+- Ran `flutter test`; all tests passed.
+- Ran `node tool\phase5_document_rag\build_document_chunks.mjs`; regenerated 462 document chunks.
+- Ran `node --check tool\phase5_document_rag\build_document_chunks.mjs`.
+- Deployed `ai-chat-route` with `supabase functions deploy ai-chat-route --project-ref dyacqajcinjwrkbngeif`.
+- Applied `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql` with `supabase db query --linked --file ...`.
+- Applied `supabase/migrations/202607090002_phase5_document_rag_query_terms.sql` with `supabase db query --linked --file ...`.
+- Applied regenerated `supabase/seed_phase5_document_chunks.sql` with `supabase db query --linked --file ...`.
+- Verified `document_chunks` contains 462 rows across 15 document paths and 2 languages; English long-question retrieval returns `docs/en/Algorithm.md` / `carb_tapering` and `docs/en/Methodology.md` / `Carb Tapering`; Chinese `gram_per_kg` retrieval returns `docs/zh/Algorithm.md`.
+- Attempted `flutter clean`; the command shell stalled without a live Flutter/Dart child process in this environment, so generated build directories were removed with a path-guarded workspace cleanup before rebuilding.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+- Could not run Edge Function Deno tests because `deno` is not installed in this environment.
+
+## 2026-07-09 Phase 5 RAG Engineering Landing
+
+### Changed
+
+- Implemented the Phase 5 Document RAG ingestion upgrade with canonical Node seed generation, Markdown heading paths, recursive splitting, preserved short sections, deterministic context prefixes, chunk position metadata, and managed-corpus cleanup before reseeding.
+- Extended `document_chunks`, `search_document_chunks`, document retrieval, prompt context, and evidence payloads to carry contextual chunk metadata instead of only bare excerpts; the migration recreates the RPC so deployed old return schemas can upgrade cleanly.
+- Updated bilingual AgentDesign, Database, and the Phase 5 engineering plan to describe the implemented ingestion design, deployment boundary, verification SQL, and single seed-generation entry point.
+
+### Validation
+
+- Ran `node tool\phase5_document_rag\build_document_chunks.mjs`; regenerated 463 document chunks.
+- Ran `node --check tool\phase5_document_rag\build_document_chunks.mjs`.
+- Ran `dart format lib test`; no files changed.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+- Could not run `deno fmt` or Edge Function Deno tests because `deno` is not installed in this environment.
+
+## 2026-07-09 Documentation Structure And RAG Ingestion Design
+
+### Changed
+
+- Rewrote README as a product-led project entry that explains FitLog_Agent's problem, purpose, capabilities, boundaries, setup, and design-doc map instead of leading with implementation status history.
+- Updated AgentDesign and Database docs to distinguish implemented Document RAG behavior from the next ingestion refinement boundary: heading-aware structure, recursive splitting, short-rule preservation, and reviewed contextual metadata.
+- Documented the maintenance rule for applying regenerated document seed SQL after stable README/docs changes.
+- Added narrow AI/RAG reference entries for document chunking patterns and contextual retrieval guidance.
+- Tightened AGENTS.md documentation rules for README purpose, changelog scope, stable-doc structure, and phase-plan separation.
+- Renamed status-led AppGuide, Database, and CloudLocalDataBoundary sections to capability, boundary, responsibility, and regression-coverage sections.
+
+### Validation
+
+- Ran `node tool\phase5_document_rag\build_document_chunks.mjs`; regenerated 433 document chunks after the README/docs cleanup.
+- Confirmed the required README, changelog, and bilingual design documentation tree exists.
+- Ran documentation text searches for replacement characters, date-style stable-doc headings, root-level design-doc links, stale paths, and chunking terminology.
+- Ran `git diff --check`; only existing LF/CRLF line-ending warnings were reported.
+
+## 2026-07-08 Phase 5 Controlled RAG Workflows
+
+### Added
+
+- Added the Phase 5 Document RAG schema, `search_document_chunks` RPC, document-chunk seed generation tooling, and generated Supabase seed SQL for FitLog app/design documents.
+- Added `ai-chat-route` workflow routing, server-built Structured RAG context, Document RAG retrieval, read-only safety blocking, Phase 5 prompt context, evidence snapshots, and compact debug-summary context patching.
+- Added Flutter Gateway evidence models and AI Chat evidence rendering for retrieved document sources, context dimensions, missing dimensions, and safety flags.
+
+### Changed
+
+- Gated user record-summary context behind the existing per-account user-record summary permission; when disabled, Phase 5 omits record-summary table reads and reports the dimensions as missing evidence.
+- Updated OpenAI/Qwen provider prompts to use only server-provided Phase 5 controlled context, current user input, and current request images, while preserving user-confirmed Food Draft and Workout Draft boundaries.
+- Updated README and bilingual Product, AppGuide, AgentDesign, and Database docs for the implemented Phase 5 read-only RAG and evidence boundary.
+
+### Validation
+
+- Ran `node tool\phase5_document_rag\build_document_chunks.mjs`; generated 447 document chunks.
+- Ran `dart format lib test tool`.
+- Ran documentation tree, stale Phase 5/RAG wording, replacement-character, date-heading, stale-path, and `git diff --check` searches; only existing Git line-ending warnings were reported.
+- Ran `flutter analyze`; no issues found.
+- Ran `flutter test`; all tests passed.
+- Built the configured split debug APK with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`, producing `build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk`, `build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk`, and `build/app/outputs/flutter-apk/app-x86_64-debug.apk`.
+- Could not run `deno fmt` or `deno test supabase\functions\ai-chat-route\index_test.ts` because `deno` is not installed in this environment.
+
 ## 2026-07-08 Bottom Navigation Keyboard Stability
 
 ### Fixed

@@ -126,6 +126,7 @@ void main() {
 
     expect(harness.repository.lastRequest?.messageText, '你能做什么');
     expect(harness.repository.lastRequest?.deviceId, 'device-a');
+    expect(harness.repository.lastRequest?.language, 'zh');
     expect(
       harness.repository.lastRequest?.modelChoice,
       AiGatewayModelChoice.qwen,
@@ -133,6 +134,50 @@ void main() {
     expect(harness.repository.lastRequest?.profileVersion, 'profile_7');
     expect(harness.chatController.selectedSessionId, 'session_1');
     expect(find.text('我在。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ready AI page sends English requests with English language', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    harness.repository.sendHandler = (request) async {
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Carb tapering'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        _message(
+          'u1',
+          'session_1',
+          1,
+          AiChatMessageRole.user,
+          request.messageText,
+        ),
+        _message('a1', 'session_1', 2, AiChatMessageRole.assistant, 'Done.'),
+      ];
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: 'Done.',
+      );
+    };
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      'How does carb tapering work in FitLog?',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.repository.lastRequest?.language, 'en');
+    expect(
+      harness.repository.lastRequest?.messageText,
+      contains('carb tapering'),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -237,6 +282,45 @@ void main() {
     );
   });
 
+  testWidgets('AI assistant message renders Phase 5 evidence sources', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    harness.repository.sessions = <AiChatSession>[
+      _session('session_1', 'RAG answer'),
+    ];
+    harness.repository.messages['session_1'] = <AiChatMessage>[
+      _message(
+        'a1',
+        'session_1',
+        1,
+        AiChatMessageRole.assistant,
+        'FitLog 会优先从 AI 页面发起 Agent 工作流。',
+        finalAnswerJson: _phase5EvidenceSnapshotJson(),
+      ),
+    ];
+    harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+    await harness.chatController.selectSession('session_1');
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('ai_phase5_evidence')),
+      findsOneWidget,
+    );
+    expect(find.text('Answer basis'), findsOneWidget);
+    expect(find.text('AppGuide · AI'), findsOneWidget);
+    expect(find.text('Selected-day summary'), findsOneWidget);
+    expect(find.text('Profile unavailable'), findsOneWidget);
+    expect(find.text('Strategy changes need confirmation'), findsOneWidget);
+    expect(find.text('No matching document source'), findsNothing);
+    expect(find.textContaining('docs/zh/AppGuide.md'), findsNothing);
+    expect(find.text('document_context'), findsNothing);
+    expect(find.text('profile_context'), findsNothing);
+  });
+
   testWidgets('conversation keeps top actions fixed while provider moves up', (
     tester,
   ) async {
@@ -323,7 +407,7 @@ void main() {
       find.byKey(const ValueKey<String>('ai_message_soft_edges')),
       findsOneWidget,
     );
-    expect(listTop, lessThan(historyBottom));
+    expect(listTop, greaterThan(historyBottom));
     expect(questionTop, greaterThan(historyBottom));
     expect(_aiBackgroundMotion(tester), contains('quietChat'));
   });
@@ -582,7 +666,26 @@ void main() {
       harness.repository.lastRequest?.messageText,
       'New anchored question',
     );
+    final firstFramePendingTop = tester
+        .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+        .top;
+    final firstFrameHistoryBottom = tester
+        .getRect(find.byTooltip('Chat history'))
+        .bottom;
+    expect(
+      firstFramePendingTop,
+      greaterThanOrEqualTo(firstFrameHistoryBottom + 10),
+    );
     await tester.pump();
+    final secondFramePendingTop = tester
+        .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+        .top;
+    expect(secondFramePendingTop, closeTo(firstFrameHistoryBottom + 10, 1));
+    await tester.pump();
+    final settledPendingTop = tester
+        .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+        .top;
+    expect(settledPendingTop, closeTo(secondFramePendingTop, 1));
     await tester.pump(const Duration(milliseconds: 260));
     await tester.pump();
     await tester.pump();
@@ -616,10 +719,11 @@ void main() {
           find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
         )
         .top;
-    final readableAnchorTop = historyBottom + 16;
+    final readableAnchorTop = historyBottom + 10;
 
     expect(pendingBubbleTop, closeTo(readableAnchorTop, 1));
-    expect(pendingBubbleTop, greaterThan(listTop + 52));
+    expect(listTop, greaterThan(historyBottom));
+    expect(pendingBubbleTop, closeTo(listTop, 1));
     expect(
       pendingBubbleDecoration.color,
       const Color(0xFF5FA94D).withValues(alpha: 0.92),
@@ -711,7 +815,26 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
       await tester.pump();
+      final firstFramePendingTop = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+          .top;
+      final firstFrameHistoryBottom = tester
+          .getRect(find.byTooltip('Chat history'))
+          .bottom;
+      expect(
+        firstFramePendingTop,
+        greaterThanOrEqualTo(firstFrameHistoryBottom + 10),
+      );
       await tester.pump();
+      final secondFramePendingTop = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+          .top;
+      expect(secondFramePendingTop, closeTo(firstFrameHistoryBottom + 10, 1));
+      await tester.pump();
+      final settledPendingTop = tester
+          .getRect(find.byKey(const ValueKey<String>('ai_pending_user_bubble')))
+          .top;
+      expect(settledPendingTop, closeTo(secondFramePendingTop, 1));
       await tester.pump(const Duration(milliseconds: 260));
       await tester.pump();
       await tester.pump();
@@ -733,10 +856,11 @@ void main() {
             find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
           )
           .top;
-      final readableAnchorTop = historyBottom + 16;
+      final readableAnchorTop = historyBottom + 10;
 
       expect(pendingBubbleTop, closeTo(readableAnchorTop, 1));
-      expect(pendingBubbleTop, greaterThan(listTop + 52));
+      expect(listTop, greaterThan(historyBottom));
+      expect(pendingBubbleTop, closeTo(listTop, 1));
       expect(newQuestionTop, greaterThan(pendingBubbleTop));
       expect(loadingTop, greaterThan(newQuestionTop));
 
@@ -2044,6 +2168,29 @@ Map<String, dynamic> _foodDraftArtifactJson() {
         'model_choice': 'qwen',
       },
     ],
+  };
+}
+
+Map<String, dynamic> _phase5EvidenceSnapshotJson() {
+  return <String, dynamic>{
+    'schema_version': 'ai_chat_evidence.v1',
+    'evidence': <String, dynamic>{
+      'workflow': 'app_logic_answer',
+      'context_objects': <String>['document_context', 'selected_day_summary'],
+      'document_sources': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'doc_path': 'docs/zh/AppGuide.md',
+          'heading': 'AI',
+          'section_id': 'ai',
+          'status': 'implemented',
+          'score': 1.4,
+          'excerpt': 'AI 页面是 Agent 入口。',
+        },
+      ],
+      'missing_dimensions': <String>['document_context', 'profile_context'],
+      'safety_flags': <String>['strategy_write_requested'],
+      'user_final_action': 'read_only',
+    },
   };
 }
 

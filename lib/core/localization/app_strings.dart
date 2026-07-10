@@ -89,6 +89,16 @@ class AppStrings {
     '当前已有一条未保存训练草稿。要用这条 AI 生成的训练草稿替换它吗？',
   );
   String get aiWorkoutDraftReplaceAction => _t('Replace draft', '替换草稿');
+  String get aiEvidenceTitle => _t('Answer basis', '回答依据');
+  String get aiEvidenceSourcesTitle => _t('Reference docs', '参考文档');
+  String get aiEvidenceContextTitle => _t('Used data', '使用数据');
+  String get aiEvidenceMissingTitle => _t('Missing info', '缺少信息');
+  String get aiEvidenceSafetyTitle => _t('Limited actions', '受限操作');
+  String aiEvidenceSourceLabel(String fileName, String heading) {
+    final label = heading.trim().isEmpty ? fileName : '$fileName · $heading';
+    return _t(label, label);
+  }
+
   String get aiHistoryTooltip => _t('Chat history', '历史会话');
   String get aiHistoryTitle => _t('Chat history', '历史会话');
   String get aiHistorySignedOut => _t(

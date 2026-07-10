@@ -6,8 +6,10 @@ import {
   parseGatewayRequest,
   parseProviderGatewayBody,
 } from "./contracts.ts";
+import { buildPhase5Context } from "./context_builders.ts";
 import { MockProviderError, runMockProvider } from "./mock_provider.ts";
 import { extractOpenAiText } from "./openai_provider.ts";
+import type { Phase5WorkflowRoute } from "./phase5_types.ts";
 import { providerForChoice } from "./providers.ts";
 import { extractQwenText } from "./qwen_provider.ts";
 
@@ -28,6 +30,8 @@ Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   assertEquals(parsed.workflowType, "auto");
   assertEquals(parsed.deviceId, "device-a");
   assertEquals(parsed.attachments.length, 0);
+  assertEquals(parsed.allowRecordSummaryContext, false);
+  assertEquals(parsed.phase5Context, null);
 });
 
 Deno.test("parseGatewayRequest accepts compact conversation context", () => {
@@ -38,6 +42,7 @@ Deno.test("parseGatewayRequest accepts compact conversation context", () => {
     model_choice: "qwen",
     workflow_hint: "auto",
     device_id: "device-a",
+    allow_record_summary_context: true,
     conversation_context: {
       messages: [
         { role: "user", text: "Can this meal be logged?" },
@@ -55,6 +60,7 @@ Deno.test("parseGatewayRequest accepts compact conversation context", () => {
 
   assertEquals(parsed.conversationContext?.messages.length, 2);
   assertEquals(parsed.conversationContext?.artifacts[0].type, "food_draft");
+  assertEquals(parsed.allowRecordSummaryContext, true);
 });
 
 Deno.test("parseGatewayRequest accepts up to three Qwen image attachments", () => {
@@ -100,6 +106,16 @@ Deno.test("parseGatewayRequest rejects future-phase fields", () => {
       workflow_hint: "food_logging",
       device_id: "device-a",
       context_objects: [{ kind: "profile" }],
+    })
+  );
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      evidence: { workflow: "auto" },
     })
   );
 });
@@ -192,6 +208,54 @@ Deno.test("parseGatewayRequest rejects unsupported model and workflow", () => {
   );
 });
 
+Deno.test("buildPhase5Context does not fetch record summaries without permission", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedUrls: string[] = [];
+  const fakeFetch = ((url: string | URL | Request) => {
+    requestedUrls.push(url.toString());
+    return Promise.resolve(new Response("[]", { status: 200 }));
+  }) as typeof fetch;
+
+  try {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = fakeFetch;
+    const request = parseGatewayRequest({
+      message: { text: "review my week" },
+      language: "en",
+      model_choice: "chatgpt",
+      workflow_hint: "weekly_review",
+      selected_date: "2026-07-08",
+      device_id: "device-a",
+    });
+    const route: Phase5WorkflowRoute = {
+      workflow: "weekly_review",
+      confidence: 1,
+      reasons: ["test"],
+      required_context: [
+        "selected_day_summary",
+        "recent_food_summary",
+        "recent_workout_summary",
+        "body_metric_summary",
+        "weight_trend_summary",
+      ],
+      safety_flags: [],
+      read_only: true,
+    };
+
+    const context = await buildPhase5Context({
+      supabaseUrl: "https://example.test",
+      supabaseServiceRoleKey: "service-key",
+    }, "acct_1", request, route);
+
+    assertEquals(requestedUrls, []);
+    assertEquals(context.called_tools, []);
+    assert(context.missing_dimensions.includes("recent_food_summary"));
+    assert(context.missing_dimensions.includes("weight_trend_summary"));
+    assert(context.safety_flags.includes("record_summary_context_not_allowed"));
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch;
+  }
+});
+
 Deno.test("extractSessionIdFromAccessToken uses session claim fallback order", () => {
   const token = tokenFor({
     sub: "acct",
@@ -230,6 +294,41 @@ Deno.test("gatewayResponse emits Step 1-compatible error envelope", () => {
   assertEquals((body.message as Record<string, unknown>).language, "en");
   assertEquals((body.error as Record<string, unknown>).code, "subscription_required");
   assertEquals(body.draft, null);
+});
+
+Deno.test("gatewayResponse emits Phase 5 evidence envelope", () => {
+  const body = gatewayResponse({
+    modelChoice: "chatgpt",
+    language: "en",
+    workflow: "app_logic_answer",
+    evidence: {
+      workflow: "app_logic_answer",
+      context_objects: ["document_context"],
+      document_sources: [{
+        doc_path: "docs/en/AgentDesign.md",
+        heading: "Agent V1",
+        heading_path: ["Agent Design", "Agent V1"],
+        section_id: "agent-v1",
+        chunk_index: 1,
+        chunk_count: 1,
+        status: "implemented",
+        score: 1.2,
+        context_prefix: "Source: docs/en/AgentDesign.md > Agent Design > Agent V1.",
+        context_note: null,
+        excerpt: "Phase 5 uses controlled document retrieval.",
+      }],
+      missing_dimensions: [],
+      safety_flags: [],
+      user_final_action: "read_only",
+    },
+  });
+
+  const evidence = body.evidence as Record<string, unknown>;
+  assertEquals(evidence.workflow, "app_logic_answer");
+  assertEquals(
+    (evidence.document_sources as Record<string, unknown>[])[0].doc_path,
+    "docs/en/AgentDesign.md",
+  );
 });
 
 Deno.test("parseProviderGatewayBody parses multimodal JSON with food draft", () => {

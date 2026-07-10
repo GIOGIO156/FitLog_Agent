@@ -1,4 +1,8 @@
 import type { GatewayRequest } from "./contracts.ts";
+import {
+  answerLanguageInstruction,
+  phase5PromptContext,
+} from "./prompt_builder.ts";
 import type { FetchLike, ProviderAdapter } from "./providers.ts";
 import { ProviderError } from "./providers.ts";
 
@@ -122,24 +126,29 @@ function nonEmptyText(value: string): string {
 
 function systemInstructions(language: "zh" | "en"): string {
   return language === "zh"
-    ? "你是 FitLog 的文本聊天助手。当前 OpenAI 路径只处理文字请求；图片请求由支持视觉输入的多模态 provider 处理。不能调用 RAG，不能生成可保存草稿，也不能写入或修改任何正式记录。回答应简洁、诚实，并在数据不足时说明缺少什么。"
-    : "You are FitLog's text chat assistant. The current OpenAI path handles text requests only; image requests are handled by a multimodal provider with vision input. Do not use RAG, produce saveable drafts, or write or modify official records. Keep answers concise and say what is missing when data is insufficient.";
+    ? "你是 FitLog 的文本聊天助手。当前 OpenAI 路径只处理文字请求；图片请求由支持视觉输入的多模态 provider 处理。你只能使用服务端提供的 Phase 5 受控上下文和用户当前消息，不能写入或修改任何正式记录。回答应简洁、诚实，并在数据不足时说明缺少什么。"
+    : "You are FitLog's text chat assistant. The current OpenAI path handles text requests only; image requests are handled by a multimodal provider with vision input. You may use only the server-provided Phase 5 controlled context and the current user message, and you must not write or modify official records. Keep answers concise and say what is missing when data is insufficient.";
 }
 
 function textInput(request: GatewayRequest): string {
   const context = request.conversationContext;
-  if (context === null) {
+  const phase5Context = phase5PromptContext(request);
+  if (context === null && phase5Context.trim() === "") {
     return request.messageText;
   }
   const lines = [
+    phase5Context,
+    answerLanguageInstruction(request.language),
     "Conversation context summary. Do not infer omitted images as available pixels:",
   ];
-  for (const message of context.messages) {
-    lines.push(`${message.role}: ${message.text}`);
-  }
-  for (const artifact of context.artifacts) {
-    lines.push(`artifact ${artifact.type}: ${artifact.title} - ${artifact.summary}`);
+  if (context !== null) {
+    for (const message of context.messages) {
+      lines.push(`${message.role}: ${message.text}`);
+    }
+    for (const artifact of context.artifacts) {
+      lines.push(`artifact ${artifact.type}: ${artifact.title} - ${artifact.summary}`);
+    }
   }
   lines.push(`User message: ${request.messageText}`);
-  return lines.join("\n");
+  return lines.filter((line) => line.trim() !== "").join("\n");
 }

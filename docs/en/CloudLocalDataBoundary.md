@@ -228,9 +228,9 @@ Cloud source of truth does not mean continuous polling. Phase 3 uses a stale-whi
 - If a summary is missing or stale, the builder may rebuild it from cloud official records and upsert the cloud projection.
 - Summary rebuild must not silently modify official records.
 
-## Phase 3 Daily Summary Strategy
+## Daily Summary Cloud Strategy
 
-- Phase 3 defaults to an app/service-side deterministic builder that rebuilds summaries and upserts `daily_summaries` through the cloud repository; DB triggers or Edge Functions are not required for Phase 3.
+- The current design uses an app/service-side deterministic builder that rebuilds summaries and upserts `daily_summaries` through the cloud repository; DB triggers or Edge Functions are not required for this summary strategy.
 - The summary builder must reuse existing deterministic algorithm semantics. It must not merge `energy_ratio` with `gram_per_kg`, and it must not infer official targets from AI output.
 - After a successful food/workout/body records write, the change coordinator should rebuild the affected date's summary and update local confirmed summary cache.
 - When Home or export reads a missing, stale, or version-mismatched cloud summary, the app may rebuild it from cloud official records and upsert it.
@@ -278,9 +278,9 @@ Enter repair or reconciliation:
 
 ## Conflict And Repair
 
-- Phase 3 uses cloud official records as the conflict authority.
+- Cloud official records are the conflict authority.
 - Local confirmed cache can be overwritten by cloud rebuild/refresh results.
-- Offline official writes and automatic client/cloud merge are out of scope for Phase 3.
+- Offline official writes and automatic client/cloud merge are out of scope for V1.
 - A version conflict should prompt refresh/retry rather than silently choosing the client payload.
 - Repair flows must be explicit, explainable, and based on cloud official records or rebuildable projections.
 - Local cache deletion and cloud official deletion must remain separate operations in code and UI.
@@ -344,9 +344,9 @@ Export and repair:
 - Use cloud official records, cloud summaries, or builders for correctness.
 - Local cache may accelerate reads but must not be required for completeness.
 
-## Phase 3 Target Implementation Map
+## Implementation Responsibilities
 
-These are the expected implementation locations when Phase 3 lands. Exact filenames may change during implementation, but the responsibility boundaries should stay the same.
+Current implementation responsibilities and code references:
 
 - Supabase migration: `supabase/migrations/202606260001_phase3_cloud_records.sql`.
 - Local SQLite schema: `lib/data/db/app_database.dart`.
@@ -360,21 +360,11 @@ These are the expected implementation locations when Phase 3 lands. Exact filena
 - Account state machine, Cloud Profile display cache, subscription display cache, background recovery, and refresh backoff: `lib/features/account/account_controller.dart`.
 - Active device claim / guard: Supabase RPCs `claim_active_device`, `assert_active_device`, and `release_active_device`; Flutter repository lives at `lib/data/repositories/active_device_repository.dart`, with runtime state in `lib/domain/models/cloud_runtime_context.dart`.
 - The Profile gate must treat `offline_readonly` and refresh errors with matching cache as renderable states, not full-page errors.
-- The AI page may read subscription display cache for status presentation, while real send capability remains controlled by phase/Gateway/server entitlement checks.
+- The AI page may read subscription display cache for status presentation, while real send capability remains controlled by Gateway and server entitlement checks.
 
-## Phase 3 Landing Order And Tests
+## Regression Coverage
 
-Recommended landing order:
-
-1. Add Auth Boundary regression tests first: signed-out buttons must have processing/error feedback, and sign-in must not depend on records cache, summaries, warm cache, or subscription refresh.
-2. Add Supabase Cloud Records migrations, RLS, soft delete, version/timestamp fields, and minimal seed/test SQL.
-3. Add local confirmed cache/read-model metadata; before changing UI behavior, make account isolation, pending/confirmed state, and version fields explicit.
-4. Add cloud records repositories and the change coordinator; first prove cloud-first write and read-model update with one-date food/body records.
-5. Land the Phase 3 daily summary builder, selected-day local summary cache, and cloud upsert strategy.
-6. Connect Home, Body/Profile, Food, and Workout one page at a time; preserve Local interaction semantics and add foreground write feedback on each page.
-7. Add broader warm cache, older-date on-demand loading, cache eviction, and export correctness last; broad warm cache must not land before first-render stability.
-
-Required regression coverage:
+Required coverage:
 
 - When backend configuration or network is missing, sign-in/registration buttons do not silent no-op.
 - First signed-in render without cache does not show an empty Home and then jump to real Home.
@@ -391,7 +381,7 @@ Required regression coverage:
 - Local release/debug APKs should be built with `--dart-define-from-file=config/supabase.local.json` or equivalent `SUPABASE_URL` and `SUPABASE_ANON_KEY` defines.
 - A build without these defines is an unconfigured auth-shell build; it cannot verify persisted Supabase sessions, cloud records, or cloud/local cache recovery.
 
-## Phase 3 Acceptance Standards
+## Acceptance Standards
 
 - Signed-out startup shows the root auth gate without the bottom navigation.
 - Sign-in, registration, and sign-out entries do not depend on records cache, warm cache, daily summaries, or subscription refresh; taps must produce visible feedback.
@@ -406,7 +396,7 @@ Required regression coverage:
 - With matching account Profile cache, Cloud Profile or subscription background refresh failure does not turn Profile into a full-page error or continuous auto-retry loop.
 - If subscription refresh fails while a previous confirmed active/inactive cache exists, Profile keeps the previous display state marked stale instead of flickering into loading/error.
 - Body Trends renders local confirmed records before cloud refresh and does not show final empty/insufficient states while the visible window is still `partial_cache`.
-- The implemented Home selected-day stale-while-revalidate cache can refresh after first render without forcing full-page loading or visible layout jumps; the current warm cache fills recent 30-day summaries under the same rule.
+- Home selected-day stale-while-revalidate cache can refresh after first render without forcing full-page loading or visible layout jumps; current warm cache fills recent 30-day summaries under the same rule.
 - A failed cloud write does not create or overwrite an official local record.
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.

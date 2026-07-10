@@ -1,3 +1,4 @@
+import { buildPhase5Context } from "./context_builders.ts";
 import {
   type AiGatewayErrorCode,
   type AiGatewayStatus,
@@ -15,11 +16,16 @@ import {
   type PersistedTurn,
   stringField,
 } from "./contracts.ts";
+import type { Phase5Evidence } from "./phase5_types.ts";
 import {
   ProviderError,
   providerForChoice,
   readProviderRuntimeConfig,
 } from "./providers.ts";
+import { routeGatewayWorkflow } from "./workflow_router.ts";
+
+const phase5PromptVersion = "phase5_rag_readonly_v1";
+const phase5SchemaVersion = "ai_chat_response.v2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,6 +91,57 @@ Deno.serve(async (request) => {
     await checkSubscription(env, accountId);
     await assertActiveDevice(env, token, parsedRequest.deviceId, sessionId);
 
+    const route = routeGatewayWorkflow(parsedRequest);
+    parsedRequest = {
+      ...parsedRequest,
+      workflowType: route.workflow,
+    };
+    parsedRequest = {
+      ...parsedRequest,
+      phase5Context: await buildPhase5Context(env, accountId, parsedRequest, route),
+    };
+
+    if (route.safety_flags.length > 0) {
+      const assistantText = readOnlyBoundaryMessage(parsedRequest.language);
+      const evidence = evidenceFromRequest(parsedRequest, "blocked");
+      const persisted = await recordChatTurn(
+        env,
+        accountId,
+        parsedRequest,
+        providerIdForChoice(parsedRequest.modelChoice) ?? "openai",
+        "phase5-read-only-boundary",
+        assistantText,
+        finalAnswerSnapshot(null, parsedRequest, evidence),
+        Date.now() - startedAt,
+      );
+      await updateDebugSummary(
+        env,
+        persisted.debugSummaryId,
+        parsedRequest,
+        evidence,
+        providerIdForChoice(parsedRequest.modelChoice) ?? "openai",
+      );
+
+      return jsonResponse(
+        gatewayResponse({
+          sessionId: persisted.sessionId,
+          assistantMessageId: persisted.assistantMessageId,
+          modelChoice: parsedRequest.modelChoice,
+          modelProvider: providerIdForChoice(parsedRequest.modelChoice),
+          messageText: assistantText,
+          language: parsedRequest.language,
+          workflow: parsedRequest.workflowType,
+          draft: null,
+          needsClarification: false,
+          clarificationQuestions: [],
+          debugSummaryId: persisted.debugSummaryId,
+          evidence,
+          error: null,
+        }),
+        200,
+      );
+    }
+
     const provider = providerForChoice(
       parsedRequest.modelChoice,
       readProviderRuntimeConfig(),
@@ -94,15 +151,30 @@ Deno.serve(async (request) => {
       providerContent,
       parsedRequest,
     );
+    const providerGuard = guardProviderOutput(parsedProvider.messageText, parsedRequest);
+    const assistantText = providerGuard.messageText;
+    const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
+    const evidence = evidenceFromRequest(
+      parsedRequest,
+      draft === null ? "read_only" : "artifact_returned",
+      providerGuard.safetyFlag,
+    );
     const persisted = await recordChatTurn(
       env,
       accountId,
       parsedRequest,
       provider.providerId,
       provider.model,
-      parsedProvider.messageText,
-      finalAnswerSnapshot(parsedProvider.draft, parsedRequest),
+      assistantText,
+      finalAnswerSnapshot(draft, parsedRequest, evidence),
       Date.now() - startedAt,
+    );
+    await updateDebugSummary(
+      env,
+      persisted.debugSummaryId,
+      parsedRequest,
+      evidence,
+      provider.providerId,
     );
 
     return jsonResponse(
@@ -111,13 +183,18 @@ Deno.serve(async (request) => {
         assistantMessageId: persisted.assistantMessageId,
         modelChoice: parsedRequest.modelChoice,
         modelProvider: provider.providerId,
-        messageText: parsedProvider.messageText,
+        messageText: assistantText,
         language: parsedRequest.language,
         workflow: parsedRequest.workflowType,
-        draft: parsedProvider.draft,
-        needsClarification: parsedProvider.needsClarification,
-        clarificationQuestions: parsedProvider.clarificationQuestions,
+        draft,
+        needsClarification: providerGuard.allowDraft
+          ? parsedProvider.needsClarification
+          : false,
+        clarificationQuestions: providerGuard.allowDraft
+          ? parsedProvider.clarificationQuestions
+          : [],
         debugSummaryId: persisted.debugSummaryId,
+        evidence,
         error: null,
       }),
       200,
@@ -274,8 +351,8 @@ async function recordChatTurn(
         input_workflow_type: request.workflowType,
         input_model_provider: providerId,
         input_model: model,
-        input_prompt_version: "phase4_context_drafts_v1",
-        input_schema_version: "ai_chat_response.v1",
+        input_prompt_version: phase5PromptVersion,
+        input_schema_version: phase5SchemaVersion,
         input_profile_version: request.profileVersion,
         input_latency_ms: latencyMs,
         input_token_estimate: estimateTokens(userMessageText, assistantText),
@@ -305,9 +382,20 @@ async function recordChatTurn(
 function finalAnswerSnapshot(
   draft: GatewayDraft | null,
   request: GatewayRequest,
+  evidence: Phase5Evidence | null,
 ): Record<string, unknown> | null {
+  const hasVisibleEvidence = evidence !== null &&
+    (evidence.context_objects.length > 0 ||
+      evidence.document_sources.length > 0 ||
+      evidence.missing_dimensions.length > 0 ||
+      evidence.safety_flags.length > 0);
   if (draft === null) {
-    return null;
+    return hasVisibleEvidence
+      ? {
+        schema_version: "ai_chat_evidence.v1",
+        evidence,
+      }
+      : null;
   }
   const isWorkoutDraft = "schema_version" in draft &&
     draft.schema_version === "workout_draft.v1";
@@ -332,7 +420,116 @@ function finalAnswerSnapshot(
           model_choice: request.modelChoice,
         },
     ],
+    ...(hasVisibleEvidence ? { evidence } : {}),
   };
+}
+
+function evidenceFromRequest(
+  request: GatewayRequest,
+  action: Phase5Evidence["user_final_action"],
+  extraSafetyFlag?: string | null,
+): Phase5Evidence {
+  const context = request.phase5Context;
+  const safetyFlags = unique([
+    ...(context?.safety_flags ?? []),
+    ...(extraSafetyFlag === null || extraSafetyFlag === undefined
+      ? []
+      : [extraSafetyFlag]),
+  ]);
+  return {
+    workflow: request.workflowType,
+    context_objects: context?.context_objects.map((object) => object.type) ?? [],
+    document_sources: context?.document_sources ?? [],
+    missing_dimensions: context?.missing_dimensions ?? [],
+    safety_flags: safetyFlags,
+    user_final_action: action,
+  };
+}
+
+function guardProviderOutput(
+  messageText: string,
+  request: GatewayRequest,
+): {
+  messageText: string;
+  allowDraft: boolean;
+  safetyFlag: string | null;
+} {
+  const route = request.phase5Context?.route;
+  if (route?.read_only !== true) {
+    return { messageText, allowDraft: true, safetyFlag: null };
+  }
+  if (providerClaimedWrite(messageText)) {
+    return {
+      messageText: readOnlyBoundaryMessage(request.language),
+      allowDraft: false,
+      safetyFlag: "provider_claimed_write_blocked",
+    };
+  }
+  return { messageText, allowDraft: false, safetyFlag: null };
+}
+
+function providerClaimedWrite(value: string): boolean {
+  return /已保存|已修改|已应用|已删除|已经保存|已经修改|saved|deleted|changed your goal|updated your goal|applied carb taper/i
+    .test(value);
+}
+
+function readOnlyBoundaryMessage(language: "zh" | "en"): string {
+  return language === "zh"
+    ? "我不能直接写入、删除记录、修改目标或应用策略。请在对应页面手动确认这些操作；我可以说明需要检查哪些数据和下一步怎么操作。"
+    : "I cannot directly write records, delete records, change goals, or apply strategies. Use the normal confirmed UI for those actions; I can explain what to check and what to do next.";
+}
+
+async function updateDebugSummary(
+  env: GatewayEnv,
+  debugSummaryId: string,
+  request: GatewayRequest,
+  evidence: Phase5Evidence,
+  providerId: string,
+): Promise<void> {
+  const context = request.phase5Context;
+  try {
+    const response = await fetch(
+      `${env.supabaseUrl}/rest/v1/ai_debug_summaries?id=eq.${debugSummaryId}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...serviceHeaders(env),
+          prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          intent: request.workflowType,
+          intent_confidence: context?.route.confidence ?? null,
+          called_tools_json: unique([
+            providerId,
+            ...(context?.called_tools ?? []),
+          ]),
+          retrieved_dimensions_json: [
+            ...(context?.retrieved_dimensions ?? []),
+            ...evidence.document_sources.map((source) =>
+              `${source.doc_path}#${source.section_id}`
+            ),
+          ],
+          missing_dimensions_json: evidence.missing_dimensions,
+          safety_flags_json: evidence.safety_flags,
+          schema_validation_status: evidence.user_final_action === "blocked"
+            ? "blocked"
+            : "passed",
+          user_final_action: evidence.user_final_action,
+        }),
+      },
+    );
+    if (!response.ok) {
+      console.warn("phase5_debug_summary_patch_failed", {
+        status: response.status,
+      });
+      return;
+    }
+  } catch (error) {
+    console.warn("phase5_debug_summary_patch_error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
 }
 
 async function writeGatewayFailureLog(
@@ -361,8 +558,8 @@ async function writeGatewayFailureLog(
       model_choice: request?.modelChoice ?? null,
       model_provider: providerIdForChoice(request?.modelChoice ?? null),
       model: null,
-      prompt_version: "phase4_context_drafts_v1",
-      schema_version: "ai_chat_response.v1",
+      prompt_version: phase5PromptVersion,
+      schema_version: phase5SchemaVersion,
       profile_version: request?.profileVersion ?? null,
       status: params.status,
       error_code: params.code,
@@ -472,4 +669,8 @@ function imageOnlyMessage(request: GatewayRequest): string {
     return request.messageText;
   }
   return request.language === "zh" ? "请分析这些图片。" : "Please analyze these images.";
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim() !== ""))];
 }

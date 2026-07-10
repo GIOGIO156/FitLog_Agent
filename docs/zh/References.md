@@ -65,6 +65,8 @@ References 不用于：
 | REF-AI-03 | LLM application security | OWASP Top 10 for LLM Applications. | prompt injection、数据暴露、tool abuse 等安全考虑。 | 实现/安全评审前需核验当前版本。 |
 | REF-AI-04 | Structured model outputs and tool APIs | 所选模型供应商的官方 API 文档。 | schema validation、structured outputs、vision input 和 tool 边界实现。 | 供应商文档会变化；coding 时需核验当前文档。 |
 | REF-AI-05 | Data minimization and privacy-by-design principles | 来自主要监管或标准来源的 privacy engineering / privacy-by-design 指南。 | 支持最小必要上下文和避免不必要原始历史上传。 | 实际上线地区的法律合规需要单独审查。 |
+| REF-AI-06 | Document chunking patterns | LangChain text splitter documentation and Unstructured chunking documentation. | header-aware、recursive、title/element-aware document chunking 的工程参考。 | 不证明 FitLog 的最佳 chunk size 或检索质量；需要本地 retrieval tests 验证。 |
+| REF-AI-07 | Contextual retrieval | Anthropic engineering note on Contextual Retrieval. | 支持在检索前为 chunks 增加文档级上下文。 | 供应商工程建议，不保证正确性；FitLog 的上下文必须保持确定性或经过审查。 |
 
 FitLog-specific AI 产品边界：
 

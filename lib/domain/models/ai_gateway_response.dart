@@ -1,4 +1,5 @@
 import 'ai_gateway_error.dart';
+import 'ai_gateway_evidence.dart';
 import 'ai_gateway_request.dart';
 import 'ai_food_photo_analysis.dart';
 import 'ai_workout_draft.dart';
@@ -16,6 +17,7 @@ class AiGatewayResponse {
     this.clarificationQuestions = const <String>[],
     this.foodDraft,
     this.workoutDraft,
+    this.evidence,
     this.debugSummaryId,
     this.error,
     this.hasUnsupportedDraftPayload = false,
@@ -32,6 +34,7 @@ class AiGatewayResponse {
   final List<String> clarificationQuestions;
   final AiFoodDraft? foodDraft;
   final AiWorkoutDraft? workoutDraft;
+  final AiGatewayEvidence? evidence;
   final String? debugSummaryId;
   final AiGatewayError? error;
   final bool hasUnsupportedDraftPayload;
@@ -55,6 +58,7 @@ class AiGatewayResponse {
       'needs_clarification': needsClarification,
       'clarification_questions': clarificationQuestions,
       'draft': foodDraft != null ? foodDraft!.toJson() : workoutDraft?.toJson(),
+      'evidence': evidence?.toJson(),
       if (debugSummaryId != null) 'debug_summary_id': debugSummaryId,
       'error': error?.toJson(),
     };
@@ -96,6 +100,7 @@ class AiGatewayResponse {
       clarificationQuestions: _stringList(json['clarification_questions']),
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
+      evidence: AiGatewayEvidence.fromJsonOrNull(json['evidence']),
       debugSummaryId: json['debug_summary_id']?.toString(),
       error: AiGatewayError.fromJsonOrNull(json['error']),
       hasUnsupportedDraftPayload: hasUnsupportedDraftPayload,

@@ -65,6 +65,8 @@ References are not needed for:
 | REF-AI-03 | LLM application security | OWASP Top 10 for LLM Applications. | Security consideration for prompt injection, data exposure, and tool abuse. | Verify the current version before implementation/security review. |
 | REF-AI-04 | Structured model outputs and tool APIs | The selected model provider's official API documentation. | Schema validation, structured outputs, vision input, and tool boundary implementation. | Provider docs change; verify current docs during coding. |
 | REF-AI-05 | Data minimization and privacy-by-design principles | Privacy engineering and privacy-by-design guidance from primary regulatory or standards sources. | Supports sending minimal necessary context and avoiding unnecessary raw-history upload. | Legal compliance must be reviewed separately for the actual launch region. |
+| REF-AI-06 | Document chunking patterns | LangChain text splitter documentation and Unstructured chunking documentation. | Engineering references for header-aware, recursive, and title/element-aware document chunking. | Does not prove the best chunk size or retrieval quality for FitLog; verify with local retrieval tests. |
+| REF-AI-07 | Contextual retrieval | Anthropic engineering note on Contextual Retrieval. | Supports adding document-level context around chunks before retrieval. | Vendor guidance, not a guarantee of correctness; FitLog must keep context deterministic or reviewed. |
 
 FitLog-specific AI decisions that are product boundaries:
 

@@ -46,6 +46,7 @@ void main() {
         'workflow_type': 'auto',
         'model_choice': 'chatgpt',
         'model_provider': 'mock',
+        'final_answer_json': _evidenceSnapshotJson(),
         'attachments_metadata': <Map<String, dynamic>>[],
         'created_at': '2026-06-17T00:00:01Z',
       });
@@ -69,6 +70,7 @@ void main() {
       expect(messages.last.role, AiChatMessageRole.assistant);
       expect(assistant.toMap()['role'], 'assistant');
       expect(assistant.attachmentsMetadata, isEmpty);
+      expect(assistant.gatewayEvidence?.documentSources.single.heading, 'AI');
     });
 
     test('AiChatMessage rejects unsupported role and message type', () {
@@ -126,10 +128,28 @@ void main() {
       expect(json['model_choice'], 'chatgpt');
       expect(json['workflow_hint'], 'auto');
       expect(json['device_id'], 'dev_1');
+      expect(json['allow_record_summary_context'], isFalse);
       expect(json.containsKey('attachments'), isFalse);
       expect(json.containsKey('context_objects'), isFalse);
       expect(json.containsKey('draft'), isFalse);
       expect(json.containsKey('official_record_write'), isFalse);
+    });
+
+    test('serializes user record summary permission for Phase 5 context', () {
+      const request = AiGatewayRequest(
+        messageText: '复盘这周',
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.chatgpt,
+        workflowHint: AiGatewayWorkflowHint.weeklyReview,
+        deviceId: 'dev_1',
+        allowRecordSummaryContext: true,
+      );
+
+      final json = request.toJson();
+
+      expect(json['allow_record_summary_context'], isTrue);
+      expect(json.containsKey('phase5_context'), isFalse);
+      expect(json.containsKey('evidence'), isFalse);
     });
 
     test('serializes up to three image attachments for multimodal chat', () {
@@ -216,6 +236,7 @@ void main() {
         'needs_clarification': false,
         'clarification_questions': <String>[],
         'draft': null,
+        'evidence': _gatewayEvidenceJson(),
         'error': null,
         'debug_summary_id': 'dbg_1',
       });
@@ -225,6 +246,11 @@ void main() {
       expect(response.modelChoice, AiGatewayModelChoice.chatgpt);
       expect(response.modelProvider, 'openai');
       expect(response.messageText, '晚饭可以优先选择瘦肉或鱼虾。');
+      expect(response.evidence?.workflow, 'meal_decision');
+      expect(
+        response.evidence?.documentSources.single.docPath,
+        'docs/zh/AppGuide.md',
+      );
       expect(response.debugSummaryId, 'dbg_1');
       expect(response.hasUnsupportedDraftPayload, isFalse);
     });
@@ -430,6 +456,33 @@ void main() {
       expect(recordDraft.payload['exercises'], hasLength(1));
     });
   });
+}
+
+Map<String, dynamic> _evidenceSnapshotJson() {
+  return <String, dynamic>{
+    'schema_version': 'ai_chat_evidence.v1',
+    'evidence': _gatewayEvidenceJson(),
+  };
+}
+
+Map<String, dynamic> _gatewayEvidenceJson() {
+  return <String, dynamic>{
+    'workflow': 'meal_decision',
+    'context_objects': <String>['selected_day_summary'],
+    'document_sources': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'doc_path': 'docs/zh/AppGuide.md',
+        'heading': 'AI',
+        'section_id': 'ai',
+        'status': 'implemented',
+        'score': 1.2,
+        'excerpt': 'AI 页面是 Agent 入口。',
+      },
+    ],
+    'missing_dimensions': <String>[],
+    'safety_flags': <String>[],
+    'user_final_action': 'read_only',
+  };
 }
 
 Map<String, dynamic> _validDraftJson() {

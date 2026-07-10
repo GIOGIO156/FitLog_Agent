@@ -128,8 +128,8 @@ docs/
 
 File responsibilities:
 
-- `README.md`: project face and quick-start overview. Keep Chinese first and English second in the same file because the project primarily serves Chinese users. The two language sections must match in facts, scope, commands, and links. Do not append date-based update sections.
-- `CHANGELOG.md`: English only. Record dated changes under Added/Changed/Fixed/Validation style headings. State what changed, why it changed, and what problem it solved, but keep entries concise. Concise implementation details, engineering rationale, and complex bug/debugging lessons are allowed when they explain a shipped fix or help future maintainers diagnose similar failures. Do not store broad product design, architecture explanations, future notes, or agent memory here.
+- `README.md`: project face and quick-start overview. Keep Chinese first and English second in the same file because the project primarily serves Chinese users. The two language sections must match in facts, scope, commands, and links. Do not append date-based update sections. The README should tell a first-time reader what problem FitLog_Agent solves, who it is for, the product promise, major capabilities, privacy/AI boundaries, setup commands, and where to read detailed docs. Mention FitLog Local only as provenance/baseline when useful; do not frame the README primarily as a Local variant or migration status report.
+- `CHANGELOG.md`: English only. Record dated changes under Added/Changed/Fixed/Validation style headings. State what changed, why it changed, and what problem it solved, but keep entries concise. Concise implementation details, engineering rationale, and complex bug/debugging lessons are allowed when they explain a shipped fix or help future maintainers diagnose similar failures. Do not store broad product design, architecture explanations, future notes, roadmap details, implementation plans, or agent memory here.
 - `docs/en/Product.md` and `docs/zh/Product.md`: stable product design. Cover purpose, product principles, modules, workflows, UX behavior, implemented scope, non-goals, and code references. Do not write release notes here.
 - `docs/en/AppGuide.md` and `docs/zh/AppGuide.md`: app-area guide. Explain what each app module does, how it works at a high level, and which design file to read for details. Keep it navigational; do not duplicate all Product/Algorithm/Database content.
 - `docs/en/Methodology.md` and `docs/zh/Methodology.md`: user-facing method explanation. Explain why the app uses `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, net exercise calories, and strength calorie heuristics. Keep it understandable, evidence-aware, and honest about limitations.
@@ -146,6 +146,16 @@ Language and sync rules:
 - Keep docs concise but complete: every important field, mode, formula, boundary, and non-goal must appear exactly where it belongs.
 - New feature details should be integrated into the stable section they affect, not appended as "2026-xx update" blocks.
 - Historical implementation details belong in `CHANGELOG.md`; durable design facts belong in `README.md` or `docs/*`.
+
+Structure and content rules:
+
+- Stable docs are source-of-truth documents, not chronological ledgers. Avoid adding new sections whose main purpose is "Phase N", "Step N", "latest update", "current sprint", or "what changed today". Use capability-oriented headings such as "AI Workflows", "Document RAG", "Source Of Truth", or "Migration Policy".
+- Implementation phase names may appear as compact status labels only when they clarify current behavior. They should not dominate the document title, opening summary, or section structure. Detailed phase order, acceptance checklists, and rollout instructions belong in roadmap or phase plan files, not README/Product/AppGuide/Algorithm/Database/AgentDesign/References.
+- Keep README first-screen content product-led: problem, goal, value, boundaries, and how to start. Move long implementation-status paragraphs, UI micro-detail, migration history, and release chronology into the responsible design doc, engineering plan, or changelog.
+- Avoid mega-paragraphs in Markdown docs. If a paragraph mixes multiple modules, phases, UI details, backend details, and validation notes, split it or move details to the proper doc. A README overview should be skimmable before setup commands.
+- Product docs should describe user-visible behavior and product principles. AppGuide should help navigate app areas. Algorithm should hold formulas and decision logic. Database should hold schema/data-flow/source-of-truth facts. AgentDesign should hold AI boundaries, prompts/context/RAG/write rules. References should hold narrow citations only.
+- Future work can be documented only as explicit planned scope or non-goal boundaries. Do not let planned sections read as shipped behavior, and do not store broad future architecture in `CHANGELOG.md`.
+- Extra design files outside the required tree, such as cloud/local boundary docs or phase plans, must have a clear responsibility and link target. If an extra file becomes a phase log, acceptance checklist, or rollout plan, keep it outside stable product/design docs and avoid duplicating its content in README.
 
 Encoding and terminal-output rules:
 

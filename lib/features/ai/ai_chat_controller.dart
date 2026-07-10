@@ -198,6 +198,7 @@ class AiChatController extends ChangeNotifier {
     required String deviceId,
     String? selectedDate,
     String? profileVersion,
+    bool allowRecordSummaryContext = false,
     List<AiGatewayImageAttachment> attachments =
         const <AiGatewayImageAttachment>[],
   }) async {
@@ -230,6 +231,7 @@ class AiChatController extends ChangeNotifier {
       selectedDate: selectedDate,
       profileVersion: profileVersion,
       deviceId: deviceId,
+      allowRecordSummaryContext: allowRecordSummaryContext,
       client: const <String, dynamic>{
         'platform': 'flutter',
         'app_version': 'phase4',

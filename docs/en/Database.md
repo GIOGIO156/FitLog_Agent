@@ -4,7 +4,7 @@
 
 This document defines FitLog_Agent V1 schema, migrations, tables, fields, and storage concepts. Cloud/local authority, cache-first reads, write-success rules, refresh, failures, conflicts, and repair rules are defined in `CloudLocalDataBoundary.md`.
 
-The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, selected-day daily-summary local cache for Home stale-while-revalidate, app-side `daily_summaries` cloud upsert/recovery, bounded recent-summary warm cache, and confirmed-cache eviction. Phase 4 Step 1 adds the Supabase AI chat-history/request-log/debug-summary tables and Flutter AI Gateway contract models. Phase 4 Steps 2-4 add the `ai-chat-route` Gateway, service-owned chat-turn/session RPCs, OpenAI/Qwen text provider metadata, AI-page sending, and cloud history UI. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. Later RAG and Food Draft workflows should use cloud official records or summary builders rather than complete local SQLite.
+The copied source uses the FitLog Local SQLite schema for business records. Phase 2 adds Supabase-backed account, subscription-status, and Cloud Profile foundations. Phase 3 Cloud Records Foundation has landed the root auth gate, single active device, Cloud Records tables, active-device write guards for body/food/workout cloud writes, account-bound local cache metadata, cloud-backed body/food/workout repositories, selected-day daily-summary local cache for Home stale-while-revalidate, app-side `daily_summaries` cloud upsert/recovery, bounded recent-summary warm cache, and confirmed-cache eviction. Phase 4 Step 1 adds the Supabase AI chat-history/request-log/debug-summary tables and Flutter AI Gateway contract models. Phase 4 Steps 2-4 add the `ai-chat-route` Gateway, service-owned chat-turn/session RPCs, OpenAI/Qwen text provider metadata, AI-page sending, and cloud history UI. Phase 5 adds the `document_chunks` table, `search_document_chunks` RPC, generated document seed SQL, server-side structured context builders, Gateway evidence snapshots, and debug-summary context fields. After login, official records are cloud-authoritative; local SQLite is reduced to partial cache, draft storage, and runtime acceleration. RAG and Food Draft workflows use cloud official records, `daily_summaries`, or summary builders rather than complete local SQLite.
 
 ## Storage Overview
 
@@ -14,8 +14,8 @@ The copied source uses the FitLog Local SQLite schema for business records. Phas
 | Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `daily_summaries`. | Phase 3 migration added; body/food/workout reads and writes plus daily-summary upsert/recovery are wired through cloud-backed repositories. |
 | SharedPreferences | UI language preference, local theme preference, lightweight app preferences, per-account user-record summary permission, Cloud Profile display cache, Supabase registration-code PKCE verifier state, and tiny pending AI food analysis / AI Chat image picker-recovery markers, including AI Chat ready-background continuity state. | Implemented from Local baseline and Phase 2 account work; auth verifier, theme key, and picker recovery are local runtime/display state, not business record sync. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | Implemented from Local baseline. |
-| Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, AI chat sessions/messages, AI request logs, and compact debug summaries. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; Phase 4 Step 1 adds protected AI chat/log/debug tables; Phase 4 Steps 2-4 add the Gateway Edge Function, server-owned chat-turn/session RPCs, real text provider metadata, and app-side cloud history reads. |
-| AI document index | Searchable app documentation chunks for Document RAG. | Planned for Agent V1. |
+| Cloud database | Supabase Auth account identity, subscription entitlement rows, Cloud Profile, AI chat sessions/messages, AI request logs, compact debug summaries, and document chunks. | Phase 2 migration adds `subscriptions` and `cloud_profiles`; Phase 4 Step 1 adds protected AI chat/log/debug tables; Phase 4 Steps 2-4 add the Gateway Edge Function, server-owned chat-turn/session RPCs, real text provider metadata, and app-side cloud history reads; Phase 5 adds `document_chunks` and `search_document_chunks`. |
+| AI document index | Searchable app documentation chunks for Document RAG. | Implemented in Supabase Postgres with keyword/full-text/trigram retrieval and service-role-only writes. |
 | In-memory providers | Selected date, refresh version, app services, language state, runtime summaries. | Implemented from Local baseline. |
 
 Current local database name: `fitlog_local.db`.
@@ -311,9 +311,9 @@ AI boundary: Weekly Review may explain these records, but it must not silently c
 
 Agent V1 should reuse cloud daily summaries or service-built summaries for Structured RAG instead of uploading raw table rows by default, and it should not treat local SQLite cache as authoritative context.
 
-## Cloud Tables And Planned Tables
+## Cloud Tables And Storage Boundaries
 
-The following are service-side storage concepts for Agent V1. Phase 2 implements the Supabase `subscriptions` and `cloud_profiles` tables in `supabase/migrations/202606190001_phase2_account_profile.sql`, existing-project Cloud Profile compatibility in `supabase/migrations/202606230002_cloud_profile_schema_compat.sql`, body metric Cloud Profile compatibility in `supabase/migrations/202606230003_cloud_profile_body_metrics.sql`, and internal development redeem-code support in `supabase/migrations/202606230001_internal_subscription_codes.sql`. Phase 3 adds active-device RPCs, Cloud Records tables, RLS, soft delete, version/timestamp triggers, and the `daily_summaries` table in `supabase/migrations/202606260001_phase3_cloud_records.sql`. Phase 4 Step 1 adds AI chat/log/debug tables; Phase 4 Step 2 adds mock Gateway foundations; Phase 4 Steps 3/4 add `record_ai_chat_turn`, `archive_ai_chat_session`, `soft_delete_ai_chat_session`, service-role persistence for real text provider turns, and app-side cloud history reads.
+The following service-side storage concepts support Agent V1 account, subscription, Cloud Profile, Cloud Records, AI Chat, logging, and Document RAG behavior. The current schema is defined by Supabase migrations for account/profile foundations, internal entitlement testing, Cloud Records and active-device guards, AI chat/log/debug tables, chat operation RPCs, and the Document RAG index. This section describes durable table responsibilities rather than implementation order.
 
 ### `accounts`
 
@@ -568,7 +568,7 @@ Rules:
 
 - Phase 4 Step 1 creates the table with account-bound RLS for client reads.
 - Phase 4 Steps 2-4 Gateway writes one user message and one assistant message per accepted text turn; Phase 4 Step 6 keeps accepted image chat persisted as text messages while up to three images are forwarded only through the Gateway request.
-- `final_answer_json` may store a lightweight `ai_chat_artifacts.v1` snapshot for validated returned artifacts such as `food_draft.v1`. The snapshot is used to rebuild Preview pages after the user taps a review button; it is not an official record and is not a background draft queue.
+- `final_answer_json` may store a lightweight `ai_chat_artifacts.v1` snapshot for validated returned artifacts such as `food_draft.v1`, and may also store `ai_chat_evidence.v1` or an `evidence` object that summarizes retrieved Phase 5 context. Artifact snapshots rebuild Preview pages after the user taps a review button; evidence is read-only display/debug context. Neither is an official record or a background draft queue.
 - `role` is limited to `user` and `assistant`; `message_type` remains text-only for persisted chat history. Image bytes/base64 are not stored in `ai_chat_messages`.
 - Message order is deterministic by `message_sequence`, with timestamps and ids available as stable secondary fields.
 - A message must match its parent session's `account_id`.
@@ -598,7 +598,7 @@ Fields:
 - `image_count`
 - `created_at`
 
-Phase 4 Step 1 creates this table as a server-side operational record. Phase 4 chat writes Gateway success, blocked, timeout, provider failure, and error metadata from the server path, including sanitized provider/model metadata when available. Add Food AI food analysis writes `workflow_type = food_logging`, `model_choice = qwen`, `model_provider = qwen`, `schema_version = food_draft.v1`, and the accepted `image_count` for text-only requests (`0`) or up to three optional image requests. AI Chat image requests forward up to three images to Qwen through `ai-chat-route`, write the accepted `image_count`, and persist text plus validated artifact snapshots in chat history without storing original image bytes or base64 payloads. Authenticated clients do not receive direct table read policies. Production logs should prefer metadata and sanitized summaries over raw sensitive payloads.
+Phase 4 Step 1 creates this table as a server-side operational record. Phase 4 chat writes Gateway success, blocked, timeout, provider failure, and error metadata from the server path, including sanitized provider/model metadata when available. Phase 5 chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2` for `ai-chat-route` turns. Add Food AI food analysis writes `workflow_type = food_logging`, `model_choice = qwen`, `model_provider = qwen`, `schema_version = food_draft.v1`, and the accepted `image_count` for text-only requests (`0`) or up to three optional image requests. AI Chat image requests forward up to three images to Qwen through `ai-chat-route`, write the accepted `image_count`, and persist text plus validated artifact/evidence snapshots in chat history without storing original image bytes or base64 payloads. Authenticated clients do not receive direct table read policies. Production logs should prefer metadata and sanitized summaries over raw sensitive payloads.
 
 ### `ai_debug_summaries`
 
@@ -622,7 +622,7 @@ Fields:
 
 Rules:
 
-- Phase 4 Step 1 creates this table as a server-side operational record. Chat writes compact Gateway summaries. Add Food AI food analysis writes compact `food_photo_analysis` summaries with input kind, selected date, note presence, image count, image mime type and compressed byte length when present, schema validation status, and safety/error flags only. Authenticated clients do not receive direct table read policies.
+- Phase 4 Step 1 creates this table as a server-side operational record. Chat writes compact Gateway summaries. Phase 5 patches chat debug rows with routed intent confidence, called tools, retrieved dimensions, missing dimensions, safety flags, schema-validation status, and final action. Add Food AI food analysis writes compact `food_photo_analysis` summaries with input kind, selected date, note presence, image count, image mime type and compressed byte length when present, schema validation status, and safety/error flags only. Authenticated clients do not receive direct table read policies.
 - JSON fields are compact arrays, not unrestricted traces.
 - Production stores compact sanitized summaries.
 - User-facing UI shows final messages and draft cards, not debug traces.
@@ -634,26 +634,51 @@ Purpose: Document RAG over app docs.
 Fields:
 
 - `id`
-- language
-- source file
-- section path
-- content chunk
-- stable reference id
-- keyword/full-text index fields
-- optional embedding vector if vector search is used
-- updated timestamp
+- `language`
+- `doc_path`
+- `heading`
+- `heading_level`
+- `heading_path`
+- `section_id`
+- `chunk_index`
+- `chunk_count`
+- `content`
+- `context_prefix`
+- `context_note`
+- `tags`
+- `status`
+- `content_hash`
+- `generator_version`
+- `source_updated_at`
+- `created_at`
+- `updated_at`
 
 Allowed sources:
 
 - `docs/en/*`
 - `docs/zh/*`
+- root `README.md`
 - stable help snippets derived from design docs
 
-This table/index is for documents, not user business data.
+Rules:
+
+- Phase 5 creates this table in `202607080001_phase5_document_rag_index.sql`.
+- `search_document_chunks(input_language, input_query, input_limit)` is a service-role RPC that filters by language and ranks by full-query text search, trigram signals, and keyword-term overlap over heading, heading path, deterministic context prefix, optional reviewed context note, and chunk content. The term-overlap fallback keeps long natural-language questions from returning no rows when the exact full sentence does not match a chunk.
+- `supabase/seed_phase5_document_chunks.sql` is generated from stable docs by `tool/phase5_document_rag/build_document_chunks.mjs`; apply it manually after the migration in Supabase SQL editor.
+- Authenticated clients do not read or write this table directly. It is for documents, not user business data.
+- The migration name contains `document_rag_index` because only Document RAG needs new persistent SQL structure in Phase 5. Structured RAG reuses existing Cloud Profile, Cloud Records, and summary tables through `ai-chat-route` context builders.
+
+Ingestion maintenance rules:
+
+- Changes to `README.md` or indexed `docs/en/*` / `docs/zh/*` files do not automatically update cloud rows. Regenerate `supabase/seed_phase5_document_chunks.sql` and apply it to Supabase when the changed text affects App Logic Q&A.
+- A docs-only seed refresh does not require a Flutter rebuild or Edge Function redeploy. Redeploy the Edge Function only when retrieval, prompt, response schema, or evidence code changes.
+- Current Phase 5 ingestion uses Markdown header chunking plus recursive splitting inside each heading section. It splits by paragraphs first, then sentence or language-aware punctuation, then hard character limits.
+- The generator keeps non-empty short sections instead of dropping them by character threshold, adds deterministic contextual metadata through `heading_path`, `chunk_index`, `chunk_count`, and `context_prefix`, and reserves nullable `context_note` for future reviewed offline notes.
+- Regenerated seed SQL deletes the managed document corpus for the indexed source paths before inserting current chunks, so renamed or deleted headings do not remain searchable.
 
 ## Structured RAG Context Objects
 
-Structured RAG should pass compact typed objects, not arbitrary database access.
+Structured RAG passes compact typed objects, not arbitrary database access. Phase 5 builds these objects inside `ai-chat-route`; the Flutter client must not upload its own context object payload. There is no separate `structured_rag` SQL table because these objects are bounded runtime summaries over existing authoritative cloud sources. The SQL requirement is service-role read access to the underlying Cloud Profile, Cloud Records, and `daily_summaries` tables, plus service-role update access for `ai_debug_summaries`; `202607090001_phase5_structured_rag_service_role_grants.sql` provides those grants. User record-summary objects require `allow_record_summary_context = true` from the app's per-account permission; otherwise those dimensions stay missing and no record-summary table reads are performed.
 
 Recommended context objects:
 
@@ -666,6 +691,7 @@ Recommended context objects:
 | `body_metric_summary` | Cloud `body_metric_logs` summary builder. | Weight, body-fat, and waist availability. |
 | `weight_trend_summary` | Cloud `body_metric_logs` summary builder. | Trend only when enough data exists. |
 | `strategy_context` | Profile strategy settings and deterministic calculator output. | Includes `carb_cycling` or `carb_tapering` state when relevant. |
+| `document_context` | `document_chunks` through `search_document_chunks`. | Source document path, section id, heading path, chunk position, status, score, context prefix, optional context note, and excerpt. |
 
 ## Source Of Truth Summary
 
@@ -683,7 +709,7 @@ The complete authority boundary for Cloud Profile, Cloud Records, daily summarie
 | Daily summaries | Cloud summary table/service after Phase 3 |
 | AI chat history | Cloud after login |
 | AI request logs | Cloud/service logs |
-| Document RAG index | Cloud or bundled service index |
+| Document RAG index | Cloud `document_chunks` after Phase 5; generated seed from stable docs |
 | Export files | Local user-controlled files |
 
 Cache capacity, eviction eligibility, cache-first reads, `auth_required` handling, and repair policy live in `CloudLocalDataBoundary.md`.
@@ -714,9 +740,8 @@ Export should continue to cover:
 
 After Phase 3 hardening, export correctness comes from cloud official records, cloud summaries, or builders; local cache may accelerate reads but must not be required to be complete. The current export builder fetches cloud-backed food, workout, and body metric records before building XLSX/CSV tables and includes a Body Metrics table. Details live in `CloudLocalDataBoundary.md`. Cloud AI chat history and AI request logs are not part of the current record export unless a future privacy/export feature explicitly adds account-data export.
 
-## Not Implemented In Current Source
+## Storage Non-goals
 
-- Document RAG index
 - long-term image attachment storage
 - long-lived draft queues or automatic Chat draft writeback to official records
 - more than three Chat images or long-term image attachment storage
@@ -731,8 +756,9 @@ After Phase 3 hardening, export correctness comes from cloud official records, c
 - Workout: `lib/domain/models/workout_session.dart`, `lib/domain/models/workout_set.dart`, `lib/data/repositories/workout_repository.dart`
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
-- AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`
-- Supabase AI Gateway: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
+- AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`
+- Supabase AI Gateway: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
+- Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat and AI food analysis repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`
 - Export: `lib/export/xlsx_export_service.dart`, `lib/export/csv_export_service.dart`

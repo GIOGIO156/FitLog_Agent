@@ -2,99 +2,47 @@
 
 ## 中文
 
-### 概览
+### 项目目标
 
-FitLog_Agent V1 是从 FitLog Local 升级而来的云端 AI 辅助饮食与训练记录 App。它保留 Local 版已经实现的饮食记录、训练记录、确定性饮食/训练算法和本地导出能力，并在登录后把正式身体、饮食、训练记录统一到云端，再新增由云端 AI Gateway 支撑的订阅制 AI Chat 页面。
+FitLog_Agent 是一个 AI 辅助的饮食与训练记录 App。它面向想控制饮食、训练和体重变化，但又不想把大量精力花在查食物成分、估重量、算热量和反复手动录入上的用户。
 
-V1 的核心不是把整个 App 改成自动 AI Coach，也不是把本机 SQLite 变成完整历史镜像。V1 的目标是先建立登录前置的云端正式记录和本地 partial cache 边界，再让用户通过底部导航正中间的 AI 页面主动发起请求，完成拍照饮食估算、用餐决策、周复盘和 App 规则问答；AI 输出在用户确认前只作为草稿、建议、复盘或解释。
+传统饮食记录的难点是：用户需要理解食物组成、热量和宏量营养；最好在吃之前记录，否则吃完后很难判断实际分量；如果记录流程太慢，长期坚持会很困难。FitLog_Agent 的目标是把这些摩擦降下来：AI 可以根据文字或图片生成草稿、回答下一餐怎么吃、复盘最近记录、解释 App 规则；确定性算法仍负责目标、宏量、训练热量和策略边界；正式记录和目标变更仍由用户确认。
 
-注意：当前源码已完成 Phase 3 Cloud Records Foundation 及主要 hardening 链路：在账号与 Cloud Profile 基础上，新增 root auth gate、单 active device、Cloud Records migration、body/food/workout cloud-first 写入、本地 v15 partial cache metadata、cloud-backed repository、登录冷启动后台账号恢复、进入主界面后的 auth-session 本地记录账号绑定、Home selected-day daily summary confirmed cache、stale-while-revalidate 后台重算、`daily_summaries` 云端 upsert/恢复、30 天低优先级 summary warm cache、confirmed cache 淘汰，以及基于云端正式 records 的导出完整性。底部导航包含居中的 AI tab，并使用主题化浮动 pill，不在 pill 外绘制整行底色；非 AI 页面使用实体主题 pill 和导航等宽、页面背景色的底部遮挡层遮住滚动内容，AI 页面使用无此遮挡层的更透明玻璃 pill 让彩色背景露出；root shell 不再缩短页面或绘制导航整条底色，可滚动页面在自身内容底部预留导航阅读空间，Home 首屏盒子会扣除浮动导航占位，AI 页面背景继续延伸到导航后方。AI 页面有不可用状态、本机持久化模型选择器、只表达可用性的状态 pill、运行期输入草稿、账号/订阅状态入口和用户记录摘要授权开关；AI 背景使用单个全屏程序化液态渐变层，空白首页让顶部粉色和从中下部进入底部的蓝色在竖屏手机上更均衡，中间保留略小但足以包裹中心状态文案的绿色色带，且通过全屏流场采样让色彩持续变形，不移动局部圆形色块；发出第一条消息前的键盘输入仍保持首页可见动效，发出消息后、打开历史会话或等待回复/阅读消息时才切换为低幅度安静流动，不整体平移静态图、不完全静止也不抢夺聊天阅读注意力；Profile 页面未登录时显示纯色背景、居中的无星 FitLog logo base asset、基于 SVG 曲线并贴近 logo 右上角的饱和圆润 AI 四角星群错峰呼吸闪烁动画，星群位置经过轻微左下微调且最小态保持更饱满，顶部后端配置提示、登录 FitLog 入口、邮箱密码登录、注册账号入口、注册验证码和密码确认，并统一使用 app 主题字体 `NotoSansSC` 与中等/半粗登录文字层级；键盘关闭时静态未登录页不可上下滑动，输入框聚焦时切换为紧凑可滚动的键盘避让布局。登录后以 Cloud Profile 为正式资料来源，昵称等 Profile 信息保存到云端，不要求注册 username；登录态会保存在本机并在启动时恢复，除非用户主动退出或登录态无法恢复；Profile 页面修改先进入本地草稿，卡片显示已修改状态，昵称和当前身体资料不提供卡片内保存键，并通过底部“保存更改”一次性写入 Cloud Profile；Profile 顶部“订阅”入口打开紧凑模糊浮层，可刷新 AI 订阅状态，并支持输入开发期内部兑换码开启当前账号的 AI entitlement；Profile 底部账号卡片提供明确退出登录入口，退出账号会清空 auth session 和本地账号缓存但不删除云端正式记录。Phase 4 已把 AI 页面发送接入 `ai-chat-route`，支持登录、订阅和 active-device 校验后的文本消息发送、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、云端 chat history 读取/切换/新建/inline 重命名/确认删除、request log 和 compact debug summary 写入；AI Chat 可通过千问多模态处理最多三张 JPEG/PNG/WebP 图片，打开系统相机/相册前会保存本地恢复标记以便 Android activity 重建后恢复输入文字和图片附件；返回的 Food Draft 或 Workout Draft 会以 chat artifact 卡片展示，点击确认后才用 snapshot 重建 Food Preview 或训练编辑草稿；Add Food AI 食物分析已接入 `ai-food-photo-analyze`，支持纯文字描述或最多三张可选图片并生成 Food Draft，打开系统相机/相册前会保存本地恢复标记，随后进入 Food Preview，用户保存前不会写正式记录。模型 API key 只在 Supabase Edge Function 环境变量中配置。当前仍不引入 RAG、长期图片存储、正式业务数据自动写入或 AI 自动修改目标；AI Chat 的最多三图请求只通过千问多模态处理，返回文本、建议、Food Draft artifact 或 Workout Draft artifact，进入对应编辑页前需用户点击确认，用户保存前不会写正式记录。真实登录测试需要通过 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` 配置 Supabase；配置版客户端会使用本机 `SharedPreferences` 保存注册验证码所需的 PKCE verifier、Supabase auth session、AI provider 本机偏好，以及临时 AI 食物分析和 AI Chat 图片附件恢复标记。
+FitLog_Agent 继承 FitLog Local 的确定性记录和算法基础，但产品目标不是“Local 的云端变体说明书”。它是一个登录后以云端正式记录为权威、以 AI Chat 为主动辅助入口的 Agent V1 产品。
 
-登录和注册失败会保留当前表单，并通过统一系统通知显示可读原因；系统通知会按语义区分顶部轻量成功提示、明显错误/校验提示和保留 action 的提示，并避开底部导航与键盘。订阅状态加载失败不会把 Cloud Profile 资料页整体打断；只要 Cloud Profile 加载成功，Profile 仍可进入，AI 发送仍按订阅可用性关闭。内部兑换码只用于开发期内部 entitlement 管理测试，不代表生产支付或应用商店订阅流程已经完成。
-
-AI Chat artifact 的当前实现范围包括 Food Draft 和 Workout Draft：两者都只保存结构化 snapshot 与摘要，不长期保存原图；点击卡片后才重建对应编辑页，用户在编辑页保存前不会写正式饮食或训练记录。
-
-AI 页面中心文案优先使用已保存的 Cloud Profile 昵称；Profile 页只有在本地缓存元数据匹配当前登录账号时，才会在云端 Profile 刷新期间先显示缓存资料。订阅入口使用明确的状态徽标表示已开启、未开启、加载中或异常，不使用容易误解为未读提醒的独立绿点。
-
-Profile 的身体资料区包含年龄、身高、体重、性别、体脂和腰围；身体资料卡提供日历/新增身体记录入口，日历默认显示当天，允许选择当天返回当前资料视图，但只有过去日期会进入历史身体记录编辑态。选择过去日期后，日历下方显示具体日期，只有体重、体脂和腰围三项高亮可编辑，身体资料里的年龄、身高、性别以及页面其它区域和底部导航都会用更强的柔和淡化状态锁定，不额外叠加分块遮罩；已有历史记录会在日期条左侧显示红色删除键，删除前必须确认，确认弹窗使用红色危险操作而不是绿色填充按钮，删除后刷新身体趋势和相关 summary cache；没有历史记录的过去日期会显示三个空位，不用当前身体资料预填。身体资料内联输入框与所在卡片同色，并使用固定数值槽位，聚焦前后不会改变数据框大小；键盘弹出时，历史身体记录输入框会把当前编辑区滚到键盘上方。身体趋势卡片只读展示体重、体脂或腰围的 7/14/21/28 天折线，不承担记录入口；真实记录点按所选周期内的日期间隔从左向右延伸，记录不足等提示直接显示在图表区域内。Profile 还提供本地主题偏好，默认 Green，可切换为 Black/黑橙；主题只保存在本机 `SharedPreferences`，不进入 SQLite 或 Cloud Profile。当前身体资料没有卡片内保存键，会随底部“保存更改”写入 Cloud Profile；历史身体指标记录保留独立保存并进入云端 `body_metric_logs`，本地只保留 partial cache。
-
-### V1 范围
-
-FitLog_Agent V1 设计包含：
-
-- 云端账号、订阅和云端 Profile
-- 登录后的 Cloud Records：`body_metric_logs`、food/workout records 和 `daily_summaries`
-- 服务端统一管理的大模型 API key
-- AI Gateway、远程 LLM / 多模态模型调用和 schema validation
-- 底部导航正中间的沉浸式 AI Chat 页面
-- 全屏程序化液态渐变 AI 背景动效，以及未登录/未联网/未订阅时的灰色不可用状态
-- 左侧可折叠云端 Chat history
-- 拍照饮食估算、用餐建议、周复盘和 App 规则解释
-- 基于云端 summary/context builder 的 Structured RAG，以及面向 App 文档的 Document RAG
-- Chat 内 Food Draft、Workout Draft、推荐、复盘、规则解释卡片
-- 用户确认后才写入正式记录的草稿优先机制
-
-V1 不默认提供：
-
-- 一次性下发完整原始历史到本地 SQLite
-- 把本地 SQLite cache 当作 AI 或产品权威来源
-- 离线正式写入、复杂冲突合并或旧本机历史自动迁移
-- 用户业务数据向量库、长期 embedding、semantic memory 或 GraphRAG
-- 强 Agent、多 Agent 或长期 AI Coach
-- AI 自动修改目标、Profile、carb cycling、carb taper 或删除记录
-- 医疗诊断、治疗建议或儿童青少年治疗指导
-
-### AI Chat
-
-AI 页面位于底部导航正中间，当前导航结构为：
+### 产品承诺
 
 ```text
-Home | Food | AI | Workout | Profile
+降低记录成本。
+保留确定性饮食和训练规则。
+AI 只生成草稿、建议、复盘和解释。
+正式写入、删除和目标修改必须由用户确认。
 ```
 
-AI 页面是一个简单 Chat，而不是 quick chips 工作台。当前 AI 页面已实现全屏浅色背景、中心状态文案、底部输入框、最多三张图片附件、本机持久化 ChatGPT/千问模型选择器、只表达可用性的状态 pill、右上账号/订阅入口、左侧云端 chat history、新建会话、切换会话、inline 重命名、确认删除、用户记录摘要授权开关、用户 pending 消息、assistant loading 反馈、基础 assistant Markdown 渲染（段落、标题、列表、加粗、行内代码和代码块），以及 Chat Food Draft / Workout Draft artifact 卡片；Phase 4 已接入 Gateway client、服务端真实 provider 路由和云端消息持久化。云端正式记录源已经统一；发送只在登录、联网、订阅可用、active device 有效且后端 provider 已配置时开放。AI Chat 可通过千问处理最多三张 JPEG/PNG/WebP 图片，用于图片识食物、截图/照片配餐建议或带图复盘说明；请求会携带最近同会话文本和草稿 artifact 摘要，但不携带历史原图/base64，不调用 RAG，不做长期图片存储，也不自动写正式业务记录。
+### 核心能力
 
-AI 顶部模型/状态 pill 只显示紧凑可用性：满足发送条件时为“可用”，否则为“不可用”；具体账号、订阅、Profile、后端或 active-device 原因由状态面板和错误提示解释。
+- 饮食记录：手动录入、AI 食物分析、Food Draft 预览编辑、复制到日期和删除。
+- 训练记录：训练草稿、正式训练记录、自定义动作、力量和有氧热量估算。
+- Profile 与目标：Cloud Profile、饮食阶段、`energy_ratio`、`gram_per_kg`、carb cycling、carb tapering 和身体指标记录。
+- AI Chat：底部导航正中间的 AI 页面，支持文本、最多三张图片、ChatGPT/OpenAI 和千问/Qwen 服务端 provider。
+- 用餐决策：用户主动询问“今天还能吃什么”“这个外卖能点吗”等问题时，AI 使用必要的 Profile、summary 和上下文给建议。
+- 周复盘：AI 可以总结近期饮食、训练、体重趋势和数据缺口，但不能自动修改目标或策略。
+- App 规则问答：Document RAG 用于解释 FitLog 的算法、字段、隐私和 Agent 边界。
+- 导出：用户主动导出 XLSX 或 CSV ZIP。
 
-AI Chat 的用户气泡、发送/确认按钮、草稿 artifact 卡片边框、Markdown 强调色和 history 选中态读取当前本机主题：Green 保持绿色，Black/黑橙切换为柔和但明确的橙色。可用状态灯保持语义绿色，表示 provider 当前正常可用；全屏液态背景仍保持 AI 页面自己的粉绿蓝色场，不随黑橙主题整页变黑。
+### AI 与数据边界
 
-进入真实会话后，消息列表作为接近全屏的滚动层，从 AI SafeArea 顶部铺开，并通过内部 padding 把默认可读内容放在 history/account/provider 控件下方。列表使用不对称的轻柔 alpha 渐隐：顶部退场更长，以便已读消息滑入顶部控件后方时降低混杂感；底部退场更短，避免最后一条气泡像被渐变侵蚀。键盘未弹起时，输入框保持带正常阅读间距的底部悬浮 pill，消息列表 viewport 截止在输入框上方。键盘弹起时，输入框切换为贴住键盘顶部的完整悬浮实心 accessory，消息列表 viewport 延伸到输入框底部/键盘顶部，让输入框只以 pill 本体浮在内容上方，不再保留额外键盘上方底部背景带，也不依赖整块底部背景遮住消息；最后一条气泡和输入框之间的安全距离来自消息列表自己的底部 padding。发送新问题时，新用户气泡会在完成布局后锚到顶部可读边界，而不是锚到消息 viewport 的物理顶端或顶部渐变退场区，assistant loading 保持可见；发送中的活动轮次填充不会暴露成可滚动空白，最终回复出现后不再强制二次滚动。AI 背景始终是单个全屏动效层，使用过渡最小宽度和更平滑的采样避免粉蓝挤压时出现块状条纹；发出首条消息、打开历史会话或进入阅读态后整体变慢，而不是只让顶部或底部遮挡区移动。
+- 模型 API key 由服务端管理，用户不需要也不应该填写自己的模型 key。
+- AI 输出在确认前只是草稿、建议、复盘或解释。
+- AI 不会静默写入正式饮食、训练、Profile 或目标数据。
+- AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
+- 图片请求最多三张；默认不长期保存原图或 base64。
+- V1 不做用户业务数据向量库、长期 embedding、semantic memory 或 GraphRAG。
+- V1 不是医疗诊断、治疗建议或儿童青少年治疗指导工具。
 
-未发送的 AI 输入框内容是当前运行期内的设备级本地草稿。切换页面、离线或订阅状态变化都不应自动清空。点击发送后输入框立即清空，用户消息显示为 pending 气泡；如果发送失败，会恢复刚才尝试发送的草稿。退出登录或切换账号时应清空，避免上一账号上下文残留。
+### 饮食与训练规则
 
-除 Add Food 的拍照识别入口外，其他 Agent workflow 均从 AI Chat 发起。Chat 生成的 Food Draft / Workout Draft 只先显示结构化摘要和确认按钮；用户点击后才用已保存的 snapshot 重建 Food Preview 或训练编辑草稿页，最终仍由用户在对应编辑页保存。
-
-Chat 草稿回复采用一个稳定 envelope：面向用户的解释、估算依据和确认提示放在 `message.text`，可保存的结构化 Food Draft / Workout Draft 放在 `draft`，Edge Function 校验后只把原生 artifact 卡片展示给用户，不把 provider 原始 JSON 当普通 assistant 消息渲染。当 Food Draft 包含 items 时，餐品级重量、热量和宏量以 items 求和为准。Add Food 的 AI 食物分析仍走专用 `ai-food-photo-analyze` 路径，要求返回纯结构化 Food Draft JSON，不需要聊天式解释。
-
-### 核心功能
-
-饮食记录：
-
-- Add Food 把 AI 食物分析作为第一入口；用户可直接描述食物，也可拍照或一次选择最多三张相册图片，可点按缩略图切换放大预览，由服务端千问返回 Food Draft。
-- 继续支持手动录入、外部 AI JSON 粘贴 fallback、预览编辑、复制到指定日期和删除。
-- AI 不确定肉类、分量、是否已吃完或烹饪方式时，应先追问。
-- AI 食物分析 Food Draft 会进入现有 Food Preview 编辑页；Chat Food Draft 先显示 artifact 卡片，用户点击后才用 snapshot 打开 Food Preview。
-- 用户确认保存后才写入 `food_records` / `food_items`。
-
-用餐决策：
-
-- 用户可在 AI Chat 中询问“今天还能吃什么”“这个外卖能点吗”“冰箱里这些怎么搭配”。
-- AI 使用云端 Profile 与必要的云端 selected-day summary。
-- 推荐不等于正式记录；用户选择方案后才可生成 Food Draft。
-
-周复盘：
-
-- AI 可基于云端 7 / 14 天摘要总结行为模式、数据缺口、主要问题和少量行动建议。
-- Weekly Review 不能自动修改目标、训练频率、`diet_plan_strategy`、carb cycling 设置或 carb taper 状态。
-
-App 规则问答：
-
-- 用户可询问 BMR、TDEE、`gram_per_kg`、`energy_ratio`、carb cycling、carb taper、运动消耗等规则。
-- 中文问题检索中文文档，英文问题检索英文文档，并返回来源 section。
-
-### 饮食与训练模型
-
-Agent V1 必须继承 Local 版确定性算法：
+FitLog_Agent 保留确定性算法作为正式目标和摘要的来源。
 
 ```text
 diet_goal_phase:
@@ -116,31 +64,26 @@ diet_plan_strategy:
 - `diet_goal_phase` 是 cutting / bulking 语义来源。
 - `energy_ratio` 下 kcal target / intake / remaining 是主信号。
 - `gram_per_kg` 下宏量克数是主目标，kcal 是辅助信息。
-- `carb_cycling` 是本地策略层，不是 AI 自动配餐。
-- `carb_tapering` 是本地 review + 用户确认流程，不是 AI 自动减碳。
-- 训练消耗仍由本地确定性规则计算。
+- `carb_cycling` 是用户配置的策略层，不是 AI 自动配餐。
+- `carb_tapering` 是复盘和用户确认流程，不是 AI 自动减碳。
+- 训练消耗仍由确定性规则计算。
 
-### 云端与本地数据边界
+### 云端与本地数据
 
-Phase 3 的目标是让登录后的 body / food / workout 正式记录和 daily summaries 以云端为 source of truth，本地 SQLite 只做 partial cache、草稿和运行期加速。完整的云端/本地权威、cache-first 读取、warm cache、写入成功条件、异常、冲突和修复规则统一维护在 [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) / [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md)；README 只保留入口摘要。
+登录后，正式 Profile、身体指标、饮食、训练和 daily summaries 以云端为权威来源。本地 SQLite 保留为 partial cache、草稿存储和运行期加速层。FitLog_Agent 使用单 active device 策略；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入。
 
-V1 采用单 active device，last login wins；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入并回到登录/接管路径。
-
-旧本机历史迁移、离线正式写入和复杂端云冲突合并不阻塞 Phase 3；它们属于 Post-V1 增强，需要单独确认迁移、冲突 UI、导出和隐私规则。
+完整的云端/本地权威、cache-first 读取、warm cache、写入成功条件、异常、冲突和修复规则见 [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) / [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md)。
 
 ### 技术栈
 
 - Flutter + Dart
 - SQLite via `sqflite`
 - `provider` 用于应用服务和 UI 状态
-- `shared_preferences` 保存语言偏好和轻量本地状态
-- `image_picker` 用于 Add Food 拍照/相册图片选择
-- `excel` 用于 XLSX 导出
-- `csv` 和 `archive` 用于 CSV ZIP 导出
-- `supabase` Dart client 用于 Auth、订阅状态、Cloud Profile 和 Cloud Records 访问
-- Agent V1 后端选型锁定为 Supabase Auth、Postgres、Storage 和 Edge Functions
-- Agent V1 AI providers 为 OpenAI / ChatGPT 与千问 / Qwen，模型 key 由服务端统一管理
-- Agent V1 订阅开发期使用服务端内部 entitlement 调试账号
+- `shared_preferences` 保存语言、主题和轻量本地状态
+- `image_picker` 用于相机/相册图片选择
+- `excel`、`csv`、`archive` 用于导出
+- Supabase Auth、Postgres、Storage、Edge Functions
+- OpenAI / ChatGPT 与千问 / Qwen 服务端 provider
 
 ### 快速开始
 
@@ -149,7 +92,7 @@ V1 采用单 active device，last login wins；新设备登录会接管账号，
 - Flutter 3.x
 - Dart 3.x
 - Android Studio 或 VS Code
-- Android 模拟器或真机，当前以 Android 工作流优先
+- Android 模拟器或真机
 
 常用命令：
 
@@ -161,7 +104,7 @@ flutter test
 flutter build apk --debug --split-per-abi
 ```
 
-账号/Profile 和 Cloud Records 测试需要提供 Supabase 配置：
+账号、Cloud Profile、Cloud Records 和真实 AI Gateway 测试需要 Supabase 配置：
 
 ```bash
 flutter run --dart-define=SUPABASE_URL=<url> --dart-define=SUPABASE_ANON_KEY=<anon-key>
@@ -178,125 +121,73 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 
 | 文件 | 用途 |
 | --- | --- |
-| [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | Agent V1 产品与实现设计源文档。 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 从当前 Local 源码落地到 Agent V1 的中文工程阶段计划、执行步骤、验证方式和人工审查清单。 |
-| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Phase 0 API contract 草案，记录接口形状、数据边界和已锁定的技术选择。 |
-| [CHANGELOG.md](CHANGELOG.md) | 英文记录 dated changes，说明改了什么、为什么改、解决什么问题和如何验证。 |
-| [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | 产品范围、原则、模块、workflow、边界和代码引用。 |
-| [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | 各 App 页面如何工作，尤其是 AI Chat、Profile、Food、Workout 和 Export。 |
-| [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | 面向用户解释算法、AI 辅助、确认机制和建议边界。 |
-| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | 公式、确定性算法、Context Builder、AI 输出校验和算法边界。 |
-| [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | 本地 SQLite、Cloud Profile、Cloud Records、AI Chat、AI logs 和 Document RAG index 的 schema、migration、表和字段。 |
-| [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | Phase 3 云端/本地权威、cache-first、warm cache、写入成功标准、异常、冲突和修复规则。 |
-| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | Agent V1 架构、权限、RAG、AI Gateway、草稿确认和隐私边界。 |
+| [CHANGELOG.md](CHANGELOG.md) | 英文 dated changes，说明改了什么、为什么改、解决什么问题和如何验证。 |
+| [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | 产品目的、原则、模块、工作流、边界和代码引用。 |
+| [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | App 各区域如何工作，以及应该阅读哪些设计文件。 |
+| [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | 面向用户解释为什么这样设计饮食、训练、AI 和确认流程。 |
+| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | 公式、确定性算法、context builder、workflow 算法和算法边界。 |
+| [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | SQLite、Cloud Profile、Cloud Records、AI Chat、日志和 Document RAG index 的 schema 与数据流。 |
+| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | AI Gateway、RAG、权限、草稿确认、请求留存和隐私边界。 |
 | [docs/en/References.md](docs/en/References.md) / [docs/zh/References.md](docs/zh/References.md) | 算法、工程、AI/RAG、隐私引用和证据边界。 |
+| [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | 云端/本地权威、cache、写入、读取、异常、冲突和修复规则。 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 工程阶段计划、执行步骤、验证方式和人工审查清单。 |
+| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | API contract 草案和接口边界。 |
+| [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 工程计划、部署和验收说明。 |
 
-Local 版历史基准保留在 `docs/local/` 下。
+Local 版本基线保留在 `docs/local/`。
 
 ### 隐私与安全
 
-- AI 请求可能会将用户文字、图片、云端 Profile 字段和必要云端记录摘要发送到 FitLog AI Gateway。
-- 原始图片默认不长期保存。
-- Chat history 登录后云端保存，本地不长期保存。
-- 删除账号时，应删除 Cloud Profile、云端正式记录和可识别 AI 会话数据。
-- AI 输出是估算、草稿、建议或解释，不是医疗建议。
-- AI 不得自动修改目标、策略、Profile 或正式记录。
+- AI 请求可能包含用户输入、图片、Cloud Profile 字段和必要的云端摘要上下文。
+- 用户记录摘要上下文需要用户在 App 内授权。
+- 原图默认不长期保存。
+- 登录后的云端 chat history 会保存文本 turn、轻量 artifact/evidence snapshot 和摘要。
+- AI 输出不是医疗建议。
+- AI 不能自动修改目标、策略、Profile 或正式记录。
 
 ## English
 
-### Overview
+### Purpose
 
-FitLog_Agent V1 upgrades FitLog Local into a cloud-assisted AI food and workout logging app. It preserves the Local version's food logging, workout logging, deterministic diet/workout algorithms, and local export workflows, moves signed-in official body, food, and workout records to the cloud, and then adds a subscription-based AI Chat page powered by a cloud AI Gateway.
+FitLog_Agent is an AI-assisted food and workout logging app. It is for users who want to manage diet, training, and body-weight changes without spending excessive effort looking up food composition, estimating portions, calculating calories/macros, and repeatedly entering records by hand.
 
-V1 does not turn the whole app into an autonomous AI coach, and it does not turn local SQLite into a complete history mirror. Its goal is to first establish login-gated cloud official records plus local partial-cache boundaries, then let users proactively use the centered AI tab for photo food estimation, meal decisions, weekly review, and app-rule Q&A. AI outputs remain drafts, recommendations, reviews, or explanations until the user confirms an action.
+Traditional food logging is hard because users need to understand ingredients, calories, and macros; recording is easiest before eating, while portions become harder to estimate after the meal; and a slow workflow is difficult to keep long term. FitLog_Agent reduces that friction: AI can turn text or images into drafts, help decide what to eat next, review recent behavior, and explain app rules. Deterministic algorithms still own targets, macros, workout calories, and strategy boundaries. Official records and goal changes still require user confirmation.
 
-Note: the current source has completed the Phase 3 Cloud Records Foundation and its main hardening chain: on top of the account and Cloud Profile foundation, it adds the root auth gate, single active device, Cloud Records migration, body/food/workout cloud-first writes, local v15 partial-cache metadata, cloud-backed repositories, non-blocking signed-in startup account recovery, auth-session local record account binding when the main shell opens, Home selected-day daily-summary confirmed cache, stale-while-revalidate background rebuilds, `daily_summaries` cloud upsert/recovery, low-priority 30-day summary warm cache, confirmed-cache eviction, and export completeness from cloud official records. Bottom navigation includes the centered AI tab and uses a theme-aware floating pill without a full-width strip outside the pill; non-AI pages use an opaque theme-surface pill plus a same-width page-background lower shield to cover scrolling content, the AI page uses a more transparent glass pill without that shield so the colorful background remains visible, the root shell no longer shrinks pages or paints a navigation-height strip, scrollable pages keep their own bottom reading padding, the Home first viewport subtracts the floating navigation obstruction, and the AI page background still extends behind navigation. The AI page has a disabled state, locally persisted provider selector, readiness-only status pill, runtime composer draft, account/subscription status entry, and user-record summary permission toggle; the AI background uses one full-screen programmatic liquid-gradient layer with visually balanced top pink and lower-middle-to-bottom blue on portrait phones, plus a slightly smaller soft mint center band around the center status text, the empty landing state keeps the color field visibly flowing through whole-field sampling rather than localized moving blobs, pre-conversation keyboard input keeps the visible landing motion, while sent conversations, opened history sessions, pending replies, and message reading switch it to low-amplitude quiet motion so it is not a translated static image, never freezes, and does not compete with chat reading; the Profile page shows a solid-background auth screen with the no-star FitLog logo base asset, saturated SVG-derived fixed rounded AI four-point sparkle cluster anchored to the logo's upper-right with a slight lower-left placement adjustment, fuller resting scale, staggered breathing pulses, top backend-configuration notice, a sign-in landing action, email-password sign-in, registration-only email code, password confirmation, and app theme `NotoSansSC` typography with moderate sign-in text weights. The signed-out screen stays locked when the keyboard is closed and switches to compact keyboard-aware scrolling while auth fields are focused. After login, Cloud Profile is the formal profile, including nickname/display name, and registration does not require a username; the auth session is persisted locally and recovered on startup until explicit sign-out or unrecoverable session failure; Profile edits first become a local page draft with modified section markers, nickname and current body fields do not have card-level save buttons, and the bottom Save Changes bar writes the full Cloud Profile in one save; the Profile header Subscription entry opens a compact blurred overlay that can refresh AI entitlement and redeem a development internal code for the current account; the bottom Profile Account card provides explicit sign-out, clearing the auth session and local account cache without deleting cloud official records. Phase 4 wires the AI page to `ai-chat-route` for text sending after login, subscription, and active-device checks, adds server-side OpenAI/ChatGPT and Qwen provider routing, loads/switches/creates/inline-renames/deletes-with-confirmation cloud chat history, and writes request logs plus compact debug summaries; AI Chat can send up to three JPEG/PNG/WebP images through Qwen multimodal routing, stores a local recovery marker before opening the system camera/gallery picker so Android activity recreation can restore composer text and recovered attachments, and shows returned Food Drafts or Workout Drafts as Chat artifact cards that rebuild Food Preview or the workout editor draft after the user taps review, while Add Food AI Food Analysis is wired to `ai-food-photo-analyze`, accepts text-only descriptions or up to three optional images, stores a local recovery marker before opening camera/gallery, and opens Food Preview without writing an official record until the user saves. Model API keys live only in Supabase Edge Function environment variables. RAG, long-term image storage, automatic official business-record writes, and automatic AI goal changes are still outside the implemented scope; AI Chat handles up to three images through Qwen multimodal routing and can return text, recommendations, Food Draft artifacts, or Workout Draft artifacts that require user review before the corresponding editor and any official save. Real login testing requires `SUPABASE_URL` and `SUPABASE_ANON_KEY` Supabase configuration; configured clients use local `SharedPreferences` storage for the registration code PKCE verifier state, Supabase auth session, local AI provider preference, and temporary AI food analysis plus AI Chat image-attachment recovery markers.
+FitLog_Agent inherits deterministic logging and algorithm foundations from FitLog Local, but this README describes FitLog_Agent as its own Agent V1 product: signed-in cloud official records plus an AI Chat entry for user-initiated assistance.
 
-Sign-in and registration failures keep the current form mounted and show readable feedback through the shared system notification layer; notifications distinguish lightweight top success notices, more visible error/validation notices, and action-preserving notices while avoiding bottom navigation and the keyboard. Subscription-status loading failures do not block the whole Cloud Profile page; when Cloud Profile loads successfully, Profile still opens, while AI sending remains gated by subscription availability. Internal redeem codes are only for development entitlement management testing; they do not represent production payment or app-store subscription flows.
-
-The current AI Chat artifact scope includes Food Draft and Workout Draft: both store only structured snapshots and summaries, do not keep original images long-term, rebuild the corresponding editor only after the user taps the card, and write no official food or workout record until the user saves in that editor.
-
-The AI page center status reads the saved Cloud Profile nickname first. The Profile page may show cached profile values during cloud refresh only when the cache metadata matches the current signed-in account. The Subscription entry uses explicit status badges for active, inactive, loading, and error states instead of a standalone dot that could read as an unread notification.
-
-The Profile body section includes age, height, weight, sex, body-fat percentage, and waist circumference. The Body Profile card provides the calendar/add body-record entry: the picker opens on today, selecting today returns to the current body profile view, and only past dates enter the historical body-record edit state. For a past date, the exact date appears under the calendar action, only weight, body-fat percentage, and waist circumference are highlighted and editable, while age, height, sex, the rest of the page, and bottom navigation are locked with stronger soft fading instead of extra block scrims. Existing historical records show a red delete button beside the date; deletion requires confirmation, uses a red destructive action instead of a green filled button, and refreshes Body Trends plus the affected summary cache. Past dates without a historical record show empty slots for the three editable metrics instead of current Profile values. Inline body-profile inputs share the metric tile surface and use a fixed value slot so focusing a field does not change tile size. When the keyboard opens, historical body-record inputs scroll the active edit area above the keyboard. The Body Trends card is read-only and shows 7/14/21/28-day charts for weight, body fat, or waist without serving as the record entry; real record points extend from left to right by real day spacing inside the selected range, and insufficient-record copy stays inside the chart area. Profile also provides a local theme preference: Green remains the default, and Black uses the Black Orange palette; the preference is stored in local `SharedPreferences`, not SQLite or Cloud Profile. Current body fields have no card-level save button and are saved with the bottom Save Changes Cloud Profile action, while historical body metric logs keep their own save action and use cloud `body_metric_logs` with local partial cache only.
-
-### V1 Scope
-
-FitLog_Agent V1 is designed to include:
-
-- cloud account, subscription, and Cloud Profile
-- signed-in Cloud Records: `body_metric_logs`, food/workout records, and `daily_summaries`
-- server-managed model API keys
-- AI Gateway, remote LLM / multimodal calls, and schema validation
-- a centered, immersive AI Chat page in bottom navigation
-- full-screen programmatic liquid-gradient AI background and grayscale disabled states for signed-out/offline/unsubscribed users
-- left collapsible cloud Chat history
-- photo food logging, meal decision, weekly review, and app logic Q&A
-- Structured RAG over cloud summary/context builders and Document RAG over app documents
-- inline Food Draft, Workout Draft, recommendation, review, and rule-answer cards in Chat
-- draft-first confirmation before official writes
-
-V1 does not provide by default:
-
-- one-shot complete raw-history download into local SQLite
-- treating local SQLite cache as the authoritative AI or product source
-- offline official writes, complex conflict resolution, or automatic migration of old device history
-- user-data vector database, long-term embeddings, semantic memory, or GraphRAG
-- strong Agent, multi-Agent, or long-term AI coach behavior
-- automatic target, Profile, carb cycling, carb taper, or record deletion changes
-- medical diagnosis, treatment advice, or pediatric treatment guidance
-
-### AI Chat
-
-The AI page sits in the center of bottom navigation:
+### Product Promise
 
 ```text
-Home | Food | AI | Workout | Profile
+Make logging easier.
+Keep deterministic diet and workout rules.
+Use AI only for drafts, suggestions, reviews, and explanations.
+Require user confirmation for official writes, deletes, and goal changes.
 ```
 
-The AI page is a simple Chat surface, not a quick-chip workspace. The current AI page implements the full-screen soft background, center status, bottom composer, up to three image attachments, locally persisted ChatGPT/Qwen provider selector, readiness-only availability indicator, top-right account/subscription entry, cloud chat-history sidebar, new chat, session switching, inline rename, delete confirmation, user-record summary permission toggle, pending user messages, assistant loading feedback, basic assistant Markdown rendering for paragraphs, headings, lists, bold text, inline code, and code blocks, and Chat Food Draft / Workout Draft artifact cards; Phase 4 wires the Gateway client, server-side real provider routing, and cloud message persistence. The cloud official-record source is already unified; sending is enabled only when the user is logged in, online, subscribed, on the active device, and the backend provider is configured. AI Chat can send up to three JPEG/PNG/WebP images through Qwen for food recognition, screenshot/photo meal decisions, or image-assisted review explanation; requests include recent same-chat text plus draft artifact summaries, but not historical image bytes/base64, and the chat path does not call RAG, store images long-term, or write official business records automatically.
+### Core Capabilities
 
-The top provider/status pill shows only compact availability: `Ready` when sending is available and `Off` otherwise; specific account, subscription, Profile, backend, or active-device reasons live in the status sheet and error messages.
+- Food logging: manual entry, AI Food Analysis, Food Draft preview/edit, copy-to-date, and delete.
+- Workout logging: workout drafts, official workout records, custom exercises, and strength/cardio calorie estimates.
+- Profile and targets: Cloud Profile, diet phase, `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, and body metrics.
+- AI Chat: centered AI page with text, up to three images, and server-side ChatGPT/OpenAI plus Qwen providers.
+- Meal decisions: when users ask what to eat next, AI uses the minimum needed Profile, summary, and context.
+- Weekly review: AI can summarize recent food, training, weight trends, and data gaps, but cannot automatically change goals or strategies.
+- App logic Q&A: Document RAG explains FitLog algorithms, fields, privacy, and Agent boundaries.
+- Export: user-controlled XLSX or CSV ZIP export.
 
-AI Chat user bubbles, send/review buttons, draft artifact borders, Markdown accent color, and selected history rows read the current local theme: Green stays green, while Black / Black Orange switches those interaction accents to a soft but clear orange. The availability dot stays semantic green to indicate a ready provider. The full-screen liquid background keeps the AI page's own pink/mint/blue color field instead of turning the whole page black.
+### AI And Data Boundaries
 
-Once a real conversation exists, the message list behaves as a near-full-screen scroll layer that starts at the AI SafeArea top and uses internal padding to place readable content below the history/account/provider controls. The list uses asymmetric soft alpha edges: a longer top fade reduces visual mixing when already-read messages slide behind the top controls, while a shorter bottom fade keeps the final bubble from looking washed by the gradient. With the keyboard closed, the composer stays as the floating bottom pill with the normal reading gap, and the message viewport ends above it. With the keyboard open, the composer switches to a fully floating solid accessory position attached to the keyboard top; the message viewport extends to the composer bottom / keyboard top so only the pill surface floats above content, with no extra keyboard-above footer band or full footer plate, and the final-bubble safety distance comes from the message list's own bottom padding. Sending a new question anchors that user bubble to the readable top boundary after it has a real layout position, not to the physical viewport top or the top fade-out area, while the assistant loading bubble remains visible; send-time active-turn fill is not exposed as scrollable blank space, and the final reply does not force a second scroll. The AI background stays one full-screen animated layer, uses guarded transition widths plus smoother sampling to avoid blocky strips when pink and blue compress the mint band, and slows down as a whole after the first sent message, when a history session is opened, or in reading mode instead of moving only in top or bottom exposed areas.
+- Model API keys are server-managed; users do not provide model keys.
+- AI outputs are drafts, suggestions, reviews, or explanations until confirmed.
+- AI does not silently write official food, workout, Profile, or goal data.
+- AI does not automatically apply carb tapering, delete records, or change diet goals.
+- Image requests are limited to three images; original images or base64 payloads are not stored long term by default.
+- V1 does not create user-business-data vector databases, long-term embeddings, semantic memory, or GraphRAG.
+- V1 is not medical diagnosis, treatment advice, or pediatric treatment guidance.
 
-Unsent AI composer text is a device-local draft for the current app runtime. Page switches, offline state, or subscription-state changes should not clear it automatically. On send, the composer clears immediately and the user message appears as a pending bubble; if sending fails, the draft is restored. Logout or account switch should clear it so previous account context does not linger.
+### Diet And Workout Rules
 
-Except for the Add Food AI food-analysis shortcut, Agent workflows start from AI Chat. Chat-generated Food Draft / Workout Draft artifacts first show a structured summary and review button; tapping the button rebuilds Food Preview or the workout editor draft from the stored snapshot, and the user still has to save from the corresponding editor.
-
-Chat draft replies use a stable envelope: user-facing explanation, estimate rationale, and review instructions live in `message.text`, while saveable Food Draft / Workout Draft data lives in `draft`; after Edge Function validation, the app renders only native artifact cards and does not show raw provider JSON as ordinary assistant text. When a Food Draft contains items, meal-level weight, calories, and macros are derived from the item sum. Add Food AI Food Analysis still uses the dedicated `ai-food-photo-analyze` path and expects pure structured Food Draft JSON without chat-style explanation.
-
-### Core Features
-
-Food logging:
-
-- Add Food makes AI Food Analysis the first entry; the user can describe food directly or take/choose up to three images, tap thumbnails to switch the enlarged preview, and receive a Qwen Food Draft from the server.
-- Existing manual entry, external AI JSON paste fallback, preview/edit, copy-to-date, and delete flows remain.
-- AI should ask follow-up questions when meat type, portion, completion, or cooking method is uncertain.
-- AI Food Analysis drafts open in the existing Food Preview editor; Chat Food Drafts first appear as artifact cards and open Food Preview only after the user taps review.
-- Official `food_records` / `food_items` are written only after user confirmation.
-
-Meal decision:
-
-- Users can ask "What can I still eat today?", "Can I order this?", or "How should I combine these foods?"
-- AI uses Cloud Profile plus the minimum necessary cloud selected-day summary.
-- A recommendation is not a record; choosing a plan can create a Food Draft.
-
-Weekly review:
-
-- AI can summarize behavior patterns, data gaps, main issues, and a small number of action suggestions from cloud 7 / 14 day summaries.
-- Weekly Review cannot automatically change goals, training frequency, `diet_plan_strategy`, carb cycling settings, or carb taper state.
-
-App logic Q&A:
-
-- Users can ask about BMR, TDEE, `gram_per_kg`, `energy_ratio`, carb cycling, carb tapering, and exercise-calorie rules.
-- Chinese queries retrieve Chinese docs; English queries retrieve English docs; answers return source sections.
-
-### Diet And Workout Model
-
-Agent V1 must preserve the Local deterministic algorithms:
+FitLog_Agent preserves deterministic algorithms as the source for official targets and summaries.
 
 ```text
 diet_goal_phase:
@@ -318,31 +209,26 @@ Key boundaries:
 - `diet_goal_phase` is the source of cutting / bulking semantics.
 - In `energy_ratio`, kcal target / intake / remaining is primary.
 - In `gram_per_kg`, macro grams are primary and kcal is auxiliary.
-- `carb_cycling` is a local strategy layer, not AI meal automation.
-- `carb_tapering` is a local review plus user-confirmation flow, not AI automatic carb reduction.
-- Workout calories remain deterministic local calculations.
+- `carb_cycling` is a user-configured strategy layer, not AI meal automation.
+- `carb_tapering` is a review plus user-confirmation flow, not AI automatic carb reduction.
+- Workout calories remain deterministic calculations.
 
-### Cloud And Local Data Boundary
+### Cloud And Local Data
 
-Phase 3 connects signed-in body / food / workout official records to the cloud source of truth, while local SQLite becomes partial cache, draft storage, and runtime acceleration. The full cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair policy live in [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md); the README keeps only this entry summary.
+After sign-in, official Profile, body metrics, food, workout, and daily summaries use the cloud as the source of truth. Local SQLite remains partial cache, draft storage, and runtime acceleration. FitLog_Agent uses a single-active-device policy; a newer login takes over the account, and the older device stops official writes on the next cloud interaction.
 
-V1 uses one active device per account with last-login-wins behavior; a newer login takes over the account, and the older device stops official writes on its next cloud interaction and returns to sign-in/takeover flow.
-
-Old device-history migration, offline official writes, and complex client/cloud conflict resolution do not block Phase 3. They are Post-V1 enhancements that need separate migration, conflict UI, export, and privacy rules.
+The full cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair policy live in [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md).
 
 ### Tech Stack
 
 - Flutter + Dart
 - SQLite via `sqflite`
 - `provider` for app services and UI state
-- `shared_preferences` for language preference and lightweight local state
-- `image_picker` for Add Food camera/gallery image selection
-- `excel` for XLSX export
-- `csv` and `archive` for CSV ZIP export
-- `supabase` Dart client for Auth, subscription status, Cloud Profile, and Cloud Records access
-- Agent V1 backend is locked to Supabase Auth, Postgres, Storage, and Edge Functions
-- Agent V1 AI providers are OpenAI / ChatGPT and Qwen, with model keys managed server-side
-- Agent V1 subscription development uses server-side internal entitlement debug accounts
+- `shared_preferences` for language, theme, and lightweight local state
+- `image_picker` for camera/gallery image selection
+- `excel`, `csv`, and `archive` for export
+- Supabase Auth, Postgres, Storage, and Edge Functions
+- OpenAI / ChatGPT and Qwen server-side providers
 
 ### Quick Start
 
@@ -351,7 +237,7 @@ Requirements:
 - Flutter 3.x
 - Dart 3.x
 - Android Studio or VS Code
-- Android emulator or physical device; Android workflow is currently primary
+- Android emulator or physical device
 
 Common commands:
 
@@ -363,7 +249,7 @@ flutter test
 flutter build apk --debug --split-per-abi
 ```
 
-Account/Profile and Cloud Records testing needs Supabase configuration:
+Account, Cloud Profile, Cloud Records, and real AI Gateway testing need Supabase configuration:
 
 ```bash
 flutter run --dart-define=SUPABASE_URL=<url> --dart-define=SUPABASE_ANON_KEY=<anon-key>
@@ -380,26 +266,26 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 
 | File | Purpose |
 | --- | --- |
-| [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | Source design for Agent V1 product and implementation behavior. |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Chinese engineering roadmap from the current Local source to Agent V1, including phases, execution steps, validation, and manual review checklists. |
-| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Phase 0 API contract draft covering endpoint shape, data boundaries, and locked technical choices. |
 | [CHANGELOG.md](CHANGELOG.md) | English dated changes: what changed, why, what problem it solved, and validation. |
-| [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | Product scope, principles, modules, workflows, boundaries, and code references. |
-| [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | How each app area works, especially AI Chat, Profile, Food, Workout, and Export. |
-| [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | User-facing explanation of algorithms, AI assistance, confirmation, and advice boundaries. |
-| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | Formulas, deterministic algorithms, Context Builder, AI validation, and algorithm boundaries. |
-| [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | Schema, migrations, tables, and fields for local SQLite, Cloud Profile, Cloud Records, AI Chat, AI logs, and Document RAG index. |
-| [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | Phase 3 cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair policy. |
-| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | Agent V1 architecture, permissions, RAG, AI Gateway, draft confirmation, and privacy boundaries. |
+| [docs/en/Product.md](docs/en/Product.md) / [docs/zh/Product.md](docs/zh/Product.md) | Product purpose, principles, modules, workflows, boundaries, and code references. |
+| [docs/en/AppGuide.md](docs/en/AppGuide.md) / [docs/zh/AppGuide.md](docs/zh/AppGuide.md) | How each app area works and which design files to read. |
+| [docs/en/Methodology.md](docs/en/Methodology.md) / [docs/zh/Methodology.md](docs/zh/Methodology.md) | User-facing explanation of diet, workout, AI, and confirmation choices. |
+| [docs/en/Algorithm.md](docs/en/Algorithm.md) / [docs/zh/Algorithm.md](docs/zh/Algorithm.md) | Formulas, deterministic algorithms, context builders, workflow algorithms, and boundaries. |
+| [docs/en/Database.md](docs/en/Database.md) / [docs/zh/Database.md](docs/zh/Database.md) | SQLite, Cloud Profile, Cloud Records, AI Chat, logs, and Document RAG index schema and data flow. |
+| [docs/en/AgentDesign.md](docs/en/AgentDesign.md) / [docs/zh/AgentDesign.md](docs/zh/AgentDesign.md) | AI Gateway, RAG, permissions, draft confirmation, request retention, and privacy boundaries. |
 | [docs/en/References.md](docs/en/References.md) / [docs/zh/References.md](docs/zh/References.md) | Algorithm, engineering, AI/RAG, privacy references, and evidence boundaries. |
+| [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | Cloud/local authority, cache, writes, reads, failures, conflicts, and repair rules. |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Engineering phase plan, execution steps, validation, and manual review checklist. |
+| [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | API contract draft and interface boundaries. |
+| [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 engineering plan, deployment, and acceptance notes. |
 
-The Local version baseline is retained under `docs/local/`.
+The Local version baseline remains under `docs/local/`.
 
 ### Privacy And Safety
 
-- AI requests may send user text, images, Cloud Profile fields, and necessary cloud record summaries to FitLog AI Gateway.
-- Original images are not stored long-term by default.
-- Chat history is stored in the cloud after sign-in and is not stored locally long-term.
-- Account deletion should remove Cloud Profile, cloud official records, and identifiable AI conversation data.
-- AI outputs are estimates, drafts, recommendations, reviews, or explanations, not medical advice.
+- AI requests may include user text, images, Cloud Profile fields, and necessary cloud summary context.
+- User-record summary context requires in-app user permission.
+- Original images are not stored long term by default.
+- Signed-in cloud chat history stores text turns plus lightweight artifact/evidence snapshots and summaries.
+- AI outputs are not medical advice.
 - AI must not automatically modify goals, strategies, Profile, or official records.

@@ -387,10 +387,12 @@ AI Gateway 只应接收当前 workflow 需要的上下文。
 1. 识别用户 intent 和选中日期。
 2. 构建 profile 和 selected-day context。
 3. 判断当前模式是 `energy_ratio` 还是 `gram_per_kg`。
-4. 总结 remaining kcal/macros 或 macro gaps。
+4. 总结该模式的主判断信号：`energy_ratio` 使用 kcal target/intake/remaining，`gram_per_kg` 使用 protein/carbs/fat 克数缺口。
 5. 考虑训练上下文和策略上下文。
 6. 生成实用建议。
 7. 不做正式写入。
+
+在 `gram_per_kg` 中，AI 用餐建议应先基于宏量克数缺口判断，kcal remaining 只是辅助监控值。在 `energy_ratio` 中，AI 用餐建议应先基于 kcal remaining 判断，宏量结构作为次级参考。
 
 ### Weekly Review
 
@@ -410,7 +412,7 @@ AI Gateway 只应接收当前 workflow 需要的上下文。
 
 1. 检测语言。
 2. 检索同语言文档。
-3. 根据文档和当前 App 上下文回答。
+3. 使用检测到的用户消息语言，根据文档和当前 App 上下文回答。
 4. 区分已实现行为和计划中的 Agent V1 行为。
 
 ## 算法边界

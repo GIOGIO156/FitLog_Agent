@@ -228,9 +228,9 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - summary 缺失或过期时，builder 可以从云端正式 records 重建并 upsert 云端 projection。
 - summary rebuild 不得静默修改正式 records。
 
-## Phase 3 Daily Summary 策略
+## Daily Summary 云端策略
 
-- Phase 3 默认使用 app/service-side deterministic builder 重建 summary，并通过 cloud repository upsert `daily_summaries`；暂不要求 DB trigger 或 Edge Function 维护 summary。
+- 当前设计使用 app/service-side deterministic builder 重建 summary，并通过 cloud repository upsert `daily_summaries`；该 summary 策略暂不要求 DB trigger 或 Edge Function 维护 summary。
 - summary builder 必须复用现有确定性算法语义，不能把 `energy_ratio` 与 `gram_per_kg` 合并，也不能从 AI 输出推断正式目标。
 - 写入 food/workout/body records 成功后，change coordinator 应重建受影响日期的 summary，并更新本地 confirmed summary cache。
 - 读取 Home 或导出时，如果云端 summary 缺失、过期或版本不匹配，可以从云端正式 records 重建并 upsert。
@@ -278,9 +278,9 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 
 ## 冲突与修复
 
-- Phase 3 使用云端正式 records 作为冲突权威。
+- 云端正式 records 是冲突权威。
 - 本地已确认 cache 可以被云端 rebuild/refresh 结果覆盖。
-- 离线正式写入和自动端云合并不属于 Phase 3 范围。
+- 离线正式写入和自动端云合并不属于 V1 范围。
 - 版本冲突应提示 refresh/retry，而不是静默选择客户端 payload。
 - 修复流程必须显式、可解释，并基于云端正式 records 或可重建 projections。
 - 代码和 UI 必须区分本地 cache 删除与云端正式删除。
@@ -344,9 +344,9 @@ AI：
 - 正确性以云端正式 records、云端 summaries 或 builders 为准。
 - 本地 cache 可以加速读取，但不能要求完整。
 
-## Phase 3 目标实现映射
+## 实现职责
 
-以下是 Phase 3 落地时应使用或新增的实现位置。具体文件名可以随实现微调，但职责边界应保持一致。
+当前实现职责和代码引用：
 
 - Supabase migration：`supabase/migrations/202606260001_phase3_cloud_records.sql`。
 - 本地 SQLite schema：`lib/data/db/app_database.dart`。
@@ -360,21 +360,11 @@ AI：
 - 账号状态机、Cloud Profile 展示 cache、订阅展示 cache、后台恢复和刷新退避：`lib/features/account/account_controller.dart`。
 - Active device claim / guard：Supabase RPC `claim_active_device`、`assert_active_device`、`release_active_device`，Flutter repository 在 `lib/data/repositories/active_device_repository.dart`，运行时状态在 `lib/domain/models/cloud_runtime_context.dart`。
 - Profile gate 必须把 `offline_readonly` 和“已有 matching cache 的 refresh error”当成可展示状态，不能整页错误覆盖。
-- AI 页面可以读取订阅展示 cache 做状态呈现，但真正发送能力仍受 Phase/Gateway/服务端 entitlement 控制。
+- AI 页面可以读取订阅展示 cache 做状态呈现，但真正发送能力仍受 Gateway 和服务端 entitlement 控制。
 
-## Phase 3 落地顺序与测试
+## 回归覆盖
 
-推荐落地顺序：
-
-1. 先加 Auth Boundary 回归测试：未登录页按钮必须有处理中/错误反馈；登录入口不依赖 records cache、summary、warm cache 或订阅刷新。
-2. 建 Supabase Cloud Records migration、RLS、soft delete、version/timestamp 字段和最小 seed/test SQL。
-3. 建本地 confirmed cache/read-model metadata，不改 UI 行为前先确保账号隔离、pending/confirmed 和 version 字段清楚。
-4. 建 cloud records repositories 和 change coordinator，先用单日期 food/body record 跑通 cloud-first 写入和 read model 更新。
-5. 落地 Phase 3 daily summary builder、选中日期本地 summary cache 和云端 upsert 策略。
-6. 逐页接入 Home、Body/Profile、Food、Workout；每页都要保留 Local 交互语义，并加前台写入反馈。
-7. 最后接更完整的 warm cache、旧日期按需加载、cache eviction 和 export correctness；广义 warm cache 不得先于首屏稳定性落地。
-
-必须覆盖的回归测试：
+必须覆盖：
 
 - 后端未配置或网络失败时，登录/注册按钮不会 silent no-op。
 - 无 cache 的首次登录不会显示空 Home 后再跳变为真实 Home。
@@ -391,7 +381,7 @@ AI：
 - 本地 release/debug APK 应使用 `--dart-define-from-file=config/supabase.local.json`，或等价的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` defines 构建。
 - 没有这些 defines 的构建只是未配置 auth-shell 包；它不能验证 Supabase session 持久化、云端记录或云端/本地 cache 恢复。
 
-## Phase 3 验收标准
+## 验收标准
 
 - 未登录启动时显示 root auth gate，且不显示底部导航。
 - 登录/注册/退出入口不依赖 records cache、warm cache、daily summary 或订阅刷新；点击后必须有可见反馈。
@@ -406,7 +396,7 @@ AI：
 - 有匹配账号 Profile cache 时，Cloud Profile 或订阅后台刷新失败不会把 Profile 变成整页错误或持续自动重试循环。
 - 订阅刷新失败但存在上一份已确认 active/inactive cache 时，Profile 订阅状态保留上一份展示并标记 stale，不闪烁为 loading/error。
 - Body Trends 在云端 refresh 前先展示本地已确认记录，并且在可见窗口仍是 `partial_cache` 时不显示最终空态/记录不足态。
-- 已落地的 Home 选中日期 stale-while-revalidate cache 可以在首屏后后台刷新，且不能造成整页 loading 或可见布局跳动；当前 warm cache 已按同一规则预热最近 30 天 summaries。
+- Home 选中日期 stale-while-revalidate cache 可以在首屏后后台刷新，且不能造成整页 loading 或可见布局跳动；当前 warm cache 已按同一规则预热最近 30 天 summaries。
 - 云端写入失败不会创建或覆盖正式本地记录。
 - 前台新增、编辑、删除失败时有可读错误和重试/恢复路径，不出现点击无反应。
 - 旧设备不能在 `device_replaced` 后继续新增、编辑、删除或发送 AI；该错误不能被展示成普通 upload failure。

@@ -1,3 +1,8 @@
+import type {
+  Phase5ContextBundle,
+  Phase5Evidence,
+} from "./phase5_types.ts";
+
 export type AiGatewayErrorCode =
   | "auth_required"
   | "subscription_required"
@@ -27,7 +32,9 @@ export interface GatewayRequest {
   selectedDate: string | null;
   profileVersion: string | null;
   deviceId: string;
+  allowRecordSummaryContext: boolean;
   conversationContext: GatewayConversationContext | null;
+  phase5Context: Phase5ContextBundle | null;
 }
 
 export interface GatewayImageAttachment {
@@ -143,7 +150,9 @@ const languages = new Set(["zh", "en"]);
 const unsupportedFutureFields = [
   "context_objects",
   "draft",
+  "evidence",
   "official_record_write",
+  "phase5_context",
   "rag_context",
   "tool_calls",
 ];
@@ -210,7 +219,9 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     selectedDate: nullableString(body.selected_date),
     profileVersion: nullableString(body.profile_version),
     deviceId,
+    allowRecordSummaryContext: body.allow_record_summary_context === true,
     conversationContext: parseConversationContext(body.conversation_context),
+    phase5Context: null,
   };
 }
 
@@ -253,6 +264,7 @@ export function gatewayResponse(params: {
   needsClarification?: boolean;
   clarificationQuestions?: string[];
   debugSummaryId?: string | null;
+  evidence?: Phase5Evidence | null;
   error?: GatewayErrorBody | null;
 }): Record<string, unknown> {
   return {
@@ -268,6 +280,7 @@ export function gatewayResponse(params: {
     needs_clarification: params.needsClarification ?? false,
     clarification_questions: params.clarificationQuestions ?? [],
     draft: params.draft ?? null,
+    evidence: params.evidence ?? null,
     error: params.error ?? null,
     debug_summary_id: params.debugSummaryId ?? null,
   };

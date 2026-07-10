@@ -387,10 +387,12 @@ Algorithmic flow:
 1. Identify user intent and selected date.
 2. Build profile and selected-day context.
 3. Determine whether mode is `energy_ratio` or `gram_per_kg`.
-4. Summarize remaining kcal/macros or macro gaps.
+4. Summarize the primary decision signal for that mode: kcal target/intake/remaining in `energy_ratio`, or protein/carbs/fat gram gaps in `gram_per_kg`.
 5. Consider workout context and strategy context.
 6. Generate practical advice.
 7. Avoid official writes.
+
+In `gram_per_kg`, AI meal advice should lead with macro gram gaps and treat kcal remaining as auxiliary monitoring. In `energy_ratio`, AI meal advice should lead with kcal remaining and use macro structure as secondary guidance.
 
 ### Weekly Review
 
@@ -410,7 +412,7 @@ Algorithmic flow:
 
 1. Detect language.
 2. Retrieve same-language documents.
-3. Answer from docs and current app context.
+3. Answer in the detected user-message language from docs and current app context.
 4. Distinguish implemented behavior from planned Agent V1 behavior.
 
 ## Algorithm Boundaries

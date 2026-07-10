@@ -58,6 +58,7 @@ class AiGatewayRequest {
     this.selectedDate,
     this.profileVersion,
     required this.deviceId,
+    this.allowRecordSummaryContext = false,
     this.client = const <String, dynamic>{},
     this.conversationContext,
   });
@@ -71,6 +72,7 @@ class AiGatewayRequest {
   final String? selectedDate;
   final String? profileVersion;
   final String deviceId;
+  final bool allowRecordSummaryContext;
   final Map<String, dynamic> client;
   final AiGatewayConversationContext? conversationContext;
 
@@ -88,6 +90,7 @@ class AiGatewayRequest {
       if (selectedDate != null) 'selected_date': selectedDate,
       if (profileVersion != null) 'profile_version': profileVersion,
       'device_id': deviceId,
+      'allow_record_summary_context': allowRecordSummaryContext,
       if (client.isNotEmpty) 'client': Map<String, dynamic>.from(client),
       if (conversationContext?.isNotEmpty == true)
         'conversation_context': conversationContext!.toJson(),

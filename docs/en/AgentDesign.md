@@ -4,7 +4,7 @@
 
 This document defines the AI and Agent boundary for FitLog_Agent V1.
 
-FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. The implemented Agent baseline includes the centered AI tab, account state, subscription status, Cloud Profile foundation, signed-in body/food/workout official records connected to the cloud source of truth, AI Chat through server-side OpenAI/Qwen providers, Qwen multimodal chat with up to three images, cloud chat history, inline Chat Food Draft and Workout Draft artifact cards, a compact same-chat context builder, and Add Food AI Food Analysis that creates an editable Food Draft from a text description and up to three optional images. It also adds Home selected-day summary cache with stale-while-revalidate, first-render account-bound cache binding after signed-in recovery, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, exports from cloud official records, and writes compact AI request/debug summaries. RAG, more than three Chat images, long-term image storage, and autonomous actions are later phases. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
+FitLog_Agent starts from the copied FitLog Local implementation. The current codebase still provides deterministic food logging, workout logging, profile settings, diet algorithms, local cache, and export. The implemented Agent baseline includes the centered AI tab, account state, subscription status, Cloud Profile foundation, signed-in body/food/workout official records connected to the cloud source of truth, AI Chat through server-side OpenAI/Qwen providers, Qwen multimodal chat with up to three images, cloud chat history, inline Chat Food Draft and Workout Draft artifact cards, a compact same-chat context builder, controlled Phase 5 Structured RAG and Document RAG for read-only workflows, and Add Food AI Food Analysis that creates an editable Food Draft from a text description and up to three optional images. It also adds Home selected-day summary cache with stale-while-revalidate, first-render account-bound cache binding after signed-in recovery, upserts rebuildable `daily_summaries` to the cloud, warms recent summaries after first render, exports from cloud official records, and writes compact AI request/debug summaries. More than three Chat images, long-term image storage, user-data vector memory, GraphRAG, open-ended tools, and autonomous actions remain out of scope. Agent V1 does not turn the app into an autonomous coach or a platform where the model can freely read and write the database.
 
 The durable rule is:
 
@@ -15,15 +15,13 @@ AI must not silently write official records, change goals, change strategies, or
 
 ## Current Implementation Baseline
 
-The current source has no on-device model execution. Remote AI calls go through Supabase Edge Functions with server-managed provider keys. The implemented Agent shell/account baseline includes the AI navigation entry, availability-gated chat page, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Cloud Records source-of-truth paths for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening are also implemented. Phase 4 Step 1 adds Supabase tables for AI chat sessions/messages, request logs, and compact debug summaries, plus Flutter contract models for AI Gateway request/response/error mapping. Phase 4 Steps 2-4 add the `ai-chat-route` Supabase Edge Function, server-owned chat-turn RPCs, AI-page Gateway client, cloud chat-history repository/controller, and server-side OpenAI/ChatGPT plus Qwen text provider routing. Phase 4 Step 5 adds local provider preference persistence, readiness-only status, inline chat rename/delete confirmation, and Add Food AI food analysis through `ai-food-photo-analyze`. Phase 4 Step 6 adds AI Chat attachments with up to three images through Qwen multimodal routing, parsed Food Draft responses, Chat artifact cards that rebuild Food Preview after a user tap, smoother AI-page background motion, and stable rename/loading transitions. The current Add Food analysis path accepts text-only food descriptions or up to three optional images, and it stores a tiny local picker-recovery marker before launching camera/gallery so Android activity restarts can restore the draft. The current AI Chat image attachment path also stores a small local picker-recovery marker before launching camera/gallery so Android activity restarts can restore composer text and recovered attachments. The current chat path also supports typed Workout Draft artifacts that rebuild the existing workout editor draft after a user tap, and it sends a compact same-chat context made from recent text and draft summaries. The implemented chat path does not run RAG, upload full record history, store image bytes long-term, or write official business records automatically.
+The current source has no on-device model execution. Remote AI calls go through Supabase Edge Functions with server-managed provider keys. The implemented Agent shell/account baseline includes the AI navigation entry, availability-gated chat page, account/subscription status surface, Profile login gate, Cloud Profile mapper/repository path, and user-record summary permission. Cloud Records source-of-truth paths for signed-in body, food, and workout records plus daily-summary cache/cloud projection hardening are also implemented. Phase 4 Step 1 adds Supabase tables for AI chat sessions/messages, request logs, and compact debug summaries, plus Flutter contract models for AI Gateway request/response/error mapping. Phase 4 Steps 2-4 add the `ai-chat-route` Supabase Edge Function, server-owned chat-turn RPCs, AI-page Gateway client, cloud chat-history repository/controller, and server-side OpenAI/ChatGPT plus Qwen text provider routing. Phase 4 Step 5 adds local provider preference persistence, readiness-only status, inline chat rename/delete confirmation, and Add Food AI food analysis through `ai-food-photo-analyze`. Phase 4 Step 6 adds AI Chat attachments with up to three images through Qwen multimodal routing, parsed Food Draft responses, Chat artifact cards that rebuild Food Preview after a user tap, smoother AI-page background motion, and stable rename/loading transitions. Phase 5 adds server-side workflow routing, read-only safety blocking, structured context builders over Cloud Profile, `daily_summaries`, food/workout/body summaries, keyword/full-text Document RAG over `document_chunks`, evidence returned in the Gateway response and persisted in `final_answer_json`, and compact debug-summary updates for called tools, retrieved dimensions, missing dimensions, safety flags, and final action. The current Add Food analysis path accepts text-only food descriptions or up to three optional images, and it stores a tiny local picker-recovery marker before launching camera/gallery so Android activity restarts can restore the draft. The current AI Chat image attachment path also stores a small local picker-recovery marker before launching camera/gallery so Android activity restarts can restore composer text and recovered attachments. The current chat path supports typed Workout Draft artifacts that rebuild the existing workout editor draft after a user tap, and it sends compact same-chat context plus Phase 5 controlled context when the routed workflow needs it. The implemented chat path does not upload full raw record history, store image bytes long-term, expose arbitrary database access, or write official business records automatically.
 
 Not implemented in the current code:
 
 - embeddings
 - vector database
-- app-internal RAG
 - more than three Chat image attachments
-- record-summary/context retrieval for AI answers beyond compact same-chat text and draft summaries
 - tool calling
 - Agent loop
 - long-term semantic AI conversation memory
@@ -41,8 +39,9 @@ Existing AI-adjacent features are user-mediated, not app-internal AI:
 | AI Chat page | Centered AI tab with availability-gated background, editable composer, up to three image attachments with local picker recovery, provider selector, cloud history sidebar, and account/subscription status entry. It can send text through OpenAI/Qwen and up to three images through Qwen only after login, subscription, active-device, and provider-configuration checks pass. Food Draft and Workout Draft responses render Chat artifact cards; tapping review rebuilds Food Preview or the existing workout editor draft and still requires user save confirmation before any official write. | Server-mediated text or draft only | `AiPage`, `AiChatController`, `SupabaseAiChatRepository`, `SupabaseAiGatewayClient`, `ai-chat-route` |
 | Phase 4 chat data/contract foundation | Supabase schema for AI chat sessions/messages, request logs, compact debug summaries, and Flutter request/response/error contract models. It does not send messages or call providers. | No | `202606290001_phase4_ai_chat_foundation.sql`, `AiGatewayRequest`, `AiGatewayResponse` |
 | Phase 4 Gateway and providers | Supabase Edge Function verifies auth, subscription, and active-device state, calls the selected server-side text or Qwen multimodal provider, accepts compact same-chat `conversation_context`, validates typed Food Draft or Workout Draft payloads, then persists the user/assistant text turn plus request log and compact debug summary through service-owned RPCs. | Server-mediated text or draft only | `ai-chat-route`, `record_ai_chat_turn`, `openai_provider.ts`, `qwen_provider.ts` |
+| Phase 5 RAG and evidence | `ai-chat-route` routes read-only meal decision, weekly review, and app-logic questions, builds minimum necessary server-side context, searches `document_chunks`, blocks unsupported write/privacy requests, returns a user-visible evidence summary, and patches compact debug summaries. | Server-mediated read-only context | `workflow_router.ts`, `context_builders.ts`, `document_rag.ts`, `prompt_builder.ts`, `AiGatewayEvidence` |
 | Account/Profile foundation | Supabase-configured email-password sign-in, persisted auth-session recovery, registration email-code flow with local PKCE verifier storage, subscription status lookup, Cloud Profile load/save path, Profile sign-in gate, and cache display fallback. | No | `AccountController`, `AuthRepository`, `SubscriptionRepository`, `CloudProfileRepository`, `ProfilePage` |
-| User record summary permission | Per-account local setting that controls whether future AI answers may use user record summaries. The current text chat stores the permission only and does not upload full business history or record summaries; later summary-based AI workflows should use cloud summary/context builders. | No | `AiLocalContextPermissionRepository`, `AiPage` |
+| User record summary permission | Per-account local setting that controls whether Phase 5 meal-decision and review workflows may use server-built record summaries. The client still does not upload full business history; when permission is off, record-summary dimensions are omitted and surfaced as missing evidence. | No | `AiLocalContextPermissionRepository`, `AiPage`, `AiGatewayRequest.allowRecordSummaryContext` |
 
 ## V1 Agent Positioning
 
@@ -126,19 +125,19 @@ Animation states stay simple and should not compete with reading:
 
 When messages grow into a scrollable list, the animated background remains one full-screen color field behind the whole AI page. It moves quietly and should be dimmed and desaturated behind the message layer for readability, but it should not be split into separate moving top/bottom strips, implemented as a translated static image, or built from obvious localized moving blobs. The color transitions should keep enough minimum width and sampling smoothness that pink/blue compression does not turn the mint band into visible blocky strips. The background should never stop entirely, including while the keyboard is open.
 
-Waiting for a provider response should be shown by chat UI, not by faster background motion. The composer clears immediately, the user message appears as a pending bubble, and after that bubble has a real layout position the message list anchors it to the readable top boundary below the top actions. This send anchor is distinct from the message viewport's physical top and from the top fade-out region. A small active-turn trailing fill may be used only to make the pending user bubble plus assistant loading bubble anchor cleanly; it must not behave like a large scrollable blank region, and user drag should not be able to scroll the pending/loading pair completely out of view. The assistant loading bubble remains visible until the final assistant message is reloaded from cloud history. Its progress label is client-only and conservative: it may describe sending, waiting, image requests taking longer, or slow server/model response based on request type and elapsed time, but it must not expose model chain-of-thought or claim completed image recognition, nutrition calculation, RAG retrieval, or summary reads without matching app or Gateway evidence. The assistant reply should not trigger another forced scroll after it appears.
+Waiting for a provider response should be shown by chat UI, not by faster background motion. The composer clears immediately, the user message appears as a pending bubble, and after that bubble has a real layout position the message list anchors it to the readable top boundary below the top actions. A small active-turn trailing fill may be used only to make the pending user bubble plus assistant loading bubble anchor cleanly; it must not behave like a large scrollable blank region, and user drag should not be able to scroll the pending/loading pair completely out of view. The assistant loading bubble remains visible until the final assistant message is reloaded from cloud history. Its progress label is client-only and conservative: it may describe sending, waiting, image requests taking longer, or slow server/model response based on request type and elapsed time, but it must not expose model chain-of-thought or claim completed image recognition, nutrition calculation, RAG retrieval, or summary reads without matching app or Gateway evidence. The assistant reply should not trigger another forced scroll after it appears.
 
 When a user turn contains both image attachments and text, the renderer should show the attachment preview as bare rounded right-aligned media above a separate text bubble within the same turn. This avoids stretching or padding media to the text width while preserving one request, one pending/retry lifecycle, and one cloud-history turn. Message thumbnails should keep stable decoded bytes and gapless image playback across keyboard inset rebuilds so media does not flash as a theme-colored placeholder during keyboard open/close transitions.
 
 The bottom navigation should be a theme-aware floating pill. The navigation component itself must not paint a full-width background strip outside the pill; whatever appears outside the pill should come from the current page or root shell background. Non-AI tabs use an opaque theme-surface pill so page text does not show through the navigation, while the AI tab uses a glass pill so the animated background remains visible. The root shell must not shrink page bodies to create navigation space. The nav pill should use stable bottom `viewPadding` during keyboard inset animation so it does not move while keyboard-aware page controls or the AI composer move. Scrollable pages own their bottom reading padding so the final content can scroll above the floating navigation, fixed bottom CTAs use navigation clearance, and Home first-viewport layout keeps only a small nav-adjacent gap so dashboard content keeps its intended size.
 
-The AI page may keep a very light white gradient veil at the bottom. Its job is to soften the bottom light effect and system safe area, not to act as an opaque cover; future colorful animation should still remain visible beside the bottom navigation. The composer should be a floating bottom pill with the normal reading gap when the keyboard is closed, using a subtle hairline and low-opacity layered shadow to read as a floating input surface without becoming a heavy card. When the keyboard is open, it should attach to the keyboard top as a fully floating, solid input accessory; during keyboard open/close transitions, its bottom offset must be clamped to the larger of the keyboard inset and the normal navigation-resting clearance so it never dips below the closed resting position. The message viewport should extend behind the composer to the keyboard top so no exterior composer background, half-height mask, or keyboard-above footer band surrounds the pill, while the message list's own bottom safe padding keeps the final bubble from colliding with the input pill. The chat list should use asymmetric soft alpha edges rather than hard rectangular clipping: the top fade can be longer to de-emphasize already-read content behind controls, while the bottom fade should be short so final bubbles do not look washed by the gradient.
+The AI page may keep a very light white gradient veil at the bottom. Its job is to soften the bottom light effect and system safe area, not to act as an opaque cover; future colorful animation should still remain visible beside the bottom navigation. The composer should be a floating bottom pill with the normal reading gap when the keyboard is closed, using a subtle hairline and low-opacity layered shadow to read as a floating input surface without becoming a heavy card. When the keyboard is open, it should attach to the keyboard top as a fully floating, solid input accessory; during keyboard open/close transitions, its bottom offset must be clamped to the larger of the keyboard inset and the normal navigation-resting clearance so it never dips below the closed resting position. The message viewport should extend behind the composer to the keyboard top so no exterior composer background, half-height mask, or keyboard-above footer band surrounds the pill, while the message list's own bottom safe padding keeps the final bubble from colliding with the input pill. The top of the message viewport starts below the top action row and hard-clips old content there; only the bottom edge keeps a short soft fade above the composer.
 
 AI Chat scroll geometry must handle obstruction consistently:
 
-- The message list viewport may start at the top of the AI safe area and use internal top padding to place readable content below the history/account/provider controls.
-- The message-list viewport should use a soft-edge mask near its top and bottom edges, not a visible background plate, to avoid hard card cutoffs.
-- Send anchoring must target the same readable top padding used by normal message layout, not `Scrollable.ensureVisible(alignment: 0)`, so the pending bubble does not land inside the top fade.
+- The message list viewport starts below the history/account/provider controls, not at the physical top of the screen.
+- The message-list viewport should hard-clip at its top boundary and use only a short bottom soft-edge mask, not a visible background plate.
+- Send anchoring must target the same readable top boundary used by normal message layout, not `Scrollable.ensureVisible(alignment: 0)`, so the pending bubble does not land underneath top controls.
 - The message list needs enough bottom clearance for the measured composer height, bottom navigation, system safe area, bottom veil, and its own internal bottom safe padding.
 - Send-time anchoring must target the real pending user bubble after layout. If a fallback scroll is needed to build that bubble, it should land near the active turn, not at the bottom of an oversized blank spacer.
 - At the end of the list, the last message should rest above the composer surface instead of being covered by the input or navigation bar; in the keyboard-open state that safety distance comes from the message list's internal padding, not from clipping the viewport at the composer top or adding a surrounding composer background.
@@ -250,56 +249,68 @@ Behavior:
 
 - Answer how FitLog works.
 - Explain fields, diet modes, workout calorie rules, carb cycling, carb tapering, export, and privacy boundaries.
-- If the user asks in Chinese, retrieve Chinese documents. If the user asks in English, retrieve English documents.
+- If the user asks in Chinese, retrieve Chinese documents and answer in Chinese. If the user asks in English, retrieve English documents and answer in English, even when same-chat history or retrieved docs contain another language.
 - Do not claim planned features are already implemented.
 
 ## Context And RAG
 
 V1 uses scoped retrieval because many useful answers require context. For example, when a user asks why weight loss has stalled, the model needs recent intake, training, weight, and profile context before answering.
 
-The current AI Chat path implements only a compact same-chat context builder. It sends recent text turns plus Food Draft / Workout Draft artifact summaries so the model can understand the current conversation, but it does not send raw historical images, base64 payloads, full business history, or arbitrary database results. This same-chat context is not RAG.
+The current AI Chat path implements compact same-chat context plus Phase 5 controlled RAG for routed read-only workflows. Same-chat context sends recent text turns plus Food Draft / Workout Draft artifact summaries so the model can follow the current conversation. Phase 5 context is built only on the server after auth, subscription, and active-device checks. It does not send raw historical images, base64 payloads, full business history, user free-text notes, or arbitrary database results.
 
 ### Structured RAG
 
-Structured RAG means the backend or app calls known context-builder functions and sends compact structured summaries to the AI Gateway. After Phase 3, user-record context should come from cloud records, daily summaries, or summary builders rather than local SQLite cache.
+Structured RAG means the backend calls known context-builder functions and sends compact structured summaries to the AI Gateway. Phase 5 implements this in `ai-chat-route` for routed `meal_decision` and `weekly_review` requests. User-record context comes from Cloud Profile, cloud records, `daily_summaries`, or server-side summary builders rather than local SQLite cache. It does not have a separate SQL table: the Phase 5 `document_rag_index` migration belongs to Document RAG only, while Structured RAG is runtime Edge Function logic that needs service-role table grants for the authoritative source tables. Returned evidence and compact debug-summary dimensions are the acceptance surface; the app displays an Answer basis panel with reference docs, used data, missing info, and limited actions. It keeps internal keys such as `document_context` out of visible chips when a document source is already listed, and it does not present same-chat history as answer evidence.
 
 Examples:
 
-- `daily_summary`
+- `selected_day_summary`
 - `recent_food_summary`
 - `recent_workout_summary`
 - `body_metric_summary`
 - `weight_trend_summary`
 - `profile_context`
 - `strategy_context`
-- `selected_day_context`
 
 Rules:
 
 - Upload the minimum necessary context for the current request.
 - Prefer summaries over raw records.
 - Preserve deterministic calculations as the source for targets and summaries.
+- In `gram_per_kg` meal decisions, lead with macro gram gaps and treat kcal remaining as auxiliary; in `energy_ratio`, lead with kcal remaining and use macros as secondary structure.
 - Do not upload full raw food/workout/body history.
 - Do not give the model a free-form database query tool.
+- The app must not upload client-provided `context_objects`, `rag_context`, `tool_calls`, or official-write payloads.
+- Read-only workflows may explain or recommend user-confirmed UI steps; they must not save, delete, change Profile, change goals, or apply strategies.
 
 ### Document RAG
 
 Document RAG means retrieving FitLog documentation snippets to answer app-logic questions.
 
-Allowed retrieval methods:
+Implemented retrieval methods:
 
 - keyword search
 - full-text search
-- vector or semantic search
-- hybrid retrieval
+- trigram similarity
 
-Vector search is allowed for product/help/design documents. It is not approval to create a user-data vector database or long-term semantic memory over food/workout/weight records.
+Vector or semantic search remains an allowed future enhancement for product/help/design documents only. It is not approval to create a user-data vector database or long-term semantic memory over food/workout/weight records.
 
 Document indexing scope:
 
 - `docs/en/*` for English questions
 - `docs/zh/*` for Chinese questions
 - stable app help snippets derived from those documents
+- root `README.md` chunks generated by the Phase 5 document-chunk tool
+
+Markdown heading chunking gives a chunk its structural location, such as source file, heading level, and heading path. It does not by itself explain the chunk's role in the whole document. The implemented Phase 5 ingestion design is therefore a combined approach:
+
+- Markdown header chunking supplies document structure and stable source IDs.
+- Recursive splitting inside each heading section keeps long sections within a bounded size by splitting on paragraphs, then sentences or language-aware punctuation, and only then hard character limits.
+- Non-empty short sections are kept instead of being dropped by character threshold, so short rules such as non-goals, write barriers, source-of-truth statements, and `energy_ratio` / `gram_per_kg` semantics remain retrievable.
+- Contextual chunk metadata adds `heading_path`, chunk position, and a deterministic context prefix built from source path, heading path, tags, status, and source purpose. This helps retrieval match user questions that do not reuse the exact source wording.
+- Offline generated `context_note` text may be added later after review. It must be generated during the document-ingestion build, versioned, inspectable, and limited to product/help/design documents. It must not be generated at user request time and must not summarize user records.
+
+Document changes are not automatically reflected in cloud RAG. When stable docs or README content that affects App Logic Q&A changes, the document seed must be regenerated and applied to Supabase. Edge Functions only need redeployment when retrieval, prompt, schema, or evidence code changes. The seed generator clears the managed document corpus for indexed source paths before inserting regenerated chunks so renamed or deleted headings do not leave stale retrievable rows.
 
 ### Explicitly Out Of Scope
 
@@ -319,7 +330,7 @@ V1 uses one active device per account. AI context building and AI Gateway send m
 
 By default, V1 does not provide the model with complete raw food history, complete raw workout history, complete raw body-metric history, local export archives, or local workout drafts. When record context is needed, the app should use user-visible permission or settings and send only the minimum necessary summary.
 
-The implemented food analysis and image paths are narrow, not RAG. Add Food sends a text description and zero to three compressed JPEG/PNG/WebP images to `ai-food-photo-analyze`; AI Chat can send up to three JPEG/PNG/WebP images through `ai-chat-route` when Qwen is selected. The Edge Functions forward only the current request input to Qwen, validate structured Food Draft or Workout Draft payloads when present, and do not store original images or base64 payloads. Add Food and AI Chat request logs write the accepted `image_count` including `0` for text-only food analysis, while chat history persists text turns plus lightweight artifact snapshots and summaries for returned drafts.
+The implemented food analysis and image paths stay narrow. Add Food sends a text description and zero to three compressed JPEG/PNG/WebP images to `ai-food-photo-analyze`; AI Chat can send up to three JPEG/PNG/WebP images through `ai-chat-route` when Qwen is selected. Phase 5 RAG may add server-built summaries and document snippets to read-only workflows, but the Edge Functions still forward only the current request inputs plus controlled context, validate structured Food Draft or Workout Draft payloads when present, and do not store original images or base64 payloads. Add Food and AI Chat request logs write the accepted `image_count` including `0` for text-only food analysis, while chat history persists text turns plus lightweight artifact/evidence snapshots and summaries for returned drafts.
 
 ## Cloud Profile
 
@@ -432,11 +443,12 @@ Current Local and Agent baseline:
 - Cloud Profile mapping: `lib/domain/services/cloud_profile_mapper.dart`
 - Supabase schema: `supabase/migrations/202606190001_phase2_account_profile.sql`, `supabase/migrations/202606260001_phase3_cloud_records.sql`, `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`
 - Supabase chat/session rename schema: `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`
+- Supabase Document RAG schema and seed: `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/seed_phase5_document_chunks.sql`
 - Supabase Edge Functions: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
+- Phase 5 Gateway context: `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`
 - AI chat and AI food analysis data path: `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`, `lib/data/repositories/ai_chat_repository.dart`
-- AI Gateway contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
+- AI Gateway contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
 
 Planned later Agent V1 surfaces:
 
-- record-summary context-builder services
 - richer inline draft editing

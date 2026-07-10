@@ -119,21 +119,21 @@ AI 页面是带动效背景的全屏 Chat，不是快捷入口网格。
 - ChatGPT/千问选择会保存在本机并在 App 重启后恢复；模型名和 provider API key 只保存在服务端。
 - 模型/状态 pill 只表示 readiness，并使用紧凑文案：满足发送条件时显示 `可用`，账号/Profile/订阅/网关 gate、离线或 active-device 阻止发送时显示 `不可用`。请求进行中只由发送按钮和 assistant loading 气泡表达。
 - AI Chat 的交互强调色会跟随主题：用户气泡、发送按钮、artifact 确认按钮、草稿卡片边框、Markdown 强调色和 history 选中态在 Green 主题保持绿色，在 Black/黑橙主题切换为柔和但明确的橙色。可用状态灯和文字保持语义绿色，继续表达 ready 状态。AI 液态背景仍是独立的粉绿蓝色场。
-- 发送 prompt 后，输入框立即清空，用户消息立即显示为 pending 气泡；等气泡有真实布局位置后，消息列表会把它锚到顶部操作区下方的可读边界，而不是消息 viewport 的物理顶端或顶部渐变退场区，并在服务端回复持久化和重新加载前显示 assistant loading 气泡。发送中的活动轮次填充不能暴露成可滚动空白，最终 assistant 回复出现后不再强制二次滚动。
-- 消息列表是接近全屏的滚动层，从 AI SafeArea 顶部开始，通过内部 top padding 把默认可读内容放到 history/account/provider 控件下方，并用不对称的轻柔 alpha 边缘替代硬矩形裁切。顶部退场更长，让已读内容滑到顶部控件后方时不和控件抢层级；底部退场更短，让最后一条消息保持干净可读。实测 composer 几何确保键盘弹起和未弹起时手动滚动都不会让最后一条消息被输入框盖住。键盘未弹起时，输入框保持带正常阅读间距的底部悬浮 pill，viewport 截止在输入框上方；键盘弹起时，输入框贴住键盘顶部，作为完整悬浮且实心的 input accessory，消息列表 viewport 延伸到输入框后方并截止在键盘顶部，不再被额外外部 gap、半高遮罩或 footer 背景带包围，最后一条气泡只依赖列表内部底部安全 padding 避开输入框。键盘收起时，输入框会停在正常导航上方静止避让位置，不跟随键盘落到屏幕物理底部后再弹回。
+- 发送 prompt 后，输入框立即清空，消息列表先以现有会话的真实末尾作为发送定位起点，再显示 pending 用户气泡；等气泡有真实布局位置后，列表把它锚到 history/account/provider 控件下方约 10 px 的可读边界。首个可见位置只能从边界下方向上收敛，不能针对已经加入活动轮次填充的最大滚动距离盲跳，因此不会先冲到控件后方或整条消失再回弹。服务端回复持久化和重新加载前显示 assistant loading 气泡；发送中的活动轮次填充不能暴露成可滚动空白，最终 assistant 回复出现后不再强制二次滚动。
+- 消息 viewport 从顶部操作区下方开始，并在这里硬裁切旧消息，所以滚动内容不能穿到状态灯和 provider 控件后方。只有输入框上方保留短底部 soft fade。实测 composer 几何确保键盘弹起和未弹起时手动滚动都不会让最后一条消息被输入框盖住。键盘未弹起时，输入框保持带正常阅读间距的底部悬浮 pill，viewport 截止在输入框上方；键盘弹起时，输入框贴住键盘顶部，作为完整悬浮且实心的 input accessory，消息列表 viewport 延伸到输入框后方并截止在键盘顶部，不再被额外外部 gap、半高遮罩或 footer 背景带包围，最后一条气泡只依赖列表内部底部安全 padding 避开输入框。键盘收起时，输入框会停在正常导航上方静止避让位置，不跟随键盘落到屏幕物理底部后再弹回。
 - assistant 消息通过维护中的 GitHub-flavored Markdown 渲染器按 App 样式展示，文本可选择。用户消息仍按可选择的普通文本显示，复制通过系统文字选择菜单完成，不再提供气泡级复制按钮。当前 Markdown 渲染不加载远程图片，也不执行链接动作。
 - 当 Chat 回复包含 Food Draft 或 Workout Draft 时，assistant 消息会显示原生 artifact 卡片和确认按钮。按钮用已保存的 snapshot 重建 Food Preview 或现有训练编辑草稿；后台不会保持一个待命草稿页面，用户在编辑页保存前也不会写正式记录。
 - Chat 草稿回复应把面向用户的解释放在 `message.text`，把结构化草稿数据放在 `draft`。服务端校验后，App 展示解释文字和原生 artifact 卡片；provider 原始 JSON 不应作为普通 assistant Markdown 出现在聊天中。Add Food AI 食物分析快捷入口仍保持专用的 `ai-food-photo-analyze` 纯 JSON contract。
 - Food Draft 和 Workout Draft 卡片使用同一套简短确认按钮文案 `查看并确认`，草稿类型由卡片标题说明。
 - 训练草稿最多只追问一轮；如果用户仍没有提供完整信息，Chat 应返回可编辑的不完整草稿，而不是继续追问。
 - 账号/订阅入口在账号服务可用时打开当前账号 sheet。中心状态文案优先读取已保存的 Cloud Profile 昵称，再回退到 auth display name。
-- Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；当前 chat 路径只发送紧凑同会话文本和草稿 artifact 摘要，不上传完整业务历史或 records summary，后续基于摘要的 AI workflow 应使用云端 summary/context builder。
+- Sheet 展示账号/订阅状态、退出登录、后端配置提示和用户记录摘要授权开关；当前 chat 路径从客户端只发送紧凑同会话文本和草稿 artifact 摘要。Phase 5 的记录摘要上下文只在 routed read-only workflow 中由服务端构建，并且必须先开启用户记录摘要授权；它仍不上传完整业务历史。
 - 配置 Supabase 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
 - 历史入口打开云端 chat history，支持新建 chat、切换 session、inline 重命名和二次确认删除；当前 UI 不暴露归档入口。
-- Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food AI 食物分析草稿流程。
+- Phase 4 已新增 AI 页面发送接入、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、最多三张图片的千问多模态 Chat、紧凑同会话 context、云端消息持久化、request logs、compact debug summaries、Chat Food Draft 和 Workout Draft artifact 卡片，以及专用 Add Food AI 食物分析草稿流程。Phase 5 新增服务端 workflow routing、只读 Structured RAG/Document RAG、evidence snapshot 和 assistant evidence 面板。
 - 同时包含图片和文字的用户 turn 会在聊天 UI 中把图片附件显示为裸圆角 media，并把文字显示为独立气泡，但仍然是一条请求和一条云端 history turn。
 - 等待回复时，assistant loading 气泡只根据请求类型和等待时长显示保守的客户端进度文案；它不展示模型真实思考链，也不会在信号不存在时声称 RAG、context 或图片分析阶段已经完成。
-- AI 页面尚未实现 RAG、长期图片存储、自动修改目标或正式业务记录自动写入。Chat Food Draft 和 Workout Draft artifact 卡片只有在用户点击确认后才打开对应编辑页，用户保存前仍是草稿。
+- Phase 5 RAG 是只读且带 evidence 的；它可以辅助用餐决策、周复盘和 App 规则回答，但 AI 页面不做长期图片存储、不自动修改目标，也不自动写入正式业务记录。Chat Food Draft 和 Workout Draft artifact 卡片只有在用户点击确认后才打开对应编辑页，用户保存前仍是草稿。
 
 可用状态：
 
@@ -278,13 +278,13 @@ App 应保留隐私提示，但不应占据太多屏幕。
 
 正常任务流里避免大段说明。
 
-## 已实现与计划中
+## 可用范围与边界
 
-UI 文案或文档必须区分：
+UI 文案或文档必须区分能力状态：
 
-- 已实现 Local 行为：复制来的代码中已经存在。
-- 已实现 Agent shell/账号/AI Chat 行为：居中的 AI tab、可用性 gating 的 AI 页面、可编辑输入框、最多三张千问图片附件、本机持久化模型选择器、只表达可用性的状态 pill、账号/订阅状态 sheet、Cloud Profile 的 Profile gate、用户记录摘要授权开关、紧凑同会话 context、云端 chat history、文本/多模态 Gateway 发送路径、chat inline 重命名/删除确认、Chat Food Draft 和 Workout Draft artifact 卡片、Add Food AI 食物分析草稿流程，以及五 tab 浮动底部导航。
-- Phase 3 已接入 Cloud Records Foundation 和主要 hardening 链路，包括 `body_metric_logs`、food/workout 云端正式记录、`daily_summaries` 表、App 侧 summary 云端 upsert/恢复、本地 partial cache、Home 选中日期 summary cache 与 stale-while-revalidate、受控的近期 summary warm cache、confirmed cache 淘汰，以及 cloud-backed 导出完整性。
-- 计划中的 Agent V1 行为：目标设计，不一定已经上线。
+- 可用 App 行为：饮食记录、训练记录、Profile、导出、账号 gating 的 Cloud Profile/Cloud Records、AI Chat、云端 chat history、最多三张千问图片附件、Add Food AI 食物分析、Chat Food Draft / Workout Draft artifact 卡片，以及带 evidence 的 Phase 5 只读 RAG。
+- 条件性行为：真实账号、Cloud Records、订阅、AI Gateway、provider routing、Document RAG seed 和模型调用需要 Supabase migrations/config、Edge Function 部署和 provider secrets。
+- 边界行为：AI 可以生成草稿、复盘、推荐和解释；不能自动写正式记录、删除数据、修改目标、应用策略、长期存图或运行自主工具。
+- 未来或需单独批准的行为：超过三张 Chat 图片、长期图片存储、用户数据向量记忆、AI 自动正式写入、autonomous Agent action、生产支付管理和账号删除流程。
 
-在代码实现前，不要把 RAG、超过三张的 Chat 图片附件、长期图片存储、AI 自动正式业务记录写入或 autonomous Agent action 写成已实现。AI Gateway、云端 chat history、最多三图 Chat、Chat Food Draft 和 Workout Draft artifact 卡片，以及 Add Food AI 食物分析需要 Supabase migrations、function 部署和 provider secrets 才能连接真实后端测试。
+不要在没有说明依赖条件的情况下，把条件性或未来行为写成普遍可用。依赖后端配置的功能应在 setup 或验收说明中写清楚，不要把 AppGuide 变成 release log。
