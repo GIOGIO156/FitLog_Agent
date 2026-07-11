@@ -118,25 +118,25 @@ Readiness 与 request activity 分离：
 
 Add Food AI 分析是明确工作流：它绕过普通 Chat 的意图选择，成功终态必须产生可编辑 Food Draft。普通 AI Chat 则通过高置信度确定性判断或模型选择返回 Food Draft；无论来源，Gateway 都执行同一 canonical schema 和确认边界。
 
-输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。
+输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。Chat 中出现受支持的明确日期时，Gateway 以请求选中日期为基准解析；没有日期表达时继续使用选中日期作为默认值。
 
 1. AI 提取候选食物、份量、烹饪方式、营养和不确定性。
 2. 会实质影响结果的歧义产生有界 clarification，而不是强行给出确定估算。
-3. Gateway 校验版本化 Food Draft，并从 item totals 归一化 meal totals。
-4. Add Food 在校验后直接打开 Food Preview；Chat 先显示 artifact card，只有 review 后才打开 Preview。
-5. 用户可以编辑 draft。
+3. Gateway 校验版本化 Food Draft，要求其中日期与解析后的目标日期一致，并从 item totals 归一化 meal totals。
+4. Add Food 在校验后直接打开 Food Preview；Chat 先显示通过校验的日期和 artifact card，只有 review 后才打开 Preview。
+5. 用户通过跟随主题的日历控件修改日期，并可编辑其它 draft 字段。
 6. 只有普通 confirmed save path 写入正式 food records。
 
 请求结束后不保留原图或 base64 payload。紧凑 metadata 可以记录 image count、input kind、mime type、compressed length、validation result 和 safety/error category。
 
 ### Workout Draft Workflow
 
-输入可以包含训练描述、选中日期、可选本次请求 image context 和用户修正。
+输入可以包含训练描述、选中日期、可选本次请求 image context 和用户修正。日期遵循与 Food Draft 相同的明确日期、默认日期和 clarification 规则。
 
-1. AI 提取候选 record name、date、exercises、sets、cardio duration、intensity 和 uncertainty。
+1. AI 提取候选 record name、exercises、sets、cardio duration、intensity、uncertainty 和服务端解析的目标日期。
 2. AI 最多追问一轮，并一次列出所有重要缺失字段。
 3. 回复仍不完整时，AI 返回未知值留空的可编辑 best-effort draft，或稳定失败；不能继续开放式追问。
-4. Chat 显示原生 artifact card。Review 重建现有 workout editor draft；已有未保存草稿时先确认替换。
+4. Chat 显示通过校验的日期和原生 artifact card。Review 重建现有 workout editor draft；日期仍可通过正常日历控件修改，已有未保存草稿时先确认替换。
 5. 只有普通 workout editor Save action 写正式 workout record。
 
 ### Meal Decision Workflow

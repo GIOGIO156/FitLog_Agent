@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fitlog_local/data/repositories/ai_chat_repository.dart';
+import 'package:fitlog_local/data/repositories/phase2_repository_exception.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
@@ -163,6 +164,48 @@ void main() {
       expect(repository.deletedSessionIds, contains('session_2'));
     },
   );
+
+  test('history deletion allows only one in-flight operation', () async {
+    final repository = _FakeAiChatRepository();
+    repository.sessions = <AiChatSession>[
+      _session('session_1', 'Dinner'),
+      _session('session_2', 'Training'),
+    ];
+    repository.deleteCompleter = Completer<void>();
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+    await _flushAsync();
+
+    final firstDelete = controller.deleteSession('session_1');
+    final overlappingDelete = controller.deleteSession('session_2');
+    await _flushAsync();
+
+    expect(controller.isDeletingSession('session_1'), isTrue);
+    expect(controller.deletingSession, isTrue);
+    expect(repository.deleteCalls, 1);
+    await overlappingDelete;
+
+    repository.deleteCompleter!.complete();
+    await firstDelete;
+
+    expect(controller.isDeletingSession('session_1'), isFalse);
+    expect(controller.deletingSession, isFalse);
+    expect(repository.deleteCalls, 1);
+    expect(repository.deletedSessionIds, contains('session_1'));
+    expect(repository.deletedSessionIds, isNot(contains('session_2')));
+  });
+
+  test('history network failures keep their network classification', () async {
+    final repository = _FakeAiChatRepository()
+      ..listSessionsFailureCode = 'record_network_error';
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+
+    await _flushAsync();
+
+    expect(controller.lastError?.code, AiGatewayErrorCode.networkFailure);
+    expect(controller.lastError?.rawCode, 'record_network_error');
+  });
 
   test(
     'rename updates the session title through repository operation',
@@ -376,9 +419,15 @@ class _FakeAiChatRepository extends AiChatRepository {
   final Set<String> deletedSessionIds = <String>{};
   final Map<String, String> renamedSessions = <String, String>{};
   bool renameThrows = false;
+  String? listSessionsFailureCode;
+  Completer<void>? deleteCompleter;
+  int deleteCalls = 0;
 
   @override
   Future<List<AiChatSession>> listSessions({required String accountId}) async {
+    if (listSessionsFailureCode case final code?) {
+      throw Phase2RepositoryException(code);
+    }
     return sessions
         .where((session) => !archivedSessionIds.contains(session.id))
         .where((session) => !deletedSessionIds.contains(session.id))
@@ -440,6 +489,8 @@ class _FakeAiChatRepository extends AiChatRepository {
 
   @override
   Future<void> deleteSession(String sessionId) async {
+    deleteCalls += 1;
+    await deleteCompleter?.future;
     deletedSessionIds.add(sessionId);
   }
 }

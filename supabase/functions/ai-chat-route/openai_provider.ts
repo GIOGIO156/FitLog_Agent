@@ -176,6 +176,7 @@ function systemInstructions(request: GatewayRequest): string {
     `Expected output: ${request.expectedOutput}. Markdown is allowed only inside message.text.`,
     "If Expected output is auto, infer the user's natural intent from the message and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",
     "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
+    `Resolved record date: ${request.targetDate ?? "unresolved"}. Date source: ${request.dateResolutionSource}. For any draft, copy this exact date into draft.date. If unresolved, return clarification instead of guessing.`,
   ].join("\n");
 }
 

@@ -118,25 +118,25 @@ Visual layout, animation, scroll anchoring, keyboard geometry, navigation treatm
 
 Add Food AI analysis is an explicit workflow: it bypasses ordinary Chat intent selection, and a successful terminal result must contain an editable Food Draft. Ordinary AI Chat can return a Food Draft through either high-confidence deterministic selection or bounded model selection; both paths use the same canonical schema and confirmation boundary.
 
-Inputs may include a text description, up to three current-request images, selected date, and user corrections.
+Inputs may include a text description, up to three current-request images, selected date, and user corrections. If Chat contains an explicit supported date, the Gateway resolves it against the selected request date; otherwise the selected date remains the default.
 
 1. AI extracts candidate foods, portions, cooking method, nutrition, and uncertainty.
 2. Material ambiguity produces a bounded clarification rather than a confident guess.
-3. The Gateway validates the versioned Food Draft and normalizes meal totals from item totals.
-4. Add Food opens Food Preview directly after validation; Chat shows an artifact card and opens Preview only after review.
-5. The user may edit the draft.
+3. The Gateway validates the versioned Food Draft, requires its date to match the resolved target date, and normalizes meal totals from item totals.
+4. Add Food opens Food Preview directly after validation; Chat shows the accepted date and an artifact card, then opens Preview only after review.
+5. The user may change the date through the themed calendar control and edit the remaining draft fields.
 6. Only the normal confirmed save path writes official food records.
 
 Original images and base64 payloads are not retained after the request. Compact metadata may record image count, input kind, mime type, compressed length, validation result, and safety/error category.
 
 ### Workout Draft Workflow
 
-Inputs may include a workout description, selected date, optional current-request image context, and user corrections.
+Inputs may include a workout description, selected date, optional current-request image context, and user corrections. Date resolution follows the same explicit-date/default-date/clarification rules as Food Draft.
 
-1. AI extracts a candidate record name, date, exercises, sets, cardio duration, intensity, and uncertainty.
+1. AI extracts a candidate record name, exercises, sets, cardio duration, intensity, uncertainty, and the server-resolved target date.
 2. AI may ask one clarification turn listing all material missing fields.
 3. If the reply remains incomplete, AI returns an editable best-effort draft with unknown values left empty, or a stable failure; it does not continue an open-ended question loop.
-4. Chat shows a native artifact card. Review rebuilds the existing workout editor draft and asks before replacing another unsaved draft.
+4. Chat shows the validated date and a native artifact card. Review rebuilds the existing workout editor draft, whose date remains changeable through the normal calendar control, and asks before replacing another unsaved draft.
 5. Only the normal workout editor Save action writes an official workout record.
 
 ### Meal Decision Workflow

@@ -59,8 +59,8 @@ These layers do not vote. A first-layer match is authoritative; the second layer
 | --- | --- |
 | `auto` | The model selects one contract-consistent `output_type`. |
 | `text` | `output_type = text`, user-visible `message.text`, `draft = null`, and no claim that a draft or official record was created. |
-| `food_draft` | `output_type = food_draft` with `food_draft.v1`, or one bounded clarification. |
-| `workout_draft` | `output_type = workout_draft` with `workout_draft.v1`, or one bounded clarification. |
+| `food_draft` | `output_type = food_draft` with `food_draft.v2`, or one bounded clarification. |
+| `workout_draft` | `output_type = workout_draft` with `workout_draft.v2`, or one bounded clarification. |
 
 Clarification uses `output_type = clarification`, `needs_clarification = true`, non-empty questions, and `draft = null`. Safety blocking is generated deterministically before the provider call. Workflow routing and output selection are independent: routing selects context, RAG, and permissions, while output selection chooses the result shape; validation proves the final payload satisfies both.
 
@@ -93,13 +93,16 @@ Rules:
 - Raw draft JSON is never rendered as assistant Markdown.
 - A `text` result cannot claim that a draft was generated when no artifact exists.
 
-The dedicated Add Food endpoint may keep its narrower public response envelope, but it must use the same canonical `food_draft.v1` definition and the same validation/normalization pipeline as AI Chat.
+The dedicated Add Food endpoint may keep its narrower public response envelope, but it must use the same canonical `food_draft.v2` definition and the same validation/normalization pipeline as AI Chat.
+
+Draft date resolution is independent of output-family selection. The Gateway resolves an explicit absolute or supported relative date against the request date before provider generation. A draft request with no date cue uses the request's selected date. An ambiguous or unsupported date expression produces clarification instead of a guessed date. The provider must return the resolved date in the draft, and deterministic validation rejects a different or impossible calendar date. After validation, the Gateway derives the visible draft-confirmation sentence from the accepted draft date so `message.text`, the artifact card, and the editor cannot disagree.
 
 ## Food Draft Contract
 
 The canonical Food Draft requires:
 
-- `schema_version = food_draft.v1`
+- `schema_version = food_draft.v2`
+- `date` as a required real calendar date in `YYYY-MM-DD`
 - non-empty `meal_name`
 - finite, non-negative `total_weight_g`
 - finite, non-negative `calories_kcal`
@@ -123,9 +126,9 @@ A Food Draft remains editable. Confidence and notes communicate uncertainty but 
 
 The canonical Workout Draft requires:
 
-- `schema_version = workout_draft.v1`
+- `schema_version = workout_draft.v2`
 - non-empty `record_name`
-- `date` as `null` or a real calendar date in `YYYY-MM-DD`
+- `date` as a required real calendar date in `YYYY-MM-DD`
 - bounded `notes`
 - at least one exercise
 
@@ -235,7 +238,7 @@ Version these concepts independently:
 - prompt version
 - validator version when behavior changes
 
-A provider alias or model update is not allowed to silently change the accepted contract. Schema changes must remain additive when possible, include fixture coverage, and preserve stored artifact readability. Old history artifacts that cannot be rebuilt safely remain visible as disabled summaries.
+A provider alias or model update is not allowed to silently change the accepted contract. Schema changes must remain additive when possible, include fixture coverage, and preserve stored artifact readability. New clients request the v2 draft shape; during mixed deployment, the Gateway can downgrade a validated v2 response for a v1 client, and Flutter can rebuild v1 history by using the artifact's stored target/selected date. New persisted artifact snapshots use `ai_chat_artifacts.v2` and keep `target_date` beside the canonical v2 draft. Old history artifacts that cannot be rebuilt safely remain visible as disabled summaries.
 
 ## Logging And Evaluation
 

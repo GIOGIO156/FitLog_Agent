@@ -1,8 +1,8 @@
 export const providerGatewayEnvelopeSchemaVersion =
   "provider_gateway_envelope.v2" as const;
-export const foodDraftSchemaVersion = "food_draft.v1" as const;
-export const workoutDraftSchemaVersion = "workout_draft.v1" as const;
-export const outputValidatorVersion = "ai_output_validator.v1" as const;
+export const foodDraftSchemaVersion = "food_draft.v2" as const;
+export const workoutDraftSchemaVersion = "workout_draft.v2" as const;
+export const outputValidatorVersion = "ai_output_validator.v2" as const;
 
 export type ProviderOutputType =
   | "text"
@@ -24,6 +24,7 @@ export interface FoodDraftItem {
 
 export interface FoodDraft {
   schema_version: typeof foodDraftSchemaVersion;
+  date: string;
   meal_name: string;
   total_weight_g: number;
   calories_kcal: number;
@@ -55,7 +56,7 @@ export interface WorkoutDraftExercise {
 export interface WorkoutDraft {
   schema_version: typeof workoutDraftSchemaVersion;
   record_name: string;
-  date: string | null;
+  date: string;
   notes: string;
   exercises: WorkoutDraftExercise[];
 }
@@ -104,6 +105,7 @@ export const foodDraftJsonSchema: Record<string, unknown> = {
   additionalProperties: false,
   required: [
     "schema_version",
+    "date",
     "meal_name",
     "total_weight_g",
     "calories_kcal",
@@ -116,6 +118,7 @@ export const foodDraftJsonSchema: Record<string, unknown> = {
   ],
   properties: {
     schema_version: { type: "string", enum: [foodDraftSchemaVersion] },
+    date: { type: "string" },
     meal_name: { type: "string" },
     total_weight_g: { type: "number" },
     calories_kcal: { type: "number" },
@@ -158,12 +161,7 @@ export const workoutDraftJsonSchema: Record<string, unknown> = {
   properties: {
     schema_version: { type: "string", enum: [workoutDraftSchemaVersion] },
     record_name: { type: "string" },
-    date: {
-      anyOf: [
-        { type: "string" },
-        { type: "null" },
-      ],
-    },
+    date: { type: "string" },
     notes: { type: "string" },
     exercises: {
       type: "array",
@@ -277,6 +275,7 @@ export const foodAnalysisEnvelopeJsonSchema: Record<string, unknown> = {
 export function parseProviderGatewayEnvelope(
   content: string,
   expectedOutput: ExpectedOutput,
+  expectedDate?: string | null,
 ): ParsedProviderGatewayBody {
   const root = parseJsonRecord(content);
   const issues: OutputValidationIssue[] = [];
@@ -385,13 +384,34 @@ export function parseProviderGatewayEnvelope(
     if (draft === null) {
       issue(issues, "$.draft", "expected food_draft");
     } else if (draft.schema_version !== foodDraftSchemaVersion) {
-      issue(issues, "$.draft.schema_version", "expected food_draft.v1");
+      issue(
+        issues,
+        "$.draft.schema_version",
+        `expected ${foodDraftSchemaVersion}`,
+      );
     }
   } else if (outputType === "workout_draft" && !needsClarification) {
     if (draft === null) {
       issue(issues, "$.draft", "expected workout_draft");
     } else if (draft.schema_version !== workoutDraftSchemaVersion) {
-      issue(issues, "$.draft.schema_version", "expected workout_draft.v1");
+      issue(
+        issues,
+        "$.draft.schema_version",
+        `expected ${workoutDraftSchemaVersion}`,
+      );
+    }
+  }
+
+  if (
+    (outputType === "food_draft" || outputType === "workout_draft") &&
+    !needsClarification &&
+    draft !== null &&
+    expectedDate !== undefined
+  ) {
+    if (expectedDate === null) {
+      issue(issues, "$.draft.date", "record date unresolved; clarification required");
+    } else if (draft.date !== expectedDate) {
+      issue(issues, "$.draft.date", `expected resolved date ${expectedDate}`);
     }
   }
 
@@ -428,6 +448,7 @@ function claimsCompletedDraft(value: string): boolean {
 
 export function parseFoodAnalysisEnvelope(
   content: string,
+  expectedDate?: string,
 ): ParsedFoodAnalysisEnvelope {
   const root = parseJsonRecord(content);
   const issues: OutputValidationIssue[] = [];
@@ -484,13 +505,22 @@ export function parseFoodAnalysisEnvelope(
       );
     }
   }
+  if (draft !== null && expectedDate !== undefined && draft.date !== expectedDate) {
+    issue(issues, "$.draft.date", `expected selected date ${expectedDate}`);
+  }
   throwIfIssues(issues);
   return { draft, needsClarification, clarificationQuestions };
 }
 
-export function validateFoodDraftValue(value: unknown): FoodDraft {
+export function validateFoodDraftValue(
+  value: unknown,
+  expectedDate?: string,
+): FoodDraft {
   const issues: OutputValidationIssue[] = [];
   const draft = validateFoodDraft(value, "$", issues);
+  if (expectedDate !== undefined && draft.date !== expectedDate) {
+    issue(issues, "$.date", `expected selected date ${expectedDate}`);
+  }
   throwIfIssues(issues);
   return draft;
 }
@@ -517,6 +547,7 @@ function validateFoodDraft(
     map,
     [
       "schema_version",
+      "date",
       "meal_name",
       "total_weight_g",
       "calories_kcal",
@@ -603,6 +634,7 @@ function validateFoodDraft(
   const totals = items.length === 0 ? requestedTotals : foodTotals(items);
   return {
     schema_version: foodDraftSchemaVersion,
+    date: validDate(map.date, `${path}.date`, issues),
     meal_name: boundedString(
       map.meal_name,
       `${path}.meal_name`,
@@ -654,7 +686,7 @@ function validateWorkoutDraft(
       200,
       issues,
     ),
-    date: validDateOrNull(map.date, `${path}.date`, issues),
+    date: validDate(map.date, `${path}.date`, issues),
     notes: boundedString(map.notes, `${path}.notes`, 0, 2000, issues),
     exercises,
   };
@@ -914,15 +946,14 @@ function literal(
   if (value !== expected) issue(issues, path, `expected ${expected}`);
 }
 
-function validDateOrNull(
+function validDate(
   value: unknown,
   path: string,
   issues: OutputValidationIssue[],
-): string | null {
-  if (value === null) return null;
+): string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    issue(issues, path, "expected YYYY-MM-DD or null");
-    return null;
+    issue(issues, path, "expected YYYY-MM-DD");
+    return "";
   }
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));

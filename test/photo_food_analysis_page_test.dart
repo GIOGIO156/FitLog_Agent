@@ -516,6 +516,7 @@ AiFoodPhotoAnalysisResponse _successResponse() {
     modelChoice: AiGatewayModelChoice.qwen,
     modelProvider: 'qwen',
     draft: AiFoodDraft(
+      date: '2026-07-01',
       mealName: 'Chicken rice',
       totalWeightG: 320,
       caloriesKcal: 520,

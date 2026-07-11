@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-12 Notification And AI Request Lifecycle
+
+### Fixed
+
+- Prevented save-success notifications from becoming unmanaged permanent overlays when a save and route pop occur in the same frame.
+- Food Preview, manual food entry, food editing, and workout saving now capture the root Overlay before navigation and show their confirmation after the destination page is visible, preserving the normal bounded auto-dismiss lifecycle.
+- Notification cleanup now distinguishes the pre-mount state from a genuinely removed Overlay entry, so route animation cannot cancel the timer while page disposal still releases it.
+- Removed the AI page's private close-button error pill and routed send, attachment, and history failures through the shared bounded notification layer, with composer-aware positioning and foreground-only presentation.
+- Serialized chat-history deletion globally so rapid taps on one or several sessions cannot issue overlapping delete operations or surface a misleading generic AI failure.
+- Kept in-flight AI requests alive across normal app background/foreground transitions; true transport or Gateway failures still restore the attempted input for retry.
+- Preserved repository network-error classification during chat-history refresh so a background transport interruption no longer degrades into the generic AI-request message.
+
+### Validation
+
+- Added regression coverage for success auto-dismiss, same-frame route-pop cleanup, post-navigation save notices, page-disposal timer cleanup, duplicate history deletion, shared AI errors, and background request continuity.
+- `flutter analyze` reported no issues and all 213 Flutter tests passed.
+- All 18 local migrations matched the linked remote migration history; no schema push was required.
+- Deployed `ai-chat-route` version 21 and `ai-food-photo-analyze` version 14 after all 57 deterministic Edge tests passed.
+- Uploaded and verified the bilingual stable-document corpus with 508 generator-v3 chunks across 19 source paths and two languages; English and Chinese notification-lifecycle retrieval both returned the owning Product/AppGuide sections.
+
 ## 2026-07-11 AI Intent Selection And Error-Lifecycle Hardening
 
 ### Added
@@ -7,30 +27,33 @@
 - Added `provider_gateway_envelope.v2` with explicit `output_type` values for text, Food Draft, Workout Draft, and clarification, plus typed Flutter reconstruction and public API documentation.
 - Added privacy-safe request telemetry for intent-resolution source, validated output type, and validation issue categories, together with service-role update grants that allow successful request/debug rows to be finalized after the initial RPC insert.
 - Added Phase 6 regression coverage requirements for resolver abstention, model output selection, explicit workflow behavior, false draft success, error classification, and notification lifecycle.
+- Added deterministic draft-date resolution, strict date agreement validation, and date-aware confirmation text for Food and Workout drafts.
 
 ### Changed
 
 - Split ordinary AI Chat output selection into a high-confidence deterministic resolver and bounded model selection after `auto` abstention. Explicit Add Food analysis keeps a fixed Food Draft family and bypasses Chat intent inference.
 - Separated workflow/context routing from result shape so authorized read-only context can support an editable draft without granting an official record write.
 - Removed internal phase wording from provider-visible controlled context and prepended optional ingredient-photo or delivery-screenshot guidance to meal-decision answers without request images.
-- Rebuilt and uploaded the bilingual stable-document corpus with 504 generator v3 chunks across 19 source paths.
+- Rebuilt and uploaded the bilingual stable-document corpus with 506 generator v3 chunks across 19 source paths.
+- Upgraded current Food/Workout drafts and persisted Chat artifacts to v2 date-bearing shapes while preserving mixed-deployment and stored-v1 readability. Draft review now shows the accepted date and uses the normal themed calendar control before save.
 
 ### Fixed
 
 - Fixed natural Workout Draft requests such as bench press plus weight/reps being accepted as ordinary prose instead of producing a validated draft or clarification.
 - Rejected structurally valid text that claims a draft was created when no matching artifact exists, and enforced cross-field output-type, clarification, and draft-family consistency.
 - Stopped misclassifying response decoding and unknown SDK/provider failures as network outages; only recognizable socket/timeout failures use the network category.
-- Made app-level notices dismissible, bounded, replacement-based, and cleared on root-tab or originating-route exit. AI send errors also clear on editing, session/navigation changes, manual dismissal, or timeout while preserving retry text and images.
+- Restored compact passive app notices without close icons; notices remain bounded and replacement-based, and clear on root-tab, originating-route, or app-background transitions while retry input remains preserved where applicable.
+- Prevented lifecycle autosave from recreating a workout draft after a cloud-confirmed official save by freezing new autosaves and ordering the final draft deletion behind older queued writes.
 - Restored successful output/debug telemetry finalization by granting the Edge Function service role the missing table-update permissions.
 
 ### Validation
 
-- Deno type checks passed for both Edge Function entry points; all 51 deterministic Edge tests passed.
-- `flutter analyze` reported no issues and all 204 Flutter tests passed.
+- Deno type checks passed for both Edge Function entry points; all 57 deterministic Edge tests passed.
+- `flutter analyze` reported no issues and all 208 Flutter tests passed.
 - Built all three configured split debug APKs under `build/app/outputs/flutter-apk`.
-- Applied remote migrations `202607110001` and `202607110002`; deployed `ai-chat-route` version 19 and `ai-food-photo-analyze` version 12.
-- Verified 504 cloud chunks, 19 source paths, three new observability columns, and bilingual retrieval of the new intent-resolution and notification-lifecycle sections.
-- A real Qwen deterministic Workout Draft canary returned `workout_draft.v1` with first/final validation passed and finalized `deterministic` telemetry. A real dedicated Add Food text canary returned `food_draft.v1`.
+- Applied remote migrations `202607110001` and `202607110002`; deployed `ai-chat-route` version 20 and `ai-food-photo-analyze` version 13.
+- Verified 506 cloud chunks, 19 source paths, two languages, generator v3, and bilingual retrieval of the new intent-resolution, draft-date, and notification-lifecycle rules.
+- A real UTF-8 Qwen Workout Draft canary resolved “yesterday” to `2026-07-10` and returned `workout_draft.v2`; a real dedicated Add Food text canary returned `food_draft.v2` with the exact selected date `2026-07-09`. Neither wrote an official record.
 - A synthetic 1x1 image was rejected before provider completion as `provider_failure`; a user-approved real food-image device canary remains operational acceptance work and no private screenshot was exported during this landing.
 
 ## 2026-07-10 AI Output Contract Engineering Landing And RAG Documentation

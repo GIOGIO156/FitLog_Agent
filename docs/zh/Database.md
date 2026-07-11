@@ -568,7 +568,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 
 - 账号级 RLS 保护客户端读取。
 - Gateway 每个通过校验的 turn 写一条 user message 和一条 assistant message。图片 Chat 仍以文本消息持久化，最多三张图片只在本次 Gateway request 中转发。
-- `final_answer_json` 可以保存轻量 `ai_chat_artifacts.v1` snapshot，例如合法 `food_draft.v1`；也可以保存 `ai_chat_evidence.v1` 或概括 retrieved context 的 `evidence` object。Artifact snapshot 只在 review 后重建 Preview；evidence 只用于只读显示/debug context。两者都不是正式记录或后台草稿队列。
+- `final_answer_json` 可以保存轻量 `ai_chat_artifacts.v2` snapshot，例如合法 `food_draft.v2` 或 `workout_draft.v2`，同时保存解析后的 `target_date`、日期解析来源、`ai_chat_evidence.v1` 或概括 retrieved context 的 `evidence` object。Artifact snapshot 只在 review 后重建 Preview；evidence 只用于只读显示/debug context。两者都不是正式记录或后台草稿队列。History reader 继续兼容 v1 artifact：legacy draft 没有自身日期时使用其中保存的 selected date。
 - `role` 限定为 `user` 和 `assistant`；持久化的 chat history 仍为 text message。`ai_chat_messages` 不保存图片 bytes 或 base64。
 - 消息顺序以 `message_sequence` 为确定性主顺序，timestamp 和 id 作为稳定辅助字段。
 - message 的 `account_id` 必须与父 session 匹配。
@@ -612,7 +612,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 - Additive migration `202607100001_ai_output_contract_observability.sql` 幂等增加 expected output、validator、first-pass/final validation、correction count 和 provider completion category 字段，不改变 SQLite `AppDatabase.dbVersion`。
 - Additive migration `202607110001_ai_intent_output_observability.sql` 允许 `expected_output = auto`，并增加 `fixed_workflow` / `deterministic` / `model` 解析来源、最终通过校验的 output type 和不含用户内容的 issue-code array。它同样不改变 SQLite schema version。
 - Migration `202607110002_ai_observability_update_grants.sql` 允许 Edge Function service role 在初始 RPC insert 后 finalize `ai_request_logs` 和 `ai_debug_summaries`；authenticated client 仍没有直接读写 policy。
-- Chat 使用 `prompt_version = phase5_rag_readonly_v1` 与 `schema_version = ai_chat_response.v2`；Add Food 使用 `workflow_type = food_logging` 与 `schema_version = food_draft.v1`。
+- Chat 使用 `prompt_version = phase5_rag_readonly_v1` 与 `schema_version = ai_chat_response.v2`；Add Food 使用 `workflow_type = food_logging` 与 `schema_version = food_draft.v2`。
 - 文字/图片路径只保存紧凑 output-contract 状态，不保存 raw provider output、correction payload、图片 bytes/base64、provider secret 或不受限 notes。
 - `selected_output_type` 只在 provider 结果通过 contract validation 后写入；issue codes 是固定分类，不保存 field value、用户 prompt 或 provider 原文。
 - Authenticated client 没有直接 table read policy。

@@ -568,7 +568,7 @@ Rules:
 
 - Account-bound RLS protects client reads.
 - The Gateway writes one user message and one assistant message per accepted turn. Accepted image Chat persists as text messages while up to three images are forwarded only in the current Gateway request.
-- `final_answer_json` may store a lightweight `ai_chat_artifacts.v1` snapshot for validated artifacts such as `food_draft.v1`, plus `ai_chat_evidence.v1` or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue.
+- `final_answer_json` may store a lightweight `ai_chat_artifacts.v2` snapshot for validated artifacts such as `food_draft.v2` or `workout_draft.v2`, plus the resolved `target_date`, date-resolution source, `ai_chat_evidence.v1`, or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue. The history reader retains compatibility with v1 artifacts by using their stored selected date when the legacy draft lacks its own date.
 - `role` is limited to `user` and `assistant`; `message_type` remains text-only for persisted chat history. Image bytes/base64 are not stored in `ai_chat_messages`.
 - Message order is deterministic by `message_sequence`, with timestamps and ids available as stable secondary fields.
 - A message must match its parent session's `account_id`.
@@ -612,7 +612,7 @@ This table is a server-side operational record:
 - The additive `202607100001_ai_output_contract_observability.sql` migration idempotently adds output-family, validator, first-pass/final validation, correction-count, and provider completion-category fields. It does not change SQLite `AppDatabase.dbVersion`.
 - The additive `202607110001_ai_intent_output_observability.sql` migration permits `expected_output = auto` and adds `fixed_workflow` / `deterministic` / `model` resolution source, the final validated output type, and a privacy-safe issue-code array. It likewise does not change the SQLite schema version.
 - Migration `202607110002_ai_observability_update_grants.sql` allows the Edge Function service role to finalize `ai_request_logs` and `ai_debug_summaries` after the initial RPC insert. Authenticated clients still have no direct read or write policy.
-- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v1`.
+- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`.
 - Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
 - `selected_output_type` is written only after provider output passes contract validation. Issue codes are fixed categories and contain no field values, user prompt, or provider text.
 - Authenticated clients have no direct read policy.

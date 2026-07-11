@@ -78,7 +78,10 @@ class AiGatewayResponse {
     };
   }
 
-  factory AiGatewayResponse.fromJson(Map<String, dynamic> json) {
+  factory AiGatewayResponse.fromJson(
+    Map<String, dynamic> json, {
+    String? legacyDate,
+  }) {
     final message = _mapOrEmpty(json['message']);
     final rawModelChoice = json['model_choice']?.toString();
     final rawDraft = json['draft'];
@@ -88,10 +91,11 @@ class AiGatewayResponse {
     if (rawDraft is Map) {
       try {
         final draft = Map<String, dynamic>.from(rawDraft);
-        if (draft['schema_version'] == aiWorkoutDraftSchemaVersion) {
-          workoutDraft = AiWorkoutDraft.fromJson(draft);
+        if (draft['schema_version'] == aiWorkoutDraftSchemaVersion ||
+            draft['schema_version'] == aiLegacyWorkoutDraftSchemaVersion) {
+          workoutDraft = AiWorkoutDraft.fromJson(draft, legacyDate: legacyDate);
         } else {
-          foodDraft = AiFoodDraft.fromJson(draft);
+          foodDraft = AiFoodDraft.fromJson(draft, legacyDate: legacyDate);
         }
       } on FormatException {
         hasUnsupportedDraftPayload = true;

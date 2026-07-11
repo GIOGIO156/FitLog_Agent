@@ -1,6 +1,7 @@
 import {
   buildQwenVisionRequestBody,
   extractQwenCompletion,
+  foodDraftForClient,
   parsePhotoAnalysisRequest,
   parseProviderFoodDraftBody,
   PhotoGatewayRequestError,
@@ -27,7 +28,7 @@ Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported image
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2" as const,
     user_note: "米饭吃了一半",
   });
 
@@ -44,12 +45,29 @@ Deno.test("parsePhotoAnalysisRequest accepts text-only food descriptions", () =>
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
     user_note: "100g 三文鱼",
   });
 
   assertEquals(parsed.images.length, 0);
   assertEquals(parsed.userNote, "100g 三文鱼");
+});
+
+Deno.test("legacy request version receives a legacy-compatible draft", () => {
+  const request = parsePhotoAnalysisRequest({
+    images: [],
+    language: "zh",
+    model_choice: "qwen",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v1",
+    user_note: "100g 三文鱼",
+  });
+  const legacy = foodDraftForClient(validDraft(), request.schemaVersion) as
+    Record<string, unknown>;
+
+  assertEquals(legacy.schema_version, "food_draft.v1");
+  assertEquals("date" in legacy, false);
 });
 
 Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported input", () => {
@@ -59,7 +77,7 @@ Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported i
       model_choice: "qwen",
       device_id: "device-a",
       selected_date: "2026-07-01",
-      schema_version: "food_draft.v1",
+      schema_version: "food_draft.v2",
     })
   );
 
@@ -74,7 +92,7 @@ Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported i
       model_choice: "qwen",
       device_id: "device-a",
       selected_date: "2026-07-01",
-      schema_version: "food_draft.v1",
+      schema_version: "food_draft.v2",
     })
   );
 
@@ -89,7 +107,7 @@ Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported i
       model_choice: "qwen",
       device_id: "device-a",
       selected_date: "2026-07-01",
-      schema_version: "food_draft.v1",
+      schema_version: "food_draft.v2",
     })
   );
 
@@ -104,7 +122,7 @@ Deno.test("parsePhotoAnalysisRequest rejects empty, oversized, and unsupported i
       model_choice: "qwen",
       device_id: "device-a",
       selected_date: "2026-07-01",
-      schema_version: "food_draft.v1",
+      schema_version: "food_draft.v2",
     })
   );
 });
@@ -124,7 +142,7 @@ Deno.test("buildQwenVisionRequestBody uses an image_url data URL only in provide
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
   });
 
   const body = buildQwenVisionRequestBody({ request, model: "qwen-vl" });
@@ -143,7 +161,7 @@ Deno.test("buildQwenVisionRequestBody supports text-only provider requests", () 
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
     user_note: "100g 三文鱼",
   });
 
@@ -166,7 +184,7 @@ Deno.test("food correction request does not resend image data", () => {
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
   });
   const body = buildQwenVisionRequestBody({
     request,
@@ -270,7 +288,7 @@ Deno.test("stripImageDataForDebug keeps only compact image metadata", () => {
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
   });
 
   const debug = JSON.stringify(stripImageDataForDebug(request));
@@ -288,7 +306,7 @@ Deno.test("stripImageDataForDebug keeps compact text-only metadata", () => {
     model_choice: "qwen",
     device_id: "device-a",
     selected_date: "2026-07-01",
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
     user_note: "100g 三文鱼",
   });
 
@@ -301,7 +319,8 @@ Deno.test("stripImageDataForDebug keeps compact text-only metadata", () => {
 
 function validDraft() {
   return {
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2" as const,
+    date: "2026-07-01",
     meal_name: "Chicken rice",
     total_weight_g: 320,
     calories_kcal: 520,
@@ -323,7 +342,8 @@ function validDraft() {
 
 function mismatchedFoodDraft() {
   return {
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
+    date: "2026-07-01",
     meal_name: "Rice and tofu",
     total_weight_g: 999,
     calories_kcal: 999,

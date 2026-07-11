@@ -35,6 +35,8 @@ import {
   resolveOutputSelection,
 } from "./expected_output.ts";
 import { routeGatewayWorkflow } from "./workflow_router.ts";
+import { resolveRecordDate } from "./record_date_resolver.ts";
+import { draftConfirmationMessage } from "./draft_response_builder.ts";
 
 const phase5PromptVersion = "phase5_rag_readonly_v1";
 const phase5SchemaVersion = "ai_chat_response.v2";
@@ -135,9 +137,15 @@ Deno.serve(async (request) => {
       ),
     };
     const outputSelection = resolveOutputSelection(parsedRequest);
+    const dateResolution = resolveRecordDate(
+      parsedRequest.messageText,
+      parsedRequest.selectedDate,
+    );
     parsedRequest = {
       ...parsedRequest,
       expectedOutput: outputSelection.expectedOutput,
+      targetDate: dateResolution.targetDate,
+      dateResolutionSource: dateResolution.source,
     };
     outputTelemetry = {
       ...outputTelemetry,
@@ -277,10 +285,12 @@ Deno.serve(async (request) => {
       parsedProvider.messageText,
       parsedRequest,
     );
-    const assistantText = parsedProvider.outputType === "text"
+    const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
+    const assistantText = draft !== null
+      ? draftConfirmationMessage(parsedRequest.language, draft)
+      : parsedProvider.outputType === "text"
       ? prependMealDecisionImageTip(providerGuard.messageText, parsedRequest)
       : providerGuard.messageText;
-    const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
     const evidence = evidenceFromRequest(
       parsedRequest,
       draft === null ? "read_only" : "artifact_returned",
@@ -319,7 +329,7 @@ Deno.serve(async (request) => {
         language: parsedRequest.language,
         workflow: parsedRequest.workflowType,
         outputType: parsedProvider.outputType,
-        draft,
+        draft: draftForClient(draft, parsedRequest),
         needsClarification: providerGuard.allowDraft
           ? parsedProvider.needsClarification
           : false,
@@ -370,6 +380,23 @@ interface GatewayEnv {
   supabaseUrl: string;
   supabaseAnonKey: string;
   supabaseServiceRoleKey: string;
+}
+
+function draftForClient(
+  draft: GatewayDraft | null,
+  request: GatewayRequest,
+): GatewayDraft | Record<string, unknown> | null {
+  if (draft === null || request.clientDraftSchemaVersion === "v2") {
+    return draft;
+  }
+  const legacy = { ...draft } as Record<string, unknown>;
+  if (draft.schema_version === "food_draft.v2") {
+    legacy.schema_version = "food_draft.v1";
+    delete legacy.date;
+  } else {
+    legacy.schema_version = "workout_draft.v1";
+  }
+  return legacy;
 }
 
 function readGatewayEnv(): GatewayEnv {
@@ -534,26 +561,27 @@ function finalAnswerSnapshot(
       }
       : null;
   }
-  const isWorkoutDraft = "schema_version" in draft &&
-    draft.schema_version === "workout_draft.v1";
+  const isWorkoutDraft = draft.schema_version === "workout_draft.v2";
   return {
-    schema_version: "ai_chat_artifacts.v1",
+    schema_version: "ai_chat_artifacts.v2",
     artifacts: [
       isWorkoutDraft
         ? {
           type: "workout_draft",
-          schema_version: "workout_draft.v1",
+          schema_version: "workout_draft.v2",
           record_name: draft.record_name,
           exercise_count: draft.exercises.length,
           draft,
-          selected_date: request.selectedDate,
+          target_date: draft.date,
+          date_resolution_source: request.dateResolutionSource,
           model_choice: request.modelChoice,
         }
         : {
           type: "food_draft",
-          schema_version: "food_draft.v1",
+          schema_version: "food_draft.v2",
           draft,
-          selected_date: request.selectedDate,
+          target_date: draft.date,
+          date_resolution_source: request.dateResolutionSource,
           model_choice: request.modelChoice,
         },
     ],
@@ -630,6 +658,7 @@ function validationIssueCodes(issues: OutputValidationIssue[]): string[] {
     if (item.path.startsWith("$.draft.schema_version")) {
       return "draft_family_mismatch";
     }
+    if (item.path === "$.draft.date") return "draft_date_mismatch";
     if (item.path.startsWith("$.draft")) return "draft_contract_invalid";
     return "envelope_contract_invalid";
   })).slice(0, 8);

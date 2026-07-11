@@ -64,13 +64,16 @@ class SupabaseAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
         ),
       );
     }
-    return _decodeFoodAnalysisResponse(data);
+    return _decodeFoodAnalysisResponse(data, legacyDate: request.selectedDate);
   }
 }
 
-AiFoodPhotoAnalysisResponse _decodeFoodAnalysisResponse(Object? data) {
+AiFoodPhotoAnalysisResponse _decodeFoodAnalysisResponse(
+  Object? data, {
+  String? legacyDate,
+}) {
   try {
-    return _responseFromData(data);
+    return _responseFromData(data, legacyDate: legacyDate);
   } catch (error) {
     return AiFoodPhotoAnalysisResponse(
       error: AiGatewayError(
@@ -82,8 +85,11 @@ AiFoodPhotoAnalysisResponse _decodeFoodAnalysisResponse(Object? data) {
   }
 }
 
-AiFoodPhotoAnalysisResponse _responseFromData(Object? data) {
-  final parsed = _responseFromDataOrNull(data);
+AiFoodPhotoAnalysisResponse _responseFromData(
+  Object? data, {
+  String? legacyDate,
+}) {
+  final parsed = _responseFromDataOrNull(data, legacyDate: legacyDate);
   if (parsed != null) {
     return parsed;
   }
@@ -96,11 +102,15 @@ bool _isTransportError(Object error) {
   return error is SocketException || error is TimeoutException;
 }
 
-AiFoodPhotoAnalysisResponse? _responseFromDataOrNull(Object? data) {
+AiFoodPhotoAnalysisResponse? _responseFromDataOrNull(
+  Object? data, {
+  String? legacyDate,
+}) {
   try {
     if (data is Map) {
       return AiFoodPhotoAnalysisResponse.fromJson(
         Map<String, dynamic>.from(data),
+        legacyDate: legacyDate,
       );
     }
     if (data is String) {
@@ -108,6 +118,7 @@ AiFoodPhotoAnalysisResponse? _responseFromDataOrNull(Object? data) {
       if (decoded is Map) {
         return AiFoodPhotoAnalysisResponse.fromJson(
           Map<String, dynamic>.from(decoded),
+          legacyDate: legacyDate,
         );
       }
     }

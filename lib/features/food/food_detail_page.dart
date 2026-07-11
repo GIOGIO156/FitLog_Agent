@@ -139,8 +139,12 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
 
       context.read<RefreshNotifier>().markDataChanged();
       context.refreshDailySummaryCacheForDates(<String>{_originalDate, _date});
-      FitLogNotifications.success(context, strings.foodRecordUpdated);
-      Navigator.of(context).pop(true);
+      FitLogNotifications.successAfterNavigation(
+        context,
+        strings.foodRecordUpdated,
+      );
+      final navigator = Navigator.of(context);
+      navigator.pop(true);
     } catch (error) {
       if (!mounted) {
         return;

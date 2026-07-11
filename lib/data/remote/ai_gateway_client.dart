@@ -46,7 +46,7 @@ class SupabaseAiGatewayClient implements AiGatewayClient {
         ),
       );
     }
-    return _decodeGatewayResponse(data);
+    return _decodeGatewayResponse(data, legacyDate: request.selectedDate);
   }
 }
 
@@ -77,13 +77,13 @@ class TestAiGatewayClient implements AiGatewayClient {
         ),
       );
     }
-    return _decodeGatewayResponse(data);
+    return _decodeGatewayResponse(data, legacyDate: request.selectedDate);
   }
 }
 
-AiGatewayResponse _decodeGatewayResponse(Object? data) {
+AiGatewayResponse _decodeGatewayResponse(Object? data, {String? legacyDate}) {
   try {
-    return _responseFromData(data);
+    return _responseFromData(data, legacyDate: legacyDate);
   } catch (error) {
     return AiGatewayResponse(
       error: AiGatewayError(
@@ -95,8 +95,8 @@ AiGatewayResponse _decodeGatewayResponse(Object? data) {
   }
 }
 
-AiGatewayResponse _responseFromData(Object? data) {
-  final parsed = _responseFromDataOrNull(data);
+AiGatewayResponse _responseFromData(Object? data, {String? legacyDate}) {
+  final parsed = _responseFromDataOrNull(data, legacyDate: legacyDate);
   if (parsed != null) {
     return parsed;
   }
@@ -107,15 +107,21 @@ bool _isTransportError(Object error) {
   return error is SocketException || error is TimeoutException;
 }
 
-AiGatewayResponse? _responseFromDataOrNull(Object? data) {
+AiGatewayResponse? _responseFromDataOrNull(Object? data, {String? legacyDate}) {
   try {
     if (data is Map) {
-      return AiGatewayResponse.fromJson(Map<String, dynamic>.from(data));
+      return AiGatewayResponse.fromJson(
+        Map<String, dynamic>.from(data),
+        legacyDate: legacyDate,
+      );
     }
     if (data is String) {
       final decoded = jsonDecode(data);
       if (decoded is Map) {
-        return AiGatewayResponse.fromJson(Map<String, dynamic>.from(decoded));
+        return AiGatewayResponse.fromJson(
+          Map<String, dynamic>.from(decoded),
+          legacyDate: legacyDate,
+        );
       }
     }
   } catch (_) {

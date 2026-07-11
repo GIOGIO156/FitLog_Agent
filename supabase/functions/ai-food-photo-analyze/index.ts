@@ -2,6 +2,7 @@ import {
   buildQwenVisionRequestBody,
   errorMessageForCode,
   extractQwenCompletion,
+  foodDraftForClient,
   type FoodDraft,
   logStatusForCode,
   parsePhotoAnalysisRequest,
@@ -112,7 +113,10 @@ Deno.serve(async (request) => {
     assertCompleted(completion);
     let parsedProvider;
     try {
-      parsedProvider = parseProviderFoodDraftBody(completion.content);
+      parsedProvider = parseProviderFoodDraftBody(
+        completion.content,
+        parsedRequest.selectedDate,
+      );
       outputTelemetry = {
         ...outputTelemetry,
         firstPassValidationStatus: "passed",
@@ -146,7 +150,10 @@ Deno.serve(async (request) => {
       };
       assertCompleted(completion);
       try {
-        parsedProvider = parseProviderFoodDraftBody(completion.content);
+        parsedProvider = parseProviderFoodDraftBody(
+          completion.content,
+          parsedRequest.selectedDate,
+        );
         outputTelemetry = {
           ...outputTelemetry,
           finalValidationStatus: "passed",
@@ -175,7 +182,10 @@ Deno.serve(async (request) => {
     return jsonResponse(
       photoGatewayResponse({
         modelProvider: "qwen",
-        draft: parsedProvider.draft,
+        draft: foodDraftForClient(
+          parsedProvider.draft,
+          parsedRequest.schemaVersion,
+        ),
         needsClarification: parsedProvider.needsClarification,
         clarificationQuestions: parsedProvider.clarificationQuestions,
         debugSummaryId: persisted.debugSummaryId,
@@ -421,7 +431,7 @@ async function writePhotoLog(
         model_provider: "qwen",
         model: params.model,
         prompt_version: "phase4_food_photo_v1",
-        schema_version: "food_draft.v1",
+        schema_version: "food_draft.v2",
         profile_version: null,
         status: params.status,
         error_code: params.errorCode,

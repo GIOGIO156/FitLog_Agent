@@ -657,6 +657,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    FitLogNotifications.handleAppLifecycleState(state);
     if (state != AppLifecycleState.resumed || !mounted) {
       return;
     }

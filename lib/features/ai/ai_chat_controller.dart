@@ -36,6 +36,7 @@ class AiChatController extends ChangeNotifier {
       const <String, AiWorkoutDraft>{};
   AiGatewayError? _lastError;
   AiGatewayResponse? _lastSuccessfulResponse;
+  final Set<String> _deletingSessionIds = <String>{};
 
   String? get accountId => _accountId;
   String? get selectedSessionId => _selectedSessionId;
@@ -49,6 +50,9 @@ class AiChatController extends ChangeNotifier {
       _pendingUserAttachments;
   AiGatewayError? get lastError => _lastError;
   AiGatewayResponse? get lastSuccessfulResponse => _lastSuccessfulResponse;
+  bool get deletingSession => _deletingSessionIds.isNotEmpty;
+  bool isDeletingSession(String sessionId) =>
+      _deletingSessionIds.contains(sessionId);
   bool get hasVisibleConversation =>
       _messages.isNotEmpty ||
       (_pendingUserText ?? '').isNotEmpty ||
@@ -112,6 +116,7 @@ class AiChatController extends ChangeNotifier {
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
     _lastSuccessfulResponse = null;
+    _deletingSessionIds.clear();
     _clearErrorState();
     notifyListeners();
     if (_accountId != null) {
@@ -241,6 +246,7 @@ class AiChatController extends ChangeNotifier {
       client: const <String, dynamic>{
         'platform': 'flutter',
         'app_version': 'phase4',
+        'draft_schema_version': 'v2',
       },
       conversationContext: _buildConversationContext(),
     );
@@ -346,6 +352,12 @@ class AiChatController extends ChangeNotifier {
   }
 
   Future<void> deleteSession(String sessionId) async {
+    if (sessionId.isEmpty || deletingSession) {
+      return;
+    }
+    _deletingSessionIds.add(sessionId);
+    _clearErrorState();
+    notifyListeners();
     try {
       await repository.deleteSession(sessionId);
       if (_selectedSessionId == sessionId) {
@@ -354,6 +366,8 @@ class AiChatController extends ChangeNotifier {
       await loadSessions();
     } catch (_) {
       _setTransientError(_errorFromCode('ai_chat_delete_failed'));
+    } finally {
+      _deletingSessionIds.remove(sessionId);
       notifyListeners();
     }
   }
@@ -492,6 +506,13 @@ class AiChatController extends ChangeNotifier {
   }
 
   AiGatewayError _errorFromCode(String code) {
+    if (code == 'record_network_error' ||
+        code == 'active_device_network_error') {
+      return AiGatewayError(
+        code: AiGatewayErrorCode.networkFailure,
+        rawCode: code,
+      );
+    }
     final mapped = aiGatewayErrorCodeFromValue(code);
     return AiGatewayError(code: mapped, rawCode: code);
   }
@@ -510,6 +531,7 @@ AiFoodDraftArtifact? _foodArtifactFromRuntime(AiFoodDraft? draft) {
     return null;
   }
   return AiFoodDraftArtifact(
+    date: draft.date,
     mealName: draft.mealName,
     caloriesKcal: draft.caloriesKcal,
     draft: draft,
@@ -521,6 +543,7 @@ AiWorkoutDraftArtifact? _workoutArtifactFromRuntime(AiWorkoutDraft? draft) {
     return null;
   }
   return AiWorkoutDraftArtifact(
+    date: draft.date,
     recordName: draft.recordName,
     exerciseCount: draft.exercises.length,
     draft: draft,

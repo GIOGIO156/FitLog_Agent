@@ -2,7 +2,7 @@
 
 ## 0. Status And Responsibility
 
-Status: repository implementation, corrective output-selection hardening, linked-project deployment, and deterministic validation are complete. Qwen text Draft and dedicated Add Food text canaries pass. OpenAI production canaries, a user-approved real food-image device test, monitoring, and rollback rehearsal remain operational acceptance work and must not be inferred from deployment success alone.
+Status: repository implementation, corrective output-selection and draft-date hardening, linked-project deployment, deterministic validation, and Qwen text Draft canaries are complete. OpenAI production canaries, a user-approved real food-image device test, monitoring, and rollback rehearsal remain operational acceptance work and must not be inferred from deployment success alone.
 
 This file owns implementation order, acceptance gates, rollout, rollback, and validation for the FitLog AI output-constraint upgrade. Stable design facts live in:
 
@@ -49,7 +49,7 @@ The completed corrective work addresses production regressions discovered after 
 - workflow/context routing and result-shape selection are separate, so authorized read-only context can support a reviewable draft without granting an official write;
 - cross-field validation rejects output-type/payload mismatch and prose that claims a nonexistent draft was created;
 - client parsing separates socket/timeout failures, provider/SDK failures, and invalid response reconstruction;
-- AI and app-level errors expire, can be dismissed, clear on editing/navigation, and preserve retry input;
+- AI and app-level passive notices keep the compact no-close treatment, expire automatically, clear on navigation/backgrounding, and preserve retry input where applicable;
 - meal-decision answers without a request image receive deterministic ingredient-photo/delivery-screenshot guidance;
 - provider prompts no longer expose internal phase labels to user-facing answers;
 - compact logs record intent-resolution source, selected output type, and privacy-safe validation issue codes;
@@ -65,6 +65,20 @@ Deployed to linked project `dyacqajcinjwrkbngeif`:
 - real dedicated Add Food text analysis returned `food_draft.v1` without clarification.
 
 The private user screenshot was not exported to the provider during engineering canary work. A synthetic 1x1 image reached the multimodal route but was rejected before provider completion as `provider_failure`; real food-image recognition therefore remains a manual device acceptance item using the rebuilt APK and the user's own consent.
+
+### Draft Date And Lifecycle Hardening
+
+The current repository increment closes the remaining date and client-lifecycle gaps without changing the two-layer output-family resolver:
+
+- `food_draft.v2` and `workout_draft.v2` require a real target date;
+- Chat resolves supported explicit/relative dates against the request date, defaults to the selected date when no cue exists, and clarifies instead of guessing unsupported date language;
+- provider output must match the server-resolved date, and user-visible draft confirmation text is derived from the validated artifact;
+- Chat artifact cards and normal Food/Workout editors show the same date, with the existing themed calendar interaction available before save;
+- new `ai_chat_artifacts.v2` snapshots retain target-date metadata, while mixed-deployment responses and stored v1 artifacts remain readable through bounded compatibility conversion;
+- starting an official workout save freezes lifecycle autosave, and cloud success ends with an ordered final draft deletion that older queued writes cannot overwrite;
+- passive app notifications return to the compact no-close presentation, expire automatically, and clear when the app leaves the foreground.
+
+The increment is deployed to linked project `dyacqajcinjwrkbngeif` as `ai-chat-route` version 20 and `ai-food-photo-analyze` version 13. The uploaded generator-v3 corpus contains 506 chunks across 19 source paths and two languages; focused Chinese and English retrieval smoke tests returned the new date rules from their owning documents. An authenticated UTF-8 Qwen canary resolved “yesterday” against `2026-07-11` and returned `workout_draft.v2` dated `2026-07-10`; the dedicated Add Food text canary returned `food_draft.v2` with the exact selected date `2026-07-09`. Neither canary wrote an official record. The configured split debug APKs were rebuilt after all local gates passed.
 
 ## 1. Goal
 

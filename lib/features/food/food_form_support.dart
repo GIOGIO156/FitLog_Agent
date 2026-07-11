@@ -104,7 +104,11 @@ class FoodDateTile extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       title: Text(strings.date),
       subtitle: Text(DateUtilsX.formatReadable(date)),
-      trailing: TextButton(onPressed: onChange, child: Text(strings.change)),
+      trailing: IconButton(
+        onPressed: onChange,
+        tooltip: strings.change,
+        icon: const Icon(Icons.calendar_today_outlined),
+      ),
     );
   }
 }

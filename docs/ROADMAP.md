@@ -2004,9 +2004,9 @@ Spec -> Scenario -> Oracle -> Eval -> Repair -> Evidence
 
 #### 5. `draft_confirmation_regression`
 
-目标：验证 Phase 4 已落地的草稿能力仍符合确认边界。覆盖 Food Draft valid/invalid schema、item totals normalization、Workout Draft valid/missing values、historical artifact snapshot unavailable、review before write、discard no-write、provider raw JSON 不直接作为 assistant prose 展示。
+目标：验证已落地的草稿能力仍符合确认边界。覆盖 Food Draft valid/invalid schema、item totals normalization、Workout Draft valid/missing values、明确/默认/歧义日期解析、draft date 与服务端 target date 一致、v1 history compatibility、historical artifact snapshot unavailable、review before write、calendar date edit、discard no-write、正式训练保存与 lifecycle autosave 竞态，以及 provider raw JSON 不直接作为 assistant prose 展示。
 
-自动化判据：invalid schema 不可 review / save；用户确认前不写正式记录；Food Preview / Workout editor 保存后才写正式记录；丢弃不写库；raw image/base64 不进入 chat history。
+自动化判据：invalid schema 或日期不一致不可 review / save；歧义日期不猜测；`message.text`、artifact 与 editor 日期一致；用户确认前不写正式记录；Food Preview / Workout editor 保存后才写正式记录；保存成功期间进入后台不复活旧训练草稿，保存失败保留草稿；丢弃不写库；raw image/base64 不进入 chat history。
 
 #### 6. `gateway_contract_privacy`
 
@@ -2022,9 +2022,9 @@ Spec -> Scenario -> Oracle -> Eval -> Repair -> Evidence
 
 #### 8. `intent_output_routing_regression`
 
-目标：验证普通 AI Chat 的两层 output selection、明确工作流固定结果和客户端错误生命周期。覆盖确定性 resolver 命中与 `auto` 放弃、自然语言纯文字问题、中文/英文 Food Draft 与 Workout Draft、图片识别/记录和图片用餐决策的差异、Add Food 明确入口、同会话 clarification、`output_type` 与 draft 不一致、文字声称已生成但没有 artifact、真实 transport 失败、response decode 失败，以及错误提示的关闭、过期、输入编辑、session/tab/route 切换。
+目标：验证普通 AI Chat 的两层 output selection、明确工作流固定结果和客户端错误生命周期。覆盖确定性 resolver 命中与 `auto` 放弃、自然语言纯文字问题、中文/英文 Food Draft 与 Workout Draft、图片识别/记录和图片用餐决策的差异、Add Food 明确入口、同会话 clarification、`output_type` 与 draft 不一致、文字声称已生成但没有 artifact、真实 transport 失败、response decode 失败，以及被动通知的自动过期和 session/tab/route/app-background 清理。
 
-自动化判据：第一层无匹配必须是 `auto` 而不是 `text`；第二层选择只接受受限类型；明确 Add Food 成功必须有 Food Draft；workflow/context routing 不覆盖明确 draft 意图；结构合法但语义矛盾仍失败；网络、provider 和 output-invalid 分类真实；错误不跨 surface 持续；用户可重试输入和图片保持；正式写入仍为 0。
+自动化判据：第一层无匹配必须是 `auto` 而不是 `text`；第二层选择只接受受限类型；明确 Add Food 成功必须有 Food Draft；workflow/context routing 不覆盖明确 draft 意图；结构合法但语义矛盾仍失败；网络、provider 和 output-invalid 分类真实；被动通知保持紧凑且无关闭图标，自动消失并且不跨 surface/前后台持续；用户可重试输入和图片保持；正式写入仍为 0。
 
 ### 评分体系
 

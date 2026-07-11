@@ -53,12 +53,33 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
     needs_clarification: false,
     clarification_questions: [],
   };
+  if (
+    request.targetDate === null &&
+    (request.expectedOutput === "food_draft" ||
+      request.expectedOutput === "workout_draft")
+  ) {
+    return {
+      ...common,
+      output_type: "clarification",
+      message: {
+        text: request.language === "zh"
+          ? "请确认这条记录要保存到哪一天。"
+          : "Which date should this record use?",
+      },
+      needs_clarification: true,
+      clarification_questions: [
+        request.language === "zh" ? "请选择具体日期。" : "Choose a date.",
+      ],
+      draft: null,
+    };
+  }
   if (request.expectedOutput === "food_draft") {
     return {
       ...common,
       output_type: "food_draft",
       draft: {
-        schema_version: "food_draft.v1",
+        schema_version: "food_draft.v2",
+        date: request.targetDate ?? request.selectedDate ?? "2026-01-01",
         meal_name: "Mock meal",
         total_weight_g: 100,
         calories_kcal: 120,
@@ -76,9 +97,9 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
       ...common,
       output_type: "workout_draft",
       draft: {
-        schema_version: "workout_draft.v1",
+        schema_version: "workout_draft.v2",
         record_name: "Mock workout",
-        date: request.selectedDate,
+        date: request.targetDate ?? request.selectedDate ?? "2026-01-01",
         notes: "Mock provider draft.",
         exercises: [{
           exercise_name: "Squat",

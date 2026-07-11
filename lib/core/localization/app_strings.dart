@@ -114,6 +114,16 @@ class AppStrings {
   String get aiRenameChatEmpty => _t('Enter a chat title.', '请输入会话标题。');
   String get aiRenameChatFailed =>
       _t('Chat title could not be renamed.', '会话重命名失败。');
+  String get aiDeleteChatFailed =>
+      _t('Chat could not be deleted. Try again.', '会话删除失败，请重试。');
+  String get aiChatHistoryLoadFailed => _t(
+    'Chat history could not refresh. Try reopening it.',
+    '会话记录刷新失败，请重新打开后重试。',
+  );
+  String get aiActiveDevicePreparing => _t(
+    'AI connection is still preparing. Try again shortly.',
+    'AI 连接仍在准备中，请稍后重试。',
+  );
   String get aiDeleteChatConfirmTitle => _t('Delete chat?', '删除会话？');
   String aiDeleteChatConfirmBody(String title) => _t(
     'Delete "$title" from chat history? This cannot be undone.',

@@ -114,6 +114,7 @@ Transition rules:
 - If cloud write fails, preserve the previous official state and keep any user draft/edit in a retryable non-official state.
 - AI cannot silently modify diet goals, apply carb tapering, delete records, or write official records; user confirmation and the official write path are required.
 - There is no offline official-write queue. Offline user edits remain drafts until an explicit online save succeeds.
+- Workout lifecycle autosave and official save are ordered mutations of one local draft. Starting an official save blocks new lifecycle autosaves; after cloud success, a final draft deletion runs behind any older queued draft write. This cloud-confirmed terminal mutation wins over backgrounding the app. Official-save failure does not run that deletion and keeps the draft retryable.
 
 ## User Action Feedback Rules
 
@@ -401,6 +402,7 @@ Automated tests and manual acceptance should preserve these invariants:
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.
 - A successful cloud write updates local read models and affected summaries.
+- Backgrounding during a successful workout save cannot recreate the cleared local workout draft; a failed save keeps it available.
 - Matching background refresh results do not cause visible loading flashes.
 - Background refresh is bounded by freshness, visible window, and failure backoff, with no continuous polling or repeated full-page refreshes in front of the user.
 - Cache eviction never deletes cloud official data.

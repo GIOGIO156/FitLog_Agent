@@ -139,11 +139,13 @@ class AiChatMessage {
 
 class AiFoodDraftArtifact {
   const AiFoodDraftArtifact({
+    required this.date,
     required this.mealName,
     required this.caloriesKcal,
     required this.draft,
   });
 
+  final String? date;
   final String mealName;
   final double? caloriesKcal;
   final AiFoodDraft? draft;
@@ -153,11 +155,13 @@ class AiFoodDraftArtifact {
 
 class AiWorkoutDraftArtifact {
   const AiWorkoutDraftArtifact({
+    required this.date,
     required this.recordName,
     required this.exerciseCount,
     required this.draft,
   });
 
+  final String? date;
   final String recordName;
   final int exerciseCount;
   final AiWorkoutDraft? draft;
@@ -182,15 +186,23 @@ AiFoodDraftArtifact? _foodArtifactFromFinalAnswer(Map<String, dynamic>? value) {
       final draft = artifact['draft'];
       if (draft is Map) {
         final draftMap = Map<String, dynamic>.from(draft);
+        final legacyDate =
+            _textField(artifact, 'target_date') ??
+            _textField(artifact, 'selected_date');
         try {
-          final foodDraft = AiFoodDraft.fromJson(draftMap);
+          final foodDraft = AiFoodDraft.fromJson(
+            draftMap,
+            legacyDate: legacyDate,
+          );
           return AiFoodDraftArtifact(
+            date: foodDraft.date,
             mealName: foodDraft.mealName,
             caloriesKcal: foodDraft.caloriesKcal,
             draft: foodDraft,
           );
         } on FormatException {
           return AiFoodDraftArtifact(
+            date: legacyDate,
             mealName: _textField(draftMap, 'meal_name') ?? 'Food draft',
             caloriesKcal: _numberField(draftMap, 'calories_kcal'),
             draft: null,
@@ -203,15 +215,19 @@ AiFoodDraftArtifact? _foodArtifactFromFinalAnswer(Map<String, dynamic>? value) {
   final draft = value['draft'];
   if (draft is Map) {
     final draftMap = Map<String, dynamic>.from(draft);
+    final legacyDate =
+        _textField(value, 'target_date') ?? _textField(value, 'selected_date');
     try {
-      final foodDraft = AiFoodDraft.fromJson(draftMap);
+      final foodDraft = AiFoodDraft.fromJson(draftMap, legacyDate: legacyDate);
       return AiFoodDraftArtifact(
+        date: foodDraft.date,
         mealName: foodDraft.mealName,
         caloriesKcal: foodDraft.caloriesKcal,
         draft: foodDraft,
       );
     } on FormatException {
       return AiFoodDraftArtifact(
+        date: legacyDate,
         mealName: _textField(draftMap, 'meal_name') ?? 'Food draft',
         caloriesKcal: _numberField(draftMap, 'calories_kcal'),
         draft: null,
@@ -240,8 +256,12 @@ AiWorkoutDraftArtifact? _workoutArtifactFromFinalAnswer(
       continue;
     }
     final draft = artifact['draft'];
+    final legacyDate =
+        _textField(artifact, 'target_date') ??
+        _textField(artifact, 'selected_date');
     if (draft is! Map) {
       return AiWorkoutDraftArtifact(
+        date: legacyDate,
         recordName:
             _textField(artifact, 'record_name') ?? 'Workout record draft',
         exerciseCount: NumberUtils.toInt(artifact['exercise_count']),
@@ -250,14 +270,19 @@ AiWorkoutDraftArtifact? _workoutArtifactFromFinalAnswer(
     }
     final draftMap = Map<String, dynamic>.from(draft);
     try {
-      final workoutDraft = AiWorkoutDraft.fromJson(draftMap);
+      final workoutDraft = AiWorkoutDraft.fromJson(
+        draftMap,
+        legacyDate: legacyDate,
+      );
       return AiWorkoutDraftArtifact(
+        date: workoutDraft.date,
         recordName: workoutDraft.recordName,
         exerciseCount: workoutDraft.exercises.length,
         draft: workoutDraft,
       );
     } on FormatException {
       return AiWorkoutDraftArtifact(
+        date: legacyDate,
         recordName: _textField(draftMap, 'record_name') ?? 'Workout record',
         exerciseCount: _exerciseCountFromDraft(draftMap),
         draft: null,

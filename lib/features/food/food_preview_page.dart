@@ -174,8 +174,12 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
 
       context.read<RefreshNotifier>().markDataChanged();
       context.refreshDailySummaryCacheForDate(_date);
-      FitLogNotifications.success(context, strings.foodRecordSaved);
-      Navigator.of(context).pop(true);
+      FitLogNotifications.successAfterNavigation(
+        context,
+        strings.foodRecordSaved,
+      );
+      final navigator = Navigator.of(context);
+      navigator.pop(true);
     } catch (error) {
       if (!mounted) {
         return;

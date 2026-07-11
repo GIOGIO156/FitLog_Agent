@@ -6,6 +6,10 @@ import {
   type ProviderOutputType,
   parseProviderGatewayEnvelope,
 } from "../_shared/ai_output_contract.ts";
+import {
+  type DateResolutionSource,
+  isValidDateKey,
+} from "./record_date_resolver.ts";
 
 export type {
   ExpectedOutput,
@@ -50,6 +54,9 @@ export interface GatewayRequest {
   workflowType: WorkflowType;
   attachments: GatewayImageAttachment[];
   selectedDate: string | null;
+  targetDate: string | null;
+  dateResolutionSource: DateResolutionSource;
+  clientDraftSchemaVersion: "v1" | "v2";
   profileVersion: string | null;
   deviceId: string;
   allowRecordSummaryContext: boolean;
@@ -180,6 +187,23 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     throw new GatewayRequestError("request_schema_mismatch");
   }
 
+  const selectedDate = nullableString(body.selected_date);
+  if (selectedDate !== null && !isValidDateKey(selectedDate)) {
+    throw new GatewayRequestError("request_schema_mismatch");
+  }
+
+  const client = body.client === undefined || body.client === null
+    ? {}
+    : objectOrThrow(body.client);
+  const clientDraftSchemaVersion = stringOrEmpty(
+    client.draft_schema_version || "v1",
+  ).trim();
+  if (
+    clientDraftSchemaVersion !== "v1" && clientDraftSchemaVersion !== "v2"
+  ) {
+    throw new GatewayRequestError("request_schema_mismatch");
+  }
+
   return {
     sessionId,
     messageText,
@@ -187,7 +211,10 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     modelChoice: modelChoice as ModelChoice,
     workflowType: workflowType as WorkflowType,
     attachments,
-    selectedDate: nullableString(body.selected_date),
+    selectedDate,
+    targetDate: null,
+    dateResolutionSource: "unresolved",
+    clientDraftSchemaVersion,
     profileVersion: nullableString(body.profile_version),
     deviceId,
     allowRecordSummaryContext: body.allow_record_summary_context === true,
@@ -233,7 +260,7 @@ export function gatewayResponse(params: {
   language?: string | null;
   workflow?: WorkflowType | string | null;
   outputType?: ProviderOutputType | null;
-  draft?: GatewayDraft | null;
+  draft?: GatewayDraft | Record<string, unknown> | null;
   needsClarification?: boolean;
   clarificationQuestions?: string[];
   debugSummaryId?: string | null;
@@ -264,7 +291,11 @@ export function parseProviderGatewayBody(
   content: string,
   request: GatewayRequest,
 ): ParsedProviderGatewayBody {
-  return parseProviderGatewayEnvelope(content, request.expectedOutput);
+  return parseProviderGatewayEnvelope(
+    content,
+    request.expectedOutput,
+    request.targetDate,
+  );
 }
 
 function parseConversationContext(

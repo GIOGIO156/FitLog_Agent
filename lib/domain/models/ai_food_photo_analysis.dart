@@ -4,7 +4,8 @@ import 'ai_gateway_request.dart';
 import 'food_item.dart';
 import 'food_record.dart';
 
-const String aiFoodDraftSchemaVersion = 'food_draft.v1';
+const String aiFoodDraftSchemaVersion = 'food_draft.v2';
+const String aiLegacyFoodDraftSchemaVersion = 'food_draft.v1';
 
 class AiFoodPhotoImagePayload {
   const AiFoodPhotoImagePayload({
@@ -80,7 +81,10 @@ class AiFoodPhotoAnalysisResponse {
 
   bool get isSuccess => error == null;
 
-  factory AiFoodPhotoAnalysisResponse.fromJson(Map<String, dynamic> json) {
+  factory AiFoodPhotoAnalysisResponse.fromJson(
+    Map<String, dynamic> json, {
+    String? legacyDate,
+  }) {
     final rawModelChoice = json['model_choice']?.toString();
     final rawDraft = json['draft'];
     return AiFoodPhotoAnalysisResponse(
@@ -89,7 +93,10 @@ class AiFoodPhotoAnalysisResponse {
           : aiGatewayModelChoiceFromValue(rawModelChoice),
       modelProvider: json['model_provider']?.toString(),
       draft: rawDraft is Map
-          ? AiFoodDraft.fromJson(Map<String, dynamic>.from(rawDraft))
+          ? AiFoodDraft.fromJson(
+              Map<String, dynamic>.from(rawDraft),
+              legacyDate: legacyDate,
+            )
           : null,
       needsClarification: json['needs_clarification'] == true,
       clarificationQuestions: _stringList(json['clarification_questions']),
@@ -101,6 +108,7 @@ class AiFoodPhotoAnalysisResponse {
 
 class AiFoodDraft {
   const AiFoodDraft({
+    required this.date,
     required this.mealName,
     required this.totalWeightG,
     required this.caloriesKcal,
@@ -112,6 +120,7 @@ class AiFoodDraft {
     this.items = const <AiFoodDraftItem>[],
   });
 
+  final String date;
   final String mealName;
   final double totalWeightG;
   final double caloriesKcal;
@@ -122,16 +131,26 @@ class AiFoodDraft {
   final String estimationNotes;
   final List<AiFoodDraftItem> items;
 
-  factory AiFoodDraft.fromJson(Map<String, dynamic> json) {
+  factory AiFoodDraft.fromJson(
+    Map<String, dynamic> json, {
+    String? legacyDate,
+  }) {
     final schemaVersion = json['schema_version']?.toString();
-    if (schemaVersion != null && schemaVersion != aiFoodDraftSchemaVersion) {
+    if (schemaVersion != null &&
+        schemaVersion != aiFoodDraftSchemaVersion &&
+        schemaVersion != aiLegacyFoodDraftSchemaVersion) {
       throw const FormatException('food_draft_unsupported_schema_version');
+    }
+    final date = _validDateOrNull(json['date']) ?? _validDateOrNull(legacyDate);
+    if (date == null) {
+      throw const FormatException('food_draft_missing_date');
     }
     final mealName = (json['meal_name'] ?? '').toString().trim();
     if (mealName.isEmpty) {
       throw const FormatException('food_draft_missing_meal_name');
     }
     final draft = AiFoodDraft(
+      date: date,
       mealName: mealName,
       totalWeightG: _nonNegativeFiniteNumber(json['total_weight_g']),
       caloriesKcal: _nonNegativeFiniteNumber(json['calories_kcal']),
@@ -164,6 +183,7 @@ class AiFoodDraft {
     }
     final totals = _FoodDraftTotals.fromItems(items);
     return AiFoodDraft(
+      date: date,
       mealName: mealName,
       totalWeightG: totals.totalWeightG,
       caloriesKcal: totals.caloriesKcal,
@@ -180,6 +200,7 @@ class AiFoodDraft {
     final totals = _effectiveTotals;
     return <String, dynamic>{
       'schema_version': aiFoodDraftSchemaVersion,
+      'date': date,
       'meal_name': mealName,
       'total_weight_g': totals.totalWeightG,
       'calories_kcal': totals.caloriesKcal,
@@ -193,7 +214,7 @@ class AiFoodDraft {
   }
 
   FoodRecord toFoodRecord({
-    required String date,
+    String? date,
     String? modelProvider,
     String? userNote,
   }) {
@@ -205,7 +226,7 @@ class AiFoodDraft {
     ];
     final totals = _effectiveTotals;
     return FoodRecord(
-      date: date,
+      date: date ?? this.date,
       mealName: mealName,
       totalWeightG: totals.totalWeightG,
       caloriesKcal: totals.caloriesKcal,
@@ -354,4 +375,17 @@ List<String> _stringList(Object? value) {
     return const <String>[];
   }
   return value.map((item) => item.toString()).toList(growable: false);
+}
+
+String? _validDateOrNull(Object? value) {
+  final text = value?.toString().trim() ?? '';
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(text);
+  if (match == null) return null;
+  final year = int.parse(match.group(1)!);
+  final month = int.parse(match.group(2)!);
+  final day = int.parse(match.group(3)!);
+  final parsed = DateTime.utc(year, month, day);
+  return parsed.year == year && parsed.month == month && parsed.day == day
+      ? text
+      : null;
 }

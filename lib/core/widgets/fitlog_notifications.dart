@@ -18,9 +18,6 @@ class FitLogNotifications {
   static const Key actionButtonKey = ValueKey<String>(
     'fitlog_notification_action_button',
   );
-  static const Key closeButtonKey = ValueKey<String>(
-    'fitlog_notification_close_button',
-  );
   static final NavigatorObserver navigatorObserver =
       _FitLogNotificationNavigatorObserver();
 
@@ -32,6 +29,7 @@ class FitLogNotifications {
   static const Duration _actionDuration = Duration(milliseconds: 6500);
 
   static OverlayEntry? _currentEntry;
+  static OverlayState? _currentOverlay;
   static Timer? _dismissTimer;
 
   static void success(BuildContext context, String message) {
@@ -43,12 +41,35 @@ class FitLogNotifications {
     );
   }
 
-  static void error(BuildContext context, String message) {
+  static void successAfterNavigation(BuildContext context, String message) {
+    final target = _NotificationTarget.maybeOf(context);
+    if (target == null) {
+      success(context, message);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (target.overlay.mounted) {
+        _showOnTarget(
+          target,
+          message: message,
+          kind: FitLogNotificationKind.success,
+          duration: _successDuration,
+        );
+      }
+    });
+  }
+
+  static void error(
+    BuildContext context,
+    String message, {
+    double additionalBottomOffset = 0,
+  }) {
     _show(
       context,
       message: message,
       kind: FitLogNotificationKind.error,
       duration: _errorDuration,
+      additionalBottomOffset: additionalBottomOffset,
     );
   }
 
@@ -91,9 +112,17 @@ class FitLogNotifications {
     _dismissTimer?.cancel();
     _dismissTimer = null;
     final entry = _currentEntry;
+    final overlay = _currentOverlay;
     _currentEntry = null;
-    if (entry?.mounted ?? false) {
-      entry!.remove();
+    _currentOverlay = null;
+    if (entry != null && (overlay?.mounted ?? false)) {
+      entry.remove();
+    }
+  }
+
+  static void handleAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      dismiss();
     }
   }
 
@@ -105,9 +134,10 @@ class FitLogNotifications {
     String? actionLabel,
     VoidCallback? onActionPressed,
     bool? topAlignedOverride,
+    double additionalBottomOffset = 0,
   }) {
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) {
+    final target = _NotificationTarget.maybeOf(context);
+    if (target == null) {
       _showSnackBarFallback(
         context,
         message: message,
@@ -118,11 +148,34 @@ class FitLogNotifications {
       return;
     }
 
+    _showOnTarget(
+      target,
+      message: message,
+      kind: kind,
+      duration: duration,
+      actionLabel: actionLabel,
+      onActionPressed: onActionPressed,
+      topAlignedOverride: topAlignedOverride,
+      additionalBottomOffset: additionalBottomOffset,
+    );
+  }
+
+  static void _showOnTarget(
+    _NotificationTarget target, {
+    required String message,
+    required FitLogNotificationKind kind,
+    required Duration duration,
+    String? actionLabel,
+    VoidCallback? onActionPressed,
+    bool? topAlignedOverride,
+    double additionalBottomOffset = 0,
+  }) {
+    if (!target.overlay.mounted) {
+      return;
+    }
+
     dismiss();
 
-    final theme = Theme.of(context);
-    final fitTheme = context.fitLogTheme;
-    final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
     final topAligned =
         topAlignedOverride ??
         (kind == FitLogNotificationKind.success ||
@@ -134,9 +187,10 @@ class FitLogNotifications {
         final mediaQuery = MediaQuery.of(overlayContext);
         final keyboardInset = mediaQuery.viewInsets.bottom;
         final bottomOffset = keyboardInset > 0
-            ? keyboardInset + _edgeGap
+            ? keyboardInset + _edgeGap + additionalBottomOffset
             : FitLogBottomNavBar.fullScreenFootprintFor(overlayContext) +
-                  _edgeGap;
+                  _edgeGap +
+                  additionalBottomOffset;
         final topOffset = mediaQuery.viewPadding.top + _edgeGap;
 
         return Positioned(
@@ -145,9 +199,9 @@ class FitLogNotifications {
           top: topAligned ? topOffset : null,
           bottom: topAligned ? null : bottomOffset,
           child: Theme(
-            data: theme,
+            data: target.theme,
             child: Directionality(
-              textDirection: textDirection,
+              textDirection: target.textDirection,
               child: Align(
                 alignment: topAligned
                     ? Alignment.topCenter
@@ -157,7 +211,7 @@ class FitLogNotifications {
                   child: _FitLogNotificationBanner(
                     kind: kind,
                     message: message,
-                    fitTheme: fitTheme,
+                    fitTheme: target.fitTheme,
                     actionLabel: actionLabel,
                     onActionPressed: onActionPressed == null
                         ? null
@@ -165,7 +219,6 @@ class FitLogNotifications {
                             dismiss();
                             onActionPressed();
                           },
-                    onDismiss: dismiss,
                   ),
                 ),
               ),
@@ -174,18 +227,24 @@ class FitLogNotifications {
         );
       },
     );
+    var hasMounted = false;
     entry.addListener(() {
-      if (entry.mounted || !identical(_currentEntry, entry)) {
+      if (entry.mounted) {
+        hasMounted = true;
+        return;
+      }
+      if (!hasMounted || !identical(_currentEntry, entry)) {
         return;
       }
       _dismissTimer?.cancel();
       _dismissTimer = null;
       _currentEntry = null;
+      _currentOverlay = null;
     });
-
     _currentEntry = entry;
-    overlay.insert(entry);
+    _currentOverlay = target.overlay;
     _dismissTimer = Timer(duration, dismiss);
+    target.overlay.insert(entry);
   }
 
   static void _showSnackBarFallback(
@@ -212,6 +271,33 @@ class FitLogNotifications {
               : SnackBarAction(label: actionLabel, onPressed: onActionPressed),
         ),
       );
+  }
+}
+
+class _NotificationTarget {
+  const _NotificationTarget({
+    required this.overlay,
+    required this.theme,
+    required this.fitTheme,
+    required this.textDirection,
+  });
+
+  final OverlayState overlay;
+  final ThemeData theme;
+  final FitLogThemeData fitTheme;
+  final TextDirection textDirection;
+
+  static _NotificationTarget? maybeOf(BuildContext context) {
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) {
+      return null;
+    }
+    return _NotificationTarget(
+      overlay: overlay,
+      theme: Theme.of(context),
+      fitTheme: context.fitLogTheme,
+      textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+    );
   }
 }
 
@@ -271,7 +357,6 @@ class _FitLogNotificationBanner extends StatelessWidget {
     required this.fitTheme,
     this.actionLabel,
     this.onActionPressed,
-    required this.onDismiss,
   });
 
   final FitLogNotificationKind kind;
@@ -279,7 +364,6 @@ class _FitLogNotificationBanner extends StatelessWidget {
   final FitLogThemeData fitTheme;
   final String? actionLabel;
   final VoidCallback? onActionPressed;
-  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -350,19 +434,6 @@ class _FitLogNotificationBanner extends StatelessWidget {
                       child: Text(actionLabel!),
                     ),
                   ],
-                  IconButton(
-                    key: FitLogNotifications.closeButtonKey,
-                    onPressed: onDismiss,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: MaterialLocalizations.of(
-                      context,
-                    ).closeButtonTooltip,
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: style.textColor,
-                    ),
-                  ),
                 ],
               ),
             ),

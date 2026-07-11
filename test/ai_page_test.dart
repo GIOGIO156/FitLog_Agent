@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:fitlog_local/app.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
 import 'package:fitlog_local/core/theme/fitlog_theme.dart';
+import 'package:fitlog_local/core/widgets/fitlog_notifications.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
 import 'package:fitlog_local/data/repositories/ai_chat_repository.dart';
 import 'package:fitlog_local/data/repositories/ai_local_context_permission_repository.dart';
@@ -1472,12 +1473,18 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Review and confirm'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('ai_draft_date_2026-07-01')),
+      findsOneWidget,
+    );
     expect(find.byType(FoodPreviewPage), findsNothing);
 
     await tester.tap(find.text('Review and confirm'));
     await tester.pumpAndSettle();
 
     expect(find.byType(FoodPreviewPage), findsOneWidget);
+    expect(find.text('Jul 1, 2026'), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsWidgets);
   });
 
   testWidgets(
@@ -1513,9 +1520,10 @@ void main() {
         find.text('AI provider could not answer. Try again later.'),
         findsOneWidget,
       );
+      expect(find.byKey(FitLogNotifications.errorKey), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('ai_composer_error')),
-        findsOneWidget,
+        find.byKey(const ValueKey<String>('ai_composer_error_close')),
+        findsNothing,
       );
     },
   );
@@ -1553,19 +1561,72 @@ void main() {
       find.text('Network failed. Your message was kept for retry.'),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('ai_composer_error')),
-      findsOneWidget,
-    );
+    expect(find.byKey(FitLogNotifications.errorKey), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('ai_composer_field')),
       '请保留这条消息，稍后重试',
     );
     await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('ai_composer_error')),
-      findsNothing,
+    expect(find.byKey(FitLogNotifications.errorKey), findsNothing);
+  });
+
+  testWidgets('backgrounding does not cancel an in-flight AI request', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    final completer = Completer<AiGatewayResponse>();
+    harness.repository.sendHandler = (request) async {
+      final response = await completer.future;
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Background request'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        _message(
+          'u1',
+          'session_1',
+          1,
+          AiChatMessageRole.user,
+          request.messageText,
+        ),
+        _message('a1', 'session_1', 2, AiChatMessageRole.assistant, '请求已完成'),
+      ];
+      return response;
+    };
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      '切后台继续请求',
     );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(harness.chatController.sending, isTrue);
+    expect(find.byKey(FitLogNotifications.errorKey), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    completer.complete(
+      const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: '请求已完成',
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.chatController.sending, isFalse);
+    expect(find.text('请求已完成'), findsOneWidget);
+    expect(find.byKey(FitLogNotifications.errorKey), findsNothing);
   });
 
   testWidgets('conversation switches the background to quiet motion', (
@@ -2167,13 +2228,13 @@ AiChatMessage _message(
 
 Map<String, dynamic> _foodDraftArtifactJson() {
   return <String, dynamic>{
-    'schema_version': 'ai_chat_artifacts.v1',
+    'schema_version': 'ai_chat_artifacts.v2',
     'artifacts': <Map<String, dynamic>>[
       <String, dynamic>{
         'type': 'food_draft',
-        'schema_version': 'food_draft.v1',
+        'schema_version': 'food_draft.v2',
         'draft': _validFoodDraftJson(),
-        'selected_date': '2026-07-01',
+        'target_date': '2026-07-01',
         'model_choice': 'qwen',
       },
     ],
@@ -2205,6 +2266,8 @@ Map<String, dynamic> _phase5EvidenceSnapshotJson() {
 
 Map<String, dynamic> _validFoodDraftJson() {
   return <String, dynamic>{
+    'schema_version': 'food_draft.v2',
+    'date': '2026-07-01',
     'meal_name': 'Chicken rice',
     'total_weight_g': 320,
     'calories_kcal': 520,

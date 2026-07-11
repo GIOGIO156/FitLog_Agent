@@ -85,6 +85,22 @@ Deno.test("workout validator rejects impossible calendar dates and numeric strin
   );
 });
 
+Deno.test("draft date must match the software-resolved target date", () => {
+  assertOutputError(() =>
+    parseProviderGatewayEnvelope(
+      JSON.stringify(envelope(foodDraft())),
+      "food_draft",
+      "2026-07-11",
+    )
+  );
+  const parsed = parseProviderGatewayEnvelope(
+    JSON.stringify(envelope(foodDraft())),
+    "food_draft",
+    "2026-07-10",
+  );
+  assertEquals(parsed.draft?.date, "2026-07-10");
+});
+
 Deno.test("expected output and clarification combinations cannot silently degrade", () => {
   assertOutputError(() =>
     parseProviderGatewayEnvelope(JSON.stringify(envelope(null)), "food_draft")
@@ -124,7 +140,7 @@ Deno.test("auto output lets the model select a contract-consistent family", () =
     "auto",
   );
   assertEquals(parsed.outputType, "workout_draft");
-  assertEquals(parsed.draft?.schema_version, "workout_draft.v1");
+  assertEquals(parsed.draft?.schema_version, "workout_draft.v2");
 });
 
 Deno.test("text output cannot claim a draft was created without an artifact", () => {
@@ -146,7 +162,7 @@ Deno.test("dedicated food endpoint uses the same strict Food Draft validator", (
     clarification_questions: [],
     draft: foodDraft(),
   }));
-  assertEquals(parsed.draft?.schema_version, "food_draft.v1");
+  assertEquals(parsed.draft?.schema_version, "food_draft.v2");
   assertOutputError(() =>
     parseFoodAnalysisEnvelope(JSON.stringify({
       schema_version: "food_analysis_envelope.v1",
@@ -160,7 +176,7 @@ Deno.test("dedicated food endpoint uses the same strict Food Draft validator", (
 function envelope(draft: unknown): Record<string, unknown> {
   const outputType = draft !== null &&
       typeof draft === "object" &&
-      (draft as Record<string, unknown>).schema_version === "workout_draft.v1"
+      (draft as Record<string, unknown>).schema_version === "workout_draft.v2"
     ? "workout_draft"
     : draft === null
     ? "text"
@@ -177,7 +193,8 @@ function envelope(draft: unknown): Record<string, unknown> {
 
 function foodDraft() {
   return {
-    schema_version: "food_draft.v1",
+    schema_version: "food_draft.v2",
+    date: "2026-07-10",
     meal_name: "Chicken",
     total_weight_g: 100,
     calories_kcal: 120,
@@ -199,7 +216,7 @@ function foodDraft() {
 
 function workoutDraft() {
   return {
-    schema_version: "workout_draft.v1",
+    schema_version: "workout_draft.v2",
     record_name: "Squat",
     date: "2026-07-10",
     notes: "",

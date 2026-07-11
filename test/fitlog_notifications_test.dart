@@ -72,8 +72,8 @@ void main() {
     expect(bannerTop, lessThan(80));
     expect(bannerBottom, lessThan(navTop));
 
-    FitLogNotifications.dismiss();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(find.text('Saved'), findsNothing);
   });
 
   testWidgets('error notification floats above bottom navigation', (
@@ -159,7 +159,7 @@ void main() {
     expect(find.byKey(FitLogNotifications.actionKey), findsNothing);
   });
 
-  testWidgets('notification can be closed and auto-dismisses', (tester) async {
+  testWidgets('notification stays compact and auto-dismisses', (tester) async {
     await tester.pumpWidget(
       _NotificationTestApp(
         child: Builder(
@@ -174,16 +174,35 @@ void main() {
     await tester.tap(find.text('Show temporary'));
     await tester.pump(const Duration(milliseconds: 220));
     expect(find.text('Temporary'), findsOneWidget);
-
-    await tester.tap(find.byKey(FitLogNotifications.closeButtonKey));
-    await tester.pump();
-    expect(find.text('Temporary'), findsNothing);
-
-    await tester.tap(find.text('Show temporary'));
-    await tester.pump();
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+    final bannerHeight = tester
+        .getSize(find.byKey(FitLogNotifications.bannerKey))
+        .height;
+    expect(bannerHeight, lessThan(60));
     await tester.pump(const Duration(milliseconds: 5000));
     await tester.pump();
     expect(find.text('Temporary'), findsNothing);
+  });
+
+  testWidgets('leaving the foreground removes a notification', (tester) async {
+    await tester.pumpWidget(
+      _NotificationTestApp(
+        child: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => FitLogNotifications.success(context, 'Saved'),
+            child: const Text('Show lifecycle notice'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Show lifecycle notice'));
+    await tester.pump();
+    expect(find.text('Saved'), findsOneWidget);
+
+    FitLogNotifications.handleAppLifecycleState(AppLifecycleState.paused);
+    await tester.pump();
+    expect(find.text('Saved'), findsNothing);
   });
 
   testWidgets('route changes dismiss the originating notification', (
@@ -226,6 +245,101 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Next'), findsOneWidget);
     expect(find.text('Route error'), findsNothing);
+  });
+
+  testWidgets('same-frame route pop cannot orphan a pending notification', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: <NavigatorObserver>[
+          FitLogNotifications.navigatorObserver,
+        ],
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    body: Builder(
+                      builder: (pageContext) => TextButton(
+                        onPressed: () {
+                          FitLogNotifications.success(pageContext, 'Saved');
+                          Navigator.of(pageContext).pop();
+                        },
+                        child: const Text('Save and close'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Open editor'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open editor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save and close'));
+    await tester.pump();
+
+    expect(find.text('Open editor'), findsOneWidget);
+    expect(find.text('Saved'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 3000));
+    expect(find.text('Saved'), findsNothing);
+  });
+
+  testWidgets('save notice shown after route pop remains time-bounded', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildFitLogTheme(Brightness.light),
+        navigatorObservers: <NavigatorObserver>[
+          FitLogNotifications.navigatorObserver,
+        ],
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    body: Builder(
+                      builder: (pageContext) => TextButton(
+                        onPressed: () {
+                          final navigator = Navigator.of(pageContext);
+                          FitLogNotifications.successAfterNavigation(
+                            pageContext,
+                            'Record saved',
+                          );
+                          navigator.pop();
+                        },
+                        child: const Text('Save record'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Open record'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open record'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save record'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(find.text('Open record'), findsOneWidget);
+    expect(find.byKey(FitLogNotifications.successKey), findsOneWidget);
+    expect(find.text('Record saved'), findsWidgets);
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(find.text('Record saved'), findsNothing);
   });
 }
 

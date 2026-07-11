@@ -5,7 +5,8 @@ import '../../core/constants/exercise_definition.dart';
 import '../../core/utils/number_utils.dart';
 import 'workout_record_draft.dart';
 
-const String aiWorkoutDraftSchemaVersion = 'workout_draft.v1';
+const String aiWorkoutDraftSchemaVersion = 'workout_draft.v2';
+const String aiLegacyWorkoutDraftSchemaVersion = 'workout_draft.v1';
 
 class AiWorkoutDraft {
   const AiWorkoutDraft({
@@ -16,25 +17,34 @@ class AiWorkoutDraft {
   });
 
   final String recordName;
-  final String? date;
+  final String date;
   final String notes;
   final List<AiWorkoutDraftExercise> exercises;
 
-  factory AiWorkoutDraft.fromJson(Map<String, dynamic> json) {
+  factory AiWorkoutDraft.fromJson(
+    Map<String, dynamic> json, {
+    String? legacyDate,
+  }) {
     final schemaVersion = json['schema_version']?.toString();
-    if (schemaVersion != null && schemaVersion != aiWorkoutDraftSchemaVersion) {
+    if (schemaVersion != null &&
+        schemaVersion != aiWorkoutDraftSchemaVersion &&
+        schemaVersion != aiLegacyWorkoutDraftSchemaVersion) {
       throw FormatException('Unsupported workout draft schema: $schemaVersion');
     }
     final exercises = _exerciseList(json['exercises']);
     if (exercises.isEmpty) {
       throw const FormatException('Workout draft requires exercises.');
     }
+    final date = _validDateOrNull(json['date']) ?? _validDateOrNull(legacyDate);
+    if (date == null) {
+      throw const FormatException('Workout draft requires a valid date.');
+    }
     final firstName = exercises.first.exerciseName.trim();
     return AiWorkoutDraft(
       recordName:
           _stringOrNull(json['record_name']) ??
           (firstName.isEmpty ? 'Workout record' : firstName),
-      date: _validDateOrNull(json['date']),
+      date: date,
       notes: _stringOrNull(json['notes']) ?? '',
       exercises: exercises,
     );
@@ -54,7 +64,7 @@ class AiWorkoutDraft {
     required String dateFallback,
     DateTime? now,
   }) {
-    final resolvedDate = date ?? dateFallback;
+    final resolvedDate = date.isEmpty ? dateFallback : date;
     final timestamp = (now ?? DateTime.now()).toIso8601String();
     final payload = <String, dynamic>{
       'kind': WorkoutRecordDraft.kindNewRecord,
@@ -286,10 +296,16 @@ int? _positiveIntOrNull(Object? value) {
 
 String? _validDateOrNull(Object? value) {
   final text = _stringOrNull(value);
-  if (text == null) {
+  if (text == null || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)) {
     return null;
   }
-  return RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text) ? text : null;
+  final parts = text.split('-').map(int.parse).toList(growable: false);
+  final parsed = DateTime.utc(parts[0], parts[1], parts[2]);
+  return parsed.year == parts[0] &&
+          parsed.month == parts[1] &&
+          parsed.day == parts[2]
+      ? text
+      : null;
 }
 
 String _normalizeExerciseType(

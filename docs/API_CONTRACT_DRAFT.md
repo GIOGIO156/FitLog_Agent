@@ -381,7 +381,8 @@ Local cache contract:
   "client": {
     "app_version": "1.0.0",
     "platform": "android",
-    "timezone": "Asia/Shanghai"
+    "timezone": "Asia/Shanghai",
+    "draft_schema_version": "v2"
   }
 }
 ```
@@ -399,7 +400,9 @@ Rules:
 - Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
 - Every Chat provider reply uses the internal versioned machine-readable envelope; user-facing Markdown remains inside `message.text`, and Flutter still receives the public response shape below. Exact schemas, provider mapping, validation, correction, and failure rules are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
 - The public `output_type` is `text`, `food_draft`, `workout_draft`, or `clarification`. It is selected by a fixed product workflow, the high-confidence Chat resolver, or bounded model selection after resolver abstention, then validated against the payload before exposure.
-- The dedicated Add Food AI food-analysis workflow uses a narrower internal `food_analysis_envelope.v1` without chat-style explanation text while sharing the canonical `food_draft.v1` validator.
+- `client.draft_schema_version` is `v2` for the current client. Omission means legacy v1 response compatibility; it does not weaken provider validation or new persisted artifact snapshots.
+- Draft output resolves a supported explicit date in `message.text` against `selected_date`; otherwise `selected_date` is the default. Ambiguous date language returns clarification. The accepted draft date must equal the server-resolved target date.
+- The dedicated Add Food AI food-analysis workflow uses a narrower internal `food_analysis_envelope.v1` without chat-style explanation text while sharing the canonical `food_draft.v2` validator.
 - Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
 
 ## AI Gateway Response
@@ -421,7 +424,8 @@ Rules:
   "needs_clarification": false,
   "clarification_questions": [],
   "draft": {
-    "schema_version": "food_draft.v1",
+    "schema_version": "food_draft.v2",
+    "date": "2026-06-17",
     "meal_name": "鸡腿饭",
     "total_weight_g": 420.0,
     "calories_kcal": 610.0,
@@ -451,7 +455,7 @@ If clarification is needed:
 }
 ```
 
-`output_type` and the payload must agree: text has no draft, each draft type carries the matching versioned object, and clarification has `needs_clarification = true`, non-empty questions, and no draft. A response that claims a draft was created without the matching artifact is invalid rather than a successful text response. Older successful responses without `output_type` remain readable through client inference during compatibility rollout.
+`output_type` and the payload must agree: text has no draft, each draft type carries the matching versioned object and resolved date, and clarification has `needs_clarification = true`, non-empty questions, and no draft. A response that claims a draft was created without the matching artifact is invalid rather than a successful text response. The public `message.text` for a draft is generated from the validated artifact date so it cannot confirm a different date. Older successful responses without `output_type` remain readable through client inference during compatibility rollout.
 
 If the request or final provider result fails, no draft/action is returned and `error.code` is one of:
 
@@ -482,7 +486,7 @@ Request:
   "model_choice": "qwen",
   "device_id": "dev_...",
   "selected_date": "2026-06-17",
-  "schema_version": "food_draft.v1",
+  "schema_version": "food_draft.v2",
   "user_note": "100g 三文鱼，米饭只吃了一半"
 }
 ```
@@ -494,7 +498,8 @@ Response:
   "model_choice": "qwen",
   "model_provider": "qwen",
   "draft": {
-    "schema_version": "food_draft.v1",
+    "schema_version": "food_draft.v2",
+    "date": "2026-06-17",
     "meal_name": "鸡腿饭",
     "total_weight_g": 420.0,
     "calories_kcal": 610.0,
@@ -528,6 +533,7 @@ Rules:
 - The server rejects an empty request that has neither images nor a text description, and it does not accept user-supplied provider API keys.
 - The Edge Function forwards the request-scoped text and optional images to Qwen through server-managed secrets.
 - The function may return either a schema-validated Food Draft or clarification questions.
+- `selected_date` is the exact required draft date for this explicit workflow. Current clients request `food_draft.v2`; the endpoint may downgrade a validated v2 draft to the legacy v1 response shape only when a legacy request explicitly asks for v1.
 - A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
 - Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, expected output, validator version, first-pass/final validation result, correction count, provider completion category, provider/model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
 
@@ -535,7 +541,7 @@ Rules:
 
 Food Drafts are transportable, editable proposals, not official records. The public Gateway payload carries meal name, meal totals, optional confidence/notes, and item portion totals. Item values are for the whole estimated portion, and the Gateway normalizes meal totals from items when items are present.
 
-The shared strict `food_draft.v1` contract is defined in `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`. That document owns required fields, schema-version compatibility, exact types, bounds, unknown-field policy, normalization, provider mapping, and invalid-output handling. This API draft owns only where the draft appears in request/response/history transport.
+The shared strict `food_draft.v2` contract is defined in `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`. It includes the required real `date`. That document owns required fields, schema-version compatibility, exact types, bounds, unknown-field policy, normalization, provider mapping, and invalid-output handling. This API draft owns only where the draft appears in request/response/history transport.
 
 An invalid Food Draft must not create a save/review action. Saving requires explicit confirmation in Food Preview; discarding writes nothing.
 
@@ -551,7 +557,7 @@ Existing `ai_paste` remains the external JSON paste compatibility source.
 
 ## Workout Draft Payload
 
-Workout Drafts are transportable, editable proposals, not official records. The public payload carries `workout_draft.v1`, record name/date/notes, exercises, optional cardio metadata, and nullable set values. It rebuilds the existing workout editor only after the user taps the Chat artifact review action.
+Workout Drafts are transportable, editable proposals, not official records. The current public payload carries `workout_draft.v2`, required resolved date, record name/notes, exercises, optional cardio metadata, and nullable set values. It rebuilds the existing workout editor only after the user taps the Chat artifact review action.
 
 The exact schema, best-effort null behavior, one-turn clarification cap, type/range checks, provider mapping, and invalid-output handling are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
 
@@ -597,12 +603,14 @@ Object families, authoritative sources, permissions, sanitization, context-size 
   "model_provider": "openai",
   "request_id": "req_...",
   "final_answer_json": {
-    "schema_version": "ai_chat_artifacts.v1",
+    "schema_version": "ai_chat_artifacts.v2",
     "artifacts": [
       {
         "type": "food_draft",
-        "schema_version": "food_draft.v1",
+        "schema_version": "food_draft.v2",
         "draft": {
+          "schema_version": "food_draft.v2",
+          "date": "2026-07-01",
           "meal_name": "鸡腿饭",
           "total_weight_g": 420.0,
           "calories_kcal": 610.0,
@@ -613,7 +621,8 @@ Object families, authoritative sources, permissions, sanitization, context-size 
           "estimation_notes": "AI estimate; review before saving.",
           "items": []
         },
-        "selected_date": "2026-07-01",
+        "target_date": "2026-07-01",
+        "date_resolution_source": "default",
         "model_choice": "qwen"
       }
     ]
@@ -694,7 +703,7 @@ For Add Food AI food analysis:
 - `ai_request_logs.workflow_type = food_logging`
 - `ai_request_logs.session_id = null`
 - `ai_request_logs.image_count` equals the accepted image count, including `0` for text-only food analysis.
-- `ai_request_logs.schema_version = food_draft.v1`
+- `ai_request_logs.schema_version = food_draft.v2`
 - `ai_debug_summaries.intent = food_photo_analysis`
 - `ai_debug_summaries.retrieved_dimensions_json` may include compact request metadata such as mime type, byte length, selected date and whether a user note was supplied.
 

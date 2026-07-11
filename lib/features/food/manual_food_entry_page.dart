@@ -98,8 +98,12 @@ class _ManualFoodEntryPageState extends State<ManualFoodEntryPage> {
 
       context.read<RefreshNotifier>().markDataChanged();
       context.refreshDailySummaryCacheForDate(_date);
-      FitLogNotifications.success(context, strings.manualFoodRecordSaved);
-      Navigator.of(context).pop(true);
+      FitLogNotifications.successAfterNavigation(
+        context,
+        strings.manualFoodRecordSaved,
+      );
+      final navigator = Navigator.of(context);
+      navigator.pop(true);
     } catch (error) {
       if (!mounted) {
         return;

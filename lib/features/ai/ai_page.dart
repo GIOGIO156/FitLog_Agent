@@ -58,7 +58,6 @@ const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
 const Duration _aiKeyboardTransitionSettleDelay = Duration(milliseconds: 180);
 const Duration _aiImageRecoveryVisualOverrideTimeout = Duration(seconds: 6);
-const Duration _aiErrorLifetime = Duration(milliseconds: 4800);
 const Set<String> _supportedChatImageMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -252,12 +251,10 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   _AiProvider _provider = _AiProvider.chatGpt;
   bool _historyOpen = false;
   List<PickedFoodImage> _attachedImages = const <PickedFoodImage>[];
-  String? _composerNoticeText;
-  Timer? _composerNoticeTimer;
   Timer? _keyboardTransitionTimer;
   Timer? _imageRecoveryVisualOverrideTimer;
-  Timer? _gatewayErrorTimer;
   String? _scheduledGatewayErrorCode;
+  bool _isAppForeground = true;
   String? _accountBoundaryKey;
   String? _chatSyncKey;
   int _lastConsumedRecoveryVersion = 0;
@@ -283,10 +280,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _composerNoticeTimer?.cancel();
     _keyboardTransitionTimer?.cancel();
     _imageRecoveryVisualOverrideTimer?.cancel();
-    _gatewayErrorTimer?.cancel();
     _keyboardTransitioning.dispose();
     _messageScrollController.dispose();
     _controller.dispose();
@@ -315,6 +310,16 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       }
       _keyboardTransitioning.value = false;
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final wasForeground = _isAppForeground;
+    _isAppForeground = state == AppLifecycleState.resumed;
+    if (!wasForeground && _isAppForeground && mounted) {
+      setState(() {});
+    }
   }
 
   double? _currentViewKeyboardInset() {
@@ -353,11 +358,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       accountController: accountController,
       canSend: canUseGateway,
     );
-    final gatewayErrorLabel = chatController?.lastError == null
-        ? null
-        : _aiErrorLabel(context, chatController!.lastError!);
-    final errorLabel = _composerNoticeText ?? gatewayErrorLabel;
-    _scheduleGatewayErrorDismiss(chatController);
+    _scheduleGatewayErrorNotification(chatController);
     _scheduleComposerMeasure();
 
     return Stack(
@@ -390,7 +391,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
           attachedImages: _attachedImages,
           mode: effectiveMode,
           status: status,
-          errorLabel: errorLabel,
           displayName:
               widget.displayName ??
               cloudNickname ??
@@ -401,7 +401,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
           onAttachPressed: _chooseImageAttachment,
           onRemoveAttachment: _removeImageAttachment,
           onComposerChanged: _handleComposerChanged,
-          onDismissError: _dismissComposerError,
           onSend: (text) => _sendMessage(
             text: text,
             chatController: chatController,
@@ -664,7 +663,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final strings = context.stringsRead;
     final sentImages = List<PickedFoodImage>.unmodifiable(_attachedImages);
     if (sentImages.isNotEmpty && _provider != _AiProvider.qwen) {
-      FitLogNotifications.error(context, strings.aiImageRequiresQwen);
+      _showComposerNotice(strings.aiImageRequiresQwen);
       return;
     }
     String? validationError;
@@ -675,7 +674,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       }
     }
     if (validationError != null) {
-      FitLogNotifications.error(context, validationError);
+      _showComposerNotice(validationError);
       return;
     }
     final enteredText = text.trim();
@@ -703,7 +702,9 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       language: _languageForMessage(trimmed, strings),
       modelChoice: _modelChoiceFor(_provider),
       deviceId: deviceId!,
-      selectedDate: DateUtilsX.todayKey(),
+      selectedDate:
+          context.read<SelectedDateNotifier?>()?.selectedDate ??
+          DateUtilsX.todayKey(),
       profileVersion: cloudProfile == null
           ? null
           : 'profile_${cloudProfile.profileVersion}',
@@ -844,23 +845,15 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   }
 
   void _showComposerNotice(String label) {
-    _composerNoticeTimer?.cancel();
-    setState(() => _composerNoticeText = label);
-    _composerNoticeTimer = Timer(const Duration(milliseconds: 4800), () {
-      if (!mounted || _composerNoticeText != label) {
-        return;
-      }
-      setState(() => _composerNoticeText = null);
-    });
+    FitLogNotifications.error(
+      context,
+      label,
+      additionalBottomOffset: _composerHeight + 8,
+    );
   }
 
   void _clearComposerNotice() {
-    _composerNoticeTimer?.cancel();
-    _composerNoticeTimer = null;
-    if (_composerNoticeText == null) {
-      return;
-    }
-    setState(() => _composerNoticeText = null);
+    FitLogNotifications.dismiss();
   }
 
   void _handleComposerChanged(String _) {
@@ -868,29 +861,35 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   }
 
   void _dismissComposerError() {
-    _gatewayErrorTimer?.cancel();
-    _gatewayErrorTimer = null;
     _scheduledGatewayErrorCode = null;
     _clearComposerNotice();
     _maybeChatController(listen: false)?.clearError();
   }
 
-  void _scheduleGatewayErrorDismiss(AiChatController? controller) {
+  void _scheduleGatewayErrorNotification(AiChatController? controller) {
     final error = controller?.lastError;
     if (error == null) {
-      _gatewayErrorTimer?.cancel();
-      _gatewayErrorTimer = null;
       _scheduledGatewayErrorCode = null;
+      return;
+    }
+    if (!_isAppForeground) {
       return;
     }
     final key = '${error.rawCode}:${error.message ?? ''}';
     if (_scheduledGatewayErrorCode == key) return;
-    _gatewayErrorTimer?.cancel();
     _scheduledGatewayErrorCode = key;
-    _gatewayErrorTimer = Timer(_aiErrorLifetime, () {
-      if (!mounted || _scheduledGatewayErrorCode != key) return;
-      _gatewayErrorTimer = null;
-      _scheduledGatewayErrorCode = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isAppForeground || _scheduledGatewayErrorCode != key) {
+        if (_scheduledGatewayErrorCode == key) {
+          _scheduledGatewayErrorCode = null;
+        }
+        return;
+      }
+      FitLogNotifications.error(
+        context,
+        _aiErrorLabel(context, error),
+        additionalBottomOffset: _composerHeight + 8,
+      );
       controller?.clearError();
     });
   }
@@ -925,10 +924,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openFoodDraftPreview(AiFoodDraft draft) async {
-    final record = draft.toFoodRecord(
-      date: DateUtilsX.todayKey(),
-      modelProvider: 'qwen',
-    );
+    final record = draft.toFoodRecord(modelProvider: 'qwen');
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => FoodPreviewPage(initialRecord: record),
@@ -968,7 +964,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         return;
       }
     }
-    final resolvedDate = draft.date ?? DateUtilsX.todayKey();
+    final resolvedDate = draft.date;
     final recordDraft = draft.toWorkoutRecordDraft(dateFallback: resolvedDate);
     final strings = context.stringsRead;
     await services.workoutDraftRepository.saveActiveDraft(recordDraft);
@@ -1036,7 +1032,17 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   }
 
   String _aiErrorLabel(BuildContext context, AiGatewayError error) {
-    final strings = context.strings;
+    final strings = context.stringsRead;
+    if (error.rawCode == 'ai_chat_delete_failed') {
+      return strings.aiDeleteChatFailed;
+    }
+    if (error.rawCode == 'ai_chat_sessions_load_failed' ||
+        error.rawCode == 'ai_chat_messages_load_failed') {
+      return strings.aiChatHistoryLoadFailed;
+    }
+    if (error.rawCode == 'active_device_missing') {
+      return strings.aiActiveDevicePreparing;
+    }
     switch (error.code) {
       case AiGatewayErrorCode.authRequired:
         return strings.authRequired;
@@ -1070,11 +1076,9 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final previousKey = _accountBoundaryKey;
     _accountBoundaryKey = nextKey;
     if (previousKey != null && previousKey != nextKey) {
-      _composerNoticeTimer?.cancel();
-      _composerNoticeTimer = null;
       _controller.clear();
       _attachedImages = const <PickedFoodImage>[];
-      _composerNoticeText = null;
+      FitLogNotifications.dismiss();
     }
   }
 
@@ -1118,7 +1122,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     required this.attachedImages,
     required this.mode,
     required this.status,
-    required this.errorLabel,
     required this.displayName,
     required this.accountController,
     required this.onProviderChanged,
@@ -1126,7 +1129,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     required this.onAttachPressed,
     required this.onRemoveAttachment,
     required this.onComposerChanged,
-    required this.onDismissError,
     required this.onSend,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
@@ -1147,7 +1149,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   final List<PickedFoodImage> attachedImages;
   final AiShellMode mode;
   final _AiStatusPresentation status;
-  final String? errorLabel;
   final String? displayName;
   final AccountController? accountController;
   final ValueChanged<_AiProvider> onProviderChanged;
@@ -1155,7 +1156,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   final VoidCallback onAttachPressed;
   final ValueChanged<int> onRemoveAttachment;
   final ValueChanged<String> onComposerChanged;
-  final VoidCallback onDismissError;
   final ValueChanged<String> onSend;
   final ValueChanged<AiFoodDraft> onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
@@ -1264,12 +1264,10 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                     status: status,
                     solidSurface: composerAttachedToKeyboard,
                     hasConversation: hasConversation,
-                    errorLabel: errorLabel,
                     onProviderChanged: onProviderChanged,
                     onAttachPressed: onAttachPressed,
                     onRemoveAttachment: onRemoveAttachment,
                     onComposerChanged: onComposerChanged,
-                    onDismissError: onDismissError,
                     onSend: onSend,
                   ),
                 ),
@@ -1795,12 +1793,10 @@ class _AiComposer extends StatelessWidget {
     required this.status,
     required this.solidSurface,
     required this.hasConversation,
-    required this.errorLabel,
     required this.onProviderChanged,
     required this.onAttachPressed,
     required this.onRemoveAttachment,
     required this.onComposerChanged,
-    required this.onDismissError,
     required this.onSend,
   });
 
@@ -1813,12 +1809,10 @@ class _AiComposer extends StatelessWidget {
   final _AiStatusPresentation status;
   final bool solidSurface;
   final bool hasConversation;
-  final String? errorLabel;
   final ValueChanged<_AiProvider> onProviderChanged;
   final VoidCallback onAttachPressed;
   final ValueChanged<int> onRemoveAttachment;
   final ValueChanged<String> onComposerChanged;
-  final VoidCallback onDismissError;
   final ValueChanged<String> onSend;
 
   @override
@@ -1829,10 +1823,6 @@ class _AiComposer extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (errorLabel != null && !hasConversation) ...<Widget>[
-          _AiComposerError(label: errorLabel!, onDismiss: onDismissError),
-          const SizedBox(height: 8),
-        ],
         if (!hasConversation) ...<Widget>[
           _AiProviderStatusRow(
             provider: provider,
@@ -1840,10 +1830,6 @@ class _AiComposer extends StatelessWidget {
             onProviderChanged: onProviderChanged,
           ),
           const SizedBox(height: 10),
-        ],
-        if (errorLabel != null && hasConversation) ...<Widget>[
-          _AiComposerError(label: errorLabel!, onDismiss: onDismissError),
-          const SizedBox(height: 8),
         ],
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: controller,
@@ -1966,22 +1952,6 @@ class _AiComposer extends StatelessWidget {
           },
         ),
       ],
-    );
-  }
-}
-
-class _AiComposerError extends StatelessWidget {
-  const _AiComposerError({required this.label, required this.onDismiss});
-
-  final String label;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      key: const ValueKey<String>('ai_composer_error'),
-      alignment: Alignment.center,
-      child: _AiErrorPill(label: label, onDismiss: onDismiss),
     );
   }
 }
@@ -3167,6 +3137,10 @@ class _AiFoodDraftArtifactCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (draft.date != null) ...[
+              const SizedBox(height: 6),
+              _AiDraftDateRow(date: draft.date!, color: palette.artifactBody),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -3253,6 +3227,10 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (draft.date != null) ...[
+              const SizedBox(height: 6),
+              _AiDraftDateRow(date: draft.date!, color: palette.artifactBody),
+            ],
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -3283,6 +3261,32 @@ class _AiWorkoutDraftArtifactCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AiDraftDateRow extends StatelessWidget {
+  const _AiDraftDateRow({required this.date, required this.color});
+
+  final String date;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: ValueKey<String>('ai_draft_date_$date'),
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(Icons.calendar_today_outlined, size: 15, color: color),
+        const SizedBox(width: 6),
+        Text(
+          DateUtilsX.formatReadable(date),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3620,61 +3624,6 @@ MarkdownStyleSheet _aiMarkdownStyleSheet(
   );
 }
 
-class _AiErrorPill extends StatelessWidget {
-  const _AiErrorPill({required this.label, required this.onDismiss});
-
-  final String label;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E8).withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE9B98B)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Icon(
-              Icons.error_outline_rounded,
-              size: 16,
-              color: Color(0xFF9A5B18),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: const Color(0xFF7A4814),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            IconButton(
-              key: const ValueKey<String>('ai_composer_error_close'),
-              onPressed: onDismiss,
-              visualDensity: VisualDensity.compact,
-              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-              icon: const Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: Color(0xFF7A4814),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _AiHistoryPanel extends StatelessWidget {
   const _AiHistoryPanel({required this.controller, required this.onClose});
 
@@ -3797,6 +3746,11 @@ class _AiHistoryPanel extends StatelessWidget {
                                     ? strings.aiUntitledChat
                                     : session.title,
                                 selected: selected,
+                                deleting: controller!.isDeletingSession(
+                                  session.id,
+                                ),
+                                operationsDisabled:
+                                    controller!.deletingSession,
                                 onTap: () {
                                   unawaited(
                                     controller!.selectSession(session.id),
@@ -3836,6 +3790,9 @@ class _AiHistoryPanel extends StatelessWidget {
     String sessionId,
     String title,
   ) async {
+    if (controller.deletingSession) {
+      return;
+    }
     final strings = context.stringsRead;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -3861,7 +3818,7 @@ class _AiHistoryPanel extends StatelessWidget {
         );
       },
     );
-    if (confirmed == true) {
+    if (confirmed == true && !controller.deletingSession) {
       await controller.deleteSession(sessionId);
     }
   }
@@ -3872,6 +3829,8 @@ class _AiHistoryTile extends StatefulWidget {
     super.key,
     required this.title,
     required this.selected,
+    required this.deleting,
+    required this.operationsDisabled,
     required this.onTap,
     required this.onRename,
     required this.onDelete,
@@ -3879,6 +3838,8 @@ class _AiHistoryTile extends StatefulWidget {
 
   final String title;
   final bool selected;
+  final bool deleting;
+  final bool operationsDisabled;
   final VoidCallback onTap;
   final Future<bool> Function(String title) onRename;
   final VoidCallback onDelete;
@@ -3982,7 +3943,7 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: _renaming ? null : widget.onTap,
+          onTap: _renaming || widget.operationsDisabled ? null : widget.onTap,
           child: SizedBox(
             height: 64,
             child: Row(
@@ -3992,7 +3953,7 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
                 IconButton(
                   key: const ValueKey<String>('ai_rename_chat_button'),
                   tooltip: context.strings.aiRenameChat,
-                  onPressed: _saving
+                  onPressed: _saving || widget.operationsDisabled
                       ? null
                       : _renaming
                       ? _submitRename
@@ -4007,17 +3968,22 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
                   tooltip: _renaming
                       ? context.strings.cancel
                       : context.strings.aiDeleteChat,
-                  onPressed: _saving
+                  onPressed: _saving || widget.operationsDisabled
                       ? null
                       : _renaming
                       ? _cancelRename
                       : widget.onDelete,
-                  icon: Icon(
-                    _renaming
-                        ? Icons.close_rounded
-                        : Icons.delete_outline_rounded,
-                    size: 18,
-                  ),
+                  icon: widget.deleting
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _renaming
+                              ? Icons.close_rounded
+                              : Icons.delete_outline_rounded,
+                          size: 18,
+                        ),
                 ),
                 const SizedBox(width: 2),
               ],

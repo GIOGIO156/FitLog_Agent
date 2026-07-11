@@ -40,9 +40,9 @@ Pages use `FitLogNotifications` for app-level transient feedback:
 
 - Food and Workout save, delete, and copy success use lightweight top notices. Validation and cloud/local write failures use bottom error notices that remain above navigation and the keyboard.
 - Profile success events such as body metric save, Profile save, export ready, sign-out, data clear, redemption success, and registration code sent use top notices. Auth, subscription, export, redemption, validation, and Cloud Profile failures use readable bottom errors.
-- AI uses informational notices for neutral unavailable states and errors for failed sends or preference saves.
+- AI uses informational notices for neutral unavailable states and the same shared, no-close error notice for failed sends, attachment validation, history operations, or preference saves. Composer-related errors are positioned above the measured composer so they do not cover retry input.
 - A notification that offers retry, undo, open-file, or another action must use the shared action-notification API so its callback remains available.
-- App-level transient notices have a bounded lifetime and a close action; a new notice replaces the old one. Switching root tabs or leaving the originating page dismisses the old notice so it cannot contaminate another surface.
+- App-level transient notices keep the compact passive shape used by the app and have no close icon. They expire automatically; a new notice replaces the old one. Switching root tabs, leaving the originating page, or moving the app out of the foreground dismisses stale notices. When a confirmed Food or Workout save closes its editor, one fresh success notice is deliberately shown on the destination page and then follows the same bounded auto-dismiss lifecycle.
 
 On Android, an active unsaved workout draft with at least one selected exercise is also mirrored by a system workout-in-progress notification. It represents local draft state, not a background workout or official record:
 
@@ -100,7 +100,8 @@ AI is the main Agent surface: a full-screen conversation, not a shortcut grid.
 - The message viewport hard-clips older content below the top controls and keeps only a short bottom fade above the composer. Shared measured geometry protects the last message from the composer, navigation, keyboard, and system safe area. The floating composer attaches to the keyboard without acquiring a full-width footer background and never dips below its normal closed position during keyboard transitions.
 - Assistant text uses app-styled GitHub-flavored Markdown and selectable text. User messages remain selectable plain text. Remote Markdown images and link actions are disabled. A mixed image-and-text turn displays rounded media above a separate text bubble while remaining one request, retry lifecycle, and history turn.
 - Provider choice is device-local and survives restart. Unsent composer text survives tab changes and temporary disabled states during the current runtime; send start, explicit deletion, logout, or account switch clears it, while failure restores it.
-- Send errors expire after a bounded interval and can be dismissed manually. Editing, retrying, switching sessions, or leaving the AI tab clears the old error without deleting restored text or images.
+- Send errors use the shared passive notice without a close icon and expire after a bounded interval. Editing, retrying, switching sessions, leaving the AI tab, or backgrounding the app clears stale feedback without deleting restored text or images. A normal short background transition does not cancel the request itself; a real timeout, network interruption, or Gateway error is shown after the app is foregrounded.
+- Chat history permits only one delete operation at a time. While deletion is pending, the active row shows progress and history-row actions are temporarily disabled, preventing rapid taps across one or several sessions from issuing conflicting requests.
 
 Detailed visual geometry, animation rationale, theme behavior, and Profile auth presentation are maintained in [Product.md](Product.md).
 
@@ -126,8 +127,10 @@ Ordinary AI Chat fixes text or draft only for high-confidence requests; when the
 
 When a valid Food Draft or Workout Draft is returned, the assistant shows a native artifact card with `Review and confirm` / `查看并确认`:
 
+- The artifact card shows the validated target date. A supported date written in the Chat request overrides the currently selected date; no date expression defaults to the selected date, while an ambiguous date asks for clarification instead of guessing.
 - Food review rebuilds Food Preview.
 - Workout review rebuilds the existing workout editor draft and asks before replacing another unsaved draft.
+- Food Preview and the workout editor show the same draft date through their normal themed calendar control. The date is not exposed as a raw text field and remains user-changeable before save.
 - No editor page is kept alive in the background.
 - No official record is written until the user saves through the normal editor flow.
 - Workout Draft generation may ask at most one clarification turn, then returns an editable best-effort draft or a stable failure.
@@ -155,6 +158,8 @@ Workout contains official workout records and the active local editor draft. Use
 AI may explain bounded recent patterns and may return a Workout Draft artifact. It cannot silently create, replace, edit, or delete an official workout record. Clarification is capped at one turn; incomplete values remain editable in the normal workout editor.
 
 The Android workout-in-progress notification described above resumes the same unsaved local draft and never creates a second draft or record.
+
+Once the user starts the official workout save, lifecycle autosave stops. The final cloud-confirmed save clears the local draft only after older queued draft writes have finished, so switching to another app during save cannot resurrect a stale duplicate draft. A failed official save keeps the editable draft for retry.
 
 Read more: [Algorithm.md](Algorithm.md), [Database.md](Database.md), and [AgentDesign.md](AgentDesign.md).
 

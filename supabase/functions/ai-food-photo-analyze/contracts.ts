@@ -36,7 +36,7 @@ export interface PhotoAnalysisRequest {
   modelChoice: "qwen";
   deviceId: string;
   selectedDate: string;
-  schemaVersion: "food_draft.v1";
+  schemaVersion: "food_draft.v1" | "food_draft.v2";
   userNote: string | null;
 }
 
@@ -91,13 +91,17 @@ export function parsePhotoAnalysisRequest(
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
-  if (stringOrEmpty(body.schema_version).trim() !== "food_draft.v1") {
+  const requestedSchemaVersion = stringOrEmpty(body.schema_version).trim();
+  if (
+    requestedSchemaVersion !== "food_draft.v1" &&
+    requestedSchemaVersion !== "food_draft.v2"
+  ) {
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
   const deviceId = stringOrEmpty(body.device_id).trim();
   const selectedDate = stringOrEmpty(body.selected_date).trim();
-  if (deviceId === "" || selectedDate === "") {
+  if (deviceId === "" || !isValidDateKey(selectedDate)) {
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
@@ -107,7 +111,7 @@ export function parsePhotoAnalysisRequest(
     modelChoice: "qwen",
     deviceId,
     selectedDate,
-    schemaVersion: "food_draft.v1",
+    schemaVersion: requestedSchemaVersion,
     userNote,
   };
 }
@@ -191,8 +195,9 @@ export function extractQwenCompletion(body: unknown): QwenFoodCompletion {
 
 export function parseProviderFoodDraftBody(
   content: string,
+  selectedDate?: string,
 ): ParsedProviderFoodResponse {
-  const parsed = parseFoodAnalysisEnvelope(content);
+  const parsed = parseFoodAnalysisEnvelope(content, selectedDate);
   return {
     draft: parsed.draft,
     needsClarification: parsed.needsClarification,
@@ -205,7 +210,7 @@ export function parseProviderFoodDraftBody(
 
 export function photoGatewayResponse(params: {
   modelProvider?: string | null;
-  draft?: FoodDraft | null;
+  draft?: FoodDraft | Record<string, unknown> | null;
   needsClarification?: boolean;
   clarificationQuestions?: string[];
   debugSummaryId?: string | null;
@@ -220,6 +225,19 @@ export function photoGatewayResponse(params: {
     debug_summary_id: params.debugSummaryId ?? null,
     error: params.error ?? null,
   };
+}
+
+export function foodDraftForClient(
+  draft: FoodDraft | null,
+  requestedSchemaVersion: PhotoAnalysisRequest["schemaVersion"],
+): FoodDraft | Record<string, unknown> | null {
+  if (draft === null || requestedSchemaVersion === "food_draft.v2") {
+    return draft;
+  }
+  const legacy = { ...draft } as Record<string, unknown>;
+  legacy.schema_version = "food_draft.v1";
+  delete legacy.date;
+  return legacy;
 }
 
 export function errorMessageForCode(code: PhotoGatewayErrorCode): string {
@@ -296,14 +314,24 @@ function userPrompt(request: PhotoAnalysisRequest): string {
     : "If the image or description is too unclear, set needs_clarification true, draft null, and include short clarification_questions.";
   return [
     "Return JSON with this shape:",
-    '{"schema_version":"food_analysis_envelope.v1","needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"food_draft.v1","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}',
+    '{"schema_version":"food_analysis_envelope.v1","needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"food_draft.v2","date":"2026-07-10","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}',
     "When items is non-empty, item values are totals for that item portion, not per-100g values; draft meal totals must equal the sum of items.",
     clarificationInstruction,
     "Use finite non-negative numbers. Estimate honestly and keep notes brief.",
     `Image count: ${request.images.length}`,
     `Selected date: ${request.selectedDate}`,
+    "Copy the selected date exactly into draft.date.",
     note,
   ].join("\n");
+}
+
+function isValidDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
 }
 
 function correctionPrompt(params: {
