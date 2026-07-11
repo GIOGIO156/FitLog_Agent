@@ -19,16 +19,21 @@ import {
   parseGatewayRequest,
   parseProviderGatewayBody,
   type PersistedTurn,
+  type ProviderOutputType,
   stringField,
 } from "./contracts.ts";
 import type { Phase5Evidence } from "./phase5_types.ts";
+import { prependMealDecisionImageTip } from "./prompt_builder.ts";
 import {
   type ProviderCompletion,
   ProviderError,
   providerForChoice,
   readProviderRuntimeConfig,
 } from "./providers.ts";
-import { resolveExpectedOutput } from "./expected_output.ts";
+import {
+  type IntentResolutionSource,
+  resolveOutputSelection,
+} from "./expected_output.ts";
 import { routeGatewayWorkflow } from "./workflow_router.ts";
 
 const phase5PromptVersion = "phase5_rag_readonly_v1";
@@ -36,7 +41,10 @@ const phase5SchemaVersion = "ai_chat_response.v2";
 const minimumCorrectionBudgetMs = 1500;
 
 interface OutputContractTelemetry {
-  expectedOutput: "text" | "food_draft" | "workout_draft";
+  expectedOutput: "auto" | "text" | "food_draft" | "workout_draft";
+  intentResolutionSource: IntentResolutionSource | null;
+  selectedOutputType: ProviderOutputType | null;
+  validationIssueCodes: string[];
   firstPassValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
   correctionAttemptCount: 0 | 1;
   finalValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
@@ -126,13 +134,15 @@ Deno.serve(async (request) => {
         route,
       ),
     };
+    const outputSelection = resolveOutputSelection(parsedRequest);
     parsedRequest = {
       ...parsedRequest,
-      expectedOutput: resolveExpectedOutput(parsedRequest),
+      expectedOutput: outputSelection.expectedOutput,
     };
     outputTelemetry = {
       ...outputTelemetry,
       expectedOutput: parsedRequest.expectedOutput,
+      intentResolutionSource: outputSelection.source,
     };
 
     if (route.safety_flags.length > 0) {
@@ -175,6 +185,7 @@ Deno.serve(async (request) => {
           messageText: assistantText,
           language: parsedRequest.language,
           workflow: parsedRequest.workflowType,
+          outputType: "text",
           draft: null,
           needsClarification: false,
           clarificationQuestions: [],
@@ -209,6 +220,7 @@ Deno.serve(async (request) => {
       );
       outputTelemetry = {
         ...outputTelemetry,
+        selectedOutputType: parsedProvider.outputType,
         firstPassValidationStatus: "passed",
         finalValidationStatus: "passed",
       };
@@ -217,6 +229,7 @@ Deno.serve(async (request) => {
       outputTelemetry = {
         ...outputTelemetry,
         firstPassValidationStatus: "failed",
+        validationIssueCodes: validationIssueCodes(error.issues),
       };
       const remaining = deadlineAt - Date.now();
       if (remaining < minimumCorrectionBudgetMs) {
@@ -246,12 +259,16 @@ Deno.serve(async (request) => {
         );
         outputTelemetry = {
           ...outputTelemetry,
+          selectedOutputType: parsedProvider.outputType,
           finalValidationStatus: "passed",
         };
       } catch (correctionError) {
         outputTelemetry = {
           ...outputTelemetry,
           finalValidationStatus: "failed",
+          validationIssueCodes: correctionError instanceof OutputContractError
+            ? validationIssueCodes(correctionError.issues)
+            : outputTelemetry.validationIssueCodes,
         };
         throw correctionError;
       }
@@ -260,7 +277,9 @@ Deno.serve(async (request) => {
       parsedProvider.messageText,
       parsedRequest,
     );
-    const assistantText = providerGuard.messageText;
+    const assistantText = parsedProvider.outputType === "text"
+      ? prependMealDecisionImageTip(providerGuard.messageText, parsedRequest)
+      : providerGuard.messageText;
     const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
     const evidence = evidenceFromRequest(
       parsedRequest,
@@ -299,6 +318,7 @@ Deno.serve(async (request) => {
         messageText: assistantText,
         language: parsedRequest.language,
         workflow: parsedRequest.workflowType,
+        outputType: parsedProvider.outputType,
         draft,
         needsClarification: providerGuard.allowDraft
           ? parsedProvider.needsClarification
@@ -335,6 +355,7 @@ Deno.serve(async (request) => {
         modelProvider: providerIdForChoice(parsedRequest?.modelChoice ?? null),
         language: parsedRequest?.language ?? "zh",
         workflow: parsedRequest?.workflowType ?? "auto",
+        outputType: null,
         error: {
           code: gatewayError.code,
           message: errorMessageForCode(gatewayError.code),
@@ -572,7 +593,11 @@ function guardProviderOutput(
   safetyFlag: string | null;
 } {
   const route = request.phase5Context?.route;
-  if (route?.read_only !== true) {
+  if (
+    route?.read_only !== true ||
+    request.expectedOutput === "food_draft" ||
+    request.expectedOutput === "workout_draft"
+  ) {
     return { messageText, allowDraft: true, safetyFlag: null };
   }
   if (providerClaimedWrite(messageText)) {
@@ -588,6 +613,26 @@ function guardProviderOutput(
 function providerClaimedWrite(value: string): boolean {
   return /已保存|已修改|已应用|已删除|已经保存|已经修改|saved|deleted|changed your goal|updated your goal|applied carb taper/i
     .test(value);
+}
+
+function validationIssueCodes(issues: OutputValidationIssue[]): string[] {
+  return unique(issues.map((item) => {
+    if (item.path === "$" && /json|object/i.test(item.reason)) {
+      return "json_syntax_or_root";
+    }
+    if (item.path === "$.output_type") return "output_type_mismatch";
+    if (item.reason.includes("claim that a draft was created")) {
+      return "false_draft_success_claim";
+    }
+    if (item.path.startsWith("$.clarification")) {
+      return "clarification_inconsistent";
+    }
+    if (item.path.startsWith("$.draft.schema_version")) {
+      return "draft_family_mismatch";
+    }
+    if (item.path.startsWith("$.draft")) return "draft_contract_invalid";
+    return "envelope_contract_invalid";
+  })).slice(0, 8);
 }
 
 function readOnlyBoundaryMessage(language: "zh" | "en"): string {
@@ -689,6 +734,9 @@ async function writeGatewayFailureLog(
           : Math.ceil(request.messageText.length / 4),
         image_count: request?.attachments.length ?? 0,
         expected_output: params.telemetry.expectedOutput,
+        intent_resolution_source: params.telemetry.intentResolutionSource,
+        selected_output_type: params.telemetry.selectedOutputType,
+        validation_issue_codes_json: params.telemetry.validationIssueCodes,
         validator_version: outputValidatorVersion,
         first_pass_validation_status:
           params.telemetry.firstPassValidationStatus,
@@ -748,7 +796,10 @@ function toGatewayHttpError(error: unknown): GatewayHttpError {
 
 function defaultOutputTelemetry(): OutputContractTelemetry {
   return {
-    expectedOutput: "text",
+    expectedOutput: "auto",
+    intentResolutionSource: null,
+    selectedOutputType: null,
+    validationIssueCodes: [],
     firstPassValidationStatus: "not_attempted",
     correctionAttemptCount: 0,
     finalValidationStatus: "not_attempted",
@@ -786,6 +837,9 @@ async function updateOutputContractTelemetry(
         headers: { ...serviceHeaders(env), prefer: "return=minimal" },
         body: JSON.stringify({
           expected_output: telemetry.expectedOutput,
+          intent_resolution_source: telemetry.intentResolutionSource,
+          selected_output_type: telemetry.selectedOutputType,
+          validation_issue_codes_json: telemetry.validationIssueCodes,
           validator_version: outputValidatorVersion,
           first_pass_validation_status: telemetry.firstPassValidationStatus,
           correction_attempt_count: telemetry.correctionAttemptCount,

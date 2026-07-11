@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:supabase/supabase.dart' as supabase;
 
@@ -38,20 +40,13 @@ class SupabaseAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
   Future<AiFoodPhotoAnalysisResponse> analyze(
     AiFoodPhotoAnalysisRequest request,
   ) async {
+    Object? data;
     try {
       final response = await client.functions.invoke(
         'ai-food-photo-analyze',
         body: request.toJson(),
       );
-      return _responseFromData(response.data);
-    } on FormatException catch (error) {
-      return AiFoodPhotoAnalysisResponse(
-        error: AiGatewayError(
-          code: AiGatewayErrorCode.providerOutputInvalid,
-          rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
-          message: error.message,
-        ),
-      );
+      data = response.data;
     } catch (error) {
       final parsedError = _responseFromError(error);
       if (parsedError != null) {
@@ -59,12 +54,31 @@ class SupabaseAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
       }
       return AiFoodPhotoAnalysisResponse(
         error: AiGatewayError(
-          code: AiGatewayErrorCode.networkFailure,
-          rawCode: AiGatewayErrorCode.networkFailure.value,
+          code: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure
+              : AiGatewayErrorCode.providerFailure,
+          rawCode: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure.value
+              : AiGatewayErrorCode.providerFailure.value,
           message: error.toString(),
         ),
       );
     }
+    return _decodeFoodAnalysisResponse(data);
+  }
+}
+
+AiFoodPhotoAnalysisResponse _decodeFoodAnalysisResponse(Object? data) {
+  try {
+    return _responseFromData(data);
+  } catch (error) {
+    return AiFoodPhotoAnalysisResponse(
+      error: AiGatewayError(
+        code: AiGatewayErrorCode.providerOutputInvalid,
+        rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
+        message: error.toString(),
+      ),
+    );
   }
 }
 
@@ -73,28 +87,32 @@ AiFoodPhotoAnalysisResponse _responseFromData(Object? data) {
   if (parsed != null) {
     return parsed;
   }
-  return const AiFoodPhotoAnalysisResponse(
-    error: AiGatewayError(code: AiGatewayErrorCode.unknown, rawCode: 'unknown'),
+  throw const FormatException(
+    'Food photo analysis returned an invalid response body.',
   );
 }
 
+bool _isTransportError(Object error) {
+  return error is SocketException || error is TimeoutException;
+}
+
 AiFoodPhotoAnalysisResponse? _responseFromDataOrNull(Object? data) {
-  if (data is Map) {
-    return AiFoodPhotoAnalysisResponse.fromJson(
-      Map<String, dynamic>.from(data),
-    );
-  }
-  if (data is String) {
-    try {
+  try {
+    if (data is Map) {
+      return AiFoodPhotoAnalysisResponse.fromJson(
+        Map<String, dynamic>.from(data),
+      );
+    }
+    if (data is String) {
       final decoded = jsonDecode(data);
       if (decoded is Map) {
         return AiFoodPhotoAnalysisResponse.fromJson(
           Map<String, dynamic>.from(decoded),
         );
       }
-    } on FormatException {
-      return null;
     }
+  } catch (_) {
+    return null;
   }
   return null;
 }

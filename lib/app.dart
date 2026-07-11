@@ -12,6 +12,7 @@ import 'core/localization/localization_extensions.dart';
 import 'core/theme/fitlog_theme.dart';
 import 'core/utils/date_utils.dart';
 import 'core/widgets/fitlog_bottom_nav_bar.dart';
+import 'core/widgets/fitlog_notifications.dart';
 import 'data/db/app_database.dart';
 import 'data/remote/ai_gateway_client.dart';
 import 'data/remote/ai_food_photo_analysis_client.dart';
@@ -386,6 +387,9 @@ class _FitLogAppState extends State<FitLogApp> {
           return MaterialApp(
             title: context.strings.appName,
             navigatorKey: fitLogNavigatorKey,
+            navigatorObservers: <NavigatorObserver>[
+              FitLogNotifications.navigatorObserver,
+            ],
             debugShowCheckedModeBanner: false,
             themeMode: ThemeMode.light,
             theme: buildFitLogTheme(
@@ -870,7 +874,13 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
                   child: FitLogBottomNavBar(
                     items: items,
                     currentIndex: navController.index,
-                    onTap: navController.setIndex,
+                    onTap: (index) {
+                      FitLogNotifications.dismiss();
+                      if (index != RootTabIndex.ai) {
+                        context.read<AiChatController>().clearError();
+                      }
+                      navController.setIndex(index);
+                    },
                     surface: navController.index == RootTabIndex.ai
                         ? FitLogBottomNavSurface.glass
                         : FitLogBottomNavSurface.solid,

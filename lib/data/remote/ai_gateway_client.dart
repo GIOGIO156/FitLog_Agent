@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:supabase/supabase.dart' as supabase;
 
@@ -20,20 +22,13 @@ class SupabaseAiGatewayClient implements AiGatewayClient {
 
   @override
   Future<AiGatewayResponse> send(AiGatewayRequest request) async {
+    Object? data;
     try {
       final response = await client.functions.invoke(
         'ai-chat-route',
         body: request.toJson(),
       );
-      return _responseFromData(response.data);
-    } on FormatException catch (error) {
-      return AiGatewayResponse(
-        error: AiGatewayError(
-          code: AiGatewayErrorCode.providerOutputInvalid,
-          rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
-          message: error.message,
-        ),
-      );
+      data = response.data;
     } catch (error) {
       final parsedError = _responseFromError(error);
       if (parsedError != null) {
@@ -41,12 +36,17 @@ class SupabaseAiGatewayClient implements AiGatewayClient {
       }
       return AiGatewayResponse(
         error: AiGatewayError(
-          code: AiGatewayErrorCode.networkFailure,
-          rawCode: AiGatewayErrorCode.networkFailure.value,
+          code: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure
+              : AiGatewayErrorCode.providerFailure,
+          rawCode: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure.value
+              : AiGatewayErrorCode.providerFailure.value,
           message: error.toString(),
         ),
       );
     }
+    return _decodeGatewayResponse(data);
   }
 }
 
@@ -57,16 +57,9 @@ class TestAiGatewayClient implements AiGatewayClient {
 
   @override
   Future<AiGatewayResponse> send(AiGatewayRequest request) async {
+    Object? data;
     try {
-      return _responseFromData(await invoke(request.toJson()));
-    } on FormatException catch (error) {
-      return AiGatewayResponse(
-        error: AiGatewayError(
-          code: AiGatewayErrorCode.providerOutputInvalid,
-          rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
-          message: error.message,
-        ),
-      );
+      data = await invoke(request.toJson());
     } catch (error) {
       final parsedError = _responseFromError(error);
       if (parsedError != null) {
@@ -74,12 +67,31 @@ class TestAiGatewayClient implements AiGatewayClient {
       }
       return AiGatewayResponse(
         error: AiGatewayError(
-          code: AiGatewayErrorCode.networkFailure,
-          rawCode: AiGatewayErrorCode.networkFailure.value,
+          code: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure
+              : AiGatewayErrorCode.providerFailure,
+          rawCode: _isTransportError(error)
+              ? AiGatewayErrorCode.networkFailure.value
+              : AiGatewayErrorCode.providerFailure.value,
           message: error.toString(),
         ),
       );
     }
+    return _decodeGatewayResponse(data);
+  }
+}
+
+AiGatewayResponse _decodeGatewayResponse(Object? data) {
+  try {
+    return _responseFromData(data);
+  } catch (error) {
+    return AiGatewayResponse(
+      error: AiGatewayError(
+        code: AiGatewayErrorCode.providerOutputInvalid,
+        rawCode: AiGatewayErrorCode.providerOutputInvalid.value,
+        message: error.toString(),
+      ),
+    );
   }
 }
 
@@ -88,24 +100,26 @@ AiGatewayResponse _responseFromData(Object? data) {
   if (parsed != null) {
     return parsed;
   }
-  return const AiGatewayResponse(
-    error: AiGatewayError(code: AiGatewayErrorCode.unknown, rawCode: 'unknown'),
-  );
+  throw const FormatException('AI Gateway returned an invalid response body.');
+}
+
+bool _isTransportError(Object error) {
+  return error is SocketException || error is TimeoutException;
 }
 
 AiGatewayResponse? _responseFromDataOrNull(Object? data) {
-  if (data is Map) {
-    return AiGatewayResponse.fromJson(Map<String, dynamic>.from(data));
-  }
-  if (data is String) {
-    try {
+  try {
+    if (data is Map) {
+      return AiGatewayResponse.fromJson(Map<String, dynamic>.from(data));
+    }
+    if (data is String) {
       final decoded = jsonDecode(data);
       if (decoded is Map) {
         return AiGatewayResponse.fromJson(Map<String, dynamic>.from(decoded));
       }
-    } on FormatException {
-      return null;
     }
+  } catch (_) {
+    return null;
   }
   return null;
 }

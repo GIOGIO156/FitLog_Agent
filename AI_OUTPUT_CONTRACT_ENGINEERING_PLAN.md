@@ -2,7 +2,7 @@
 
 ## 0. Status And Responsibility
 
-Status: repository implementation and linked-project deployment are complete. Configured real-provider canary acceptance, monitoring, and rollback rehearsal remain operational acceptance work and must not be inferred from deployment success alone.
+Status: repository implementation, corrective output-selection hardening, linked-project deployment, and deterministic validation are complete. Qwen text Draft and dedicated Add Food text canaries pass. OpenAI production canaries, a user-approved real food-image device test, monitoring, and rollback rehearsal remain operational acceptance work and must not be inferred from deployment success alone.
 
 This file owns implementation order, acceptance gates, rollout, rollback, and validation for the FitLog AI output-constraint upgrade. Stable design facts live in:
 
@@ -17,7 +17,7 @@ The plan is intentionally separate from stable design documents so phase checkli
 Completed in the repository:
 
 - canonical provider-compatible schemas and shared strict validators;
-- server-owned expected-output resolution and unified Chat envelope;
+- server-owned high-confidence output resolution, bounded model selection after resolver abstention, and a unified Chat envelope;
 - OpenAI Structured Outputs and Qwen JSON Mode for text/image Chat;
 - shared Add Food validation, direct object parsing, and Food Draft versioning;
 - provider completion/refusal/incomplete separation;
@@ -35,16 +35,44 @@ Deployed to linked Supabase project `dyacqajcinjwrkbngeif` on 2026-07-10:
 
 Operational acceptance still required:
 
-- run the OpenAI/Qwen text, Qwen image, and Add Food canary matrix;
+- run OpenAI text canaries and the user-approved real food-image device canary; Qwen deterministic Workout Draft and dedicated Add Food text canaries already pass;
 - monitor first-pass/final validation, correction rate, refusal/incomplete rate, latency, and invalid-artifact escapes;
 - rehearse adapter rollback before broad traffic enablement.
+
+### Corrective Hardening Landing
+
+The completed corrective work addresses production regressions discovered after the first strict-contract deployment:
+
+- ordinary AI Chat now uses a high-confidence deterministic resolver that may abstain with `auto`; no match is no longer treated as `text`;
+- explicit product workflows such as Add Food bypass Chat intent inference and keep a fixed draft family;
+- provider envelope `provider_gateway_envelope.v2` carries `output_type = text | food_draft | workout_draft | clarification`;
+- workflow/context routing and result-shape selection are separate, so authorized read-only context can support a reviewable draft without granting an official write;
+- cross-field validation rejects output-type/payload mismatch and prose that claims a nonexistent draft was created;
+- client parsing separates socket/timeout failures, provider/SDK failures, and invalid response reconstruction;
+- AI and app-level errors expire, can be dismissed, clear on editing/navigation, and preserve retry input;
+- meal-decision answers without a request image receive deterministic ingredient-photo/delivery-screenshot guidance;
+- provider prompts no longer expose internal phase labels to user-facing answers;
+- compact logs record intent-resolution source, selected output type, and privacy-safe validation issue codes;
+- the service role can finalize request logs and debug summaries after their initial RPC insert.
+
+Deployed to linked project `dyacqajcinjwrkbngeif`:
+
+- migrations `202607110001_ai_intent_output_observability.sql` and `202607110002_ai_observability_update_grants.sql`;
+- `ai-chat-route` version 19 and `ai-food-photo-analyze` version 12;
+- generator v3 corpus regenerated and uploaded with 504 chunks across 19 source paths;
+- bilingual retrieval smoke tests returned the new intent-resolution and notification-lifecycle sections;
+- real Qwen deterministic Workout Draft returned `workout_draft.v1`, with `expected_output = workout_draft`, `intent_resolution_source = deterministic`, and both validation passes recorded;
+- real dedicated Add Food text analysis returned `food_draft.v1` without clarification.
+
+The private user screenshot was not exported to the provider during engineering canary work. A synthetic 1x1 image reached the multimodal route but was rejected before provider completion as `provider_failure`; real food-image recognition therefore remains a manual device acceptance item using the rebuilt APK and the user's own consent.
 
 ## 1. Goal
 
 Build a provider-independent, measurable output-governance pipeline for OpenAI and Qwen:
 
 ```text
-Expected output
+Fixed output or resolver abstention
+  -> bounded provider `output_type` selection when needed
   -> provider-native generation constraint
   -> strict structural validation
   -> FitLog semantic validation and deterministic normalization

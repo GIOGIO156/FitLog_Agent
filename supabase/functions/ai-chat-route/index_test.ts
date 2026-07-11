@@ -11,6 +11,10 @@ import { MockProviderError, runMockProvider } from "./mock_provider.ts";
 import { extractOpenAiCompletion } from "./openai_provider.ts";
 import type { Phase5WorkflowRoute } from "./phase5_types.ts";
 import { providerForChoice } from "./providers.ts";
+import {
+  phase5PromptContext,
+  prependMealDecisionImageTip,
+} from "./prompt_builder.ts";
 import { extractQwenCompletion } from "./qwen_provider.ts";
 import { OutputContractError } from "../_shared/ai_output_contract.ts";
 
@@ -33,6 +37,40 @@ Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   assertEquals(parsed.attachments.length, 0);
   assertEquals(parsed.allowRecordSummaryContext, false);
   assertEquals(parsed.phase5Context, null);
+});
+
+Deno.test("controlled context stays product-facing and meal advice gets image guidance", () => {
+  const base = parseGatewayRequest({
+    message: { text: "晚饭怎么吃？" },
+    language: "zh",
+    model_choice: "qwen",
+    workflow_hint: "meal_decision",
+    device_id: "device-a",
+  });
+  const request = {
+    ...base,
+    workflowType: "meal_decision" as const,
+    phase5Context: {
+      route: {
+        workflow: "meal_decision" as const,
+        confidence: 1,
+        reasons: ["test"],
+        required_context: [],
+        safety_flags: [],
+        read_only: true,
+      },
+      context_objects: [],
+      document_sources: [],
+      retrieved_dimensions: [],
+      missing_dimensions: [],
+      safety_flags: [],
+      called_tools: [],
+    },
+  };
+  const prompt = phase5PromptContext(request);
+  assertEquals(prompt.includes("Phase 5"), false);
+  const answer = prependMealDecisionImageTip("优先补充蛋白质。", request);
+  assert(answer.startsWith("你也可以上传现有食材照片或外卖平台截图"));
 });
 
 Deno.test("parseGatewayRequest accepts compact conversation context", () => {
@@ -357,7 +395,8 @@ Deno.test("parseProviderGatewayBody parses multimodal JSON with food draft", () 
   });
   const parsed = parseProviderGatewayBody(
     JSON.stringify({
-      schema_version: "provider_gateway_envelope.v1",
+      schema_version: "provider_gateway_envelope.v2",
+      output_type: "food_draft",
       message: { text: "Review this draft before saving." },
       needs_clarification: false,
       clarification_questions: [],
@@ -384,7 +423,8 @@ Deno.test("parseProviderGatewayBody normalizes food draft meal totals from items
   });
   const parsed = parseProviderGatewayBody(
     JSON.stringify({
-      schema_version: "provider_gateway_envelope.v1",
+      schema_version: "provider_gateway_envelope.v2",
+      output_type: "food_draft",
       message: { text: "Review this draft before saving." },
       needs_clarification: false,
       clarification_questions: [],
@@ -411,7 +451,8 @@ Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
   });
   const parsed = parseProviderGatewayBody(
     JSON.stringify({
-      schema_version: "provider_gateway_envelope.v1",
+      schema_version: "provider_gateway_envelope.v2",
+      output_type: "workout_draft",
       message: { text: "Review this workout draft before saving." },
       needs_clarification: false,
       clarification_questions: [],
@@ -614,7 +655,8 @@ Deno.test("OpenAI adapter sends the canonical strict Structured Outputs schema",
   assertEquals(format.type, "json_schema");
   assertEquals(format.strict, true);
   const schemaJson = JSON.stringify(format.schema);
-  assert(schemaJson.includes("provider_gateway_envelope.v1"));
+  assert(schemaJson.includes("provider_gateway_envelope.v2"));
+  assert(schemaJson.includes("output_type"));
   for (
     const unsupportedKeyword of [
       '"const"',
@@ -662,7 +704,8 @@ Deno.test("provider adapter builds safe request without leaking unsupported fiel
   assertEquals(result.content, "ok");
   assertEquals(body.model, "qwen-model");
   assertEquals(body.enable_thinking, false);
-  assert(json.includes("provider_gateway_envelope.v1"));
+  assert(json.includes("provider_gateway_envelope.v2"));
+  assert(json.includes("output_type"));
   assert(json.includes("message.text"));
   assertEquals("attachments" in body, false);
   assertEquals("context_objects" in body, false);

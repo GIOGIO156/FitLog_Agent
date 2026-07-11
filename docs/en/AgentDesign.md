@@ -22,7 +22,8 @@ FitLog does not execute a model on-device. Remote calls pass through Supabase Ed
 ```text
 User request
   -> authentication, subscription, and active-device checks
-  -> deterministic workflow and expected-output resolution
+  -> deterministic workflow routing
+  -> fixed output for explicit entries or two-layer AI Chat output selection
   -> allowed same-chat / Structured RAG / Document RAG context
   -> OpenAI or Qwen provider call
   -> shared output validation and normalization
@@ -62,8 +63,8 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 | Prompt template copy | Keeps external-model guidance for compatibility. | User-mediated external AI, not app-internal AI. |
 | External AI JSON paste | User pastes externally generated food JSON and FitLog parses it locally. | User-mediated external AI, not app-internal AI. |
 | `source = ai_paste` | Marks the origin of a confirmed compatibility-flow food record. | Provenance only, not proof of an internal model call. |
-| Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze`, validates a Food Draft, and opens Food Preview. | Server-mediated draft generation. |
-| AI Chat | Sends text through OpenAI/Qwen and images through Qwen after all gates pass; may return text, Food Draft, or Workout Draft. | Server-mediated answer or draft generation. |
+| Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze`; the entry fixes the Food Draft family, validates it, and opens Food Preview. | Deterministic server-mediated draft workflow, without Chat intent inference. |
+| AI Chat | Sends text through OpenAI/Qwen and images through Qwen after all gates pass; the Gateway handles high-confidence intent first and otherwise lets the model select from bounded output types. | Server-mediated answer or draft generation. |
 | Structured RAG | Builds typed, minimum-necessary server-side context for routed read-only workflows. | Server-mediated read-only context. |
 | Document RAG | Searches the stable bilingual design corpus for app-logic questions. | Server-mediated read-only evidence. |
 | User-record-summary permission | Controls whether protected record summaries may enter routed AI context. | Permission control, not AI output. |
@@ -98,6 +99,7 @@ The AI page must make capability and authority visible without exposing provider
 - Cloud history supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a recovery UI.
 - Assistant text uses maintained Markdown rendering with selectable text, no remote image loading, and no link execution.
 - Food Draft and Workout Draft data render as native artifact cards, never as raw JSON inside the assistant message.
+- Explicit workflows fix their result family. Model output selection in ordinary Chat controls response shape only and grants no write, delete, or settings authority.
 - The Answer basis panel separates reference documents, used data, missing dimensions, and limited actions. Same-chat continuity is not presented as authoritative evidence.
 
 Readiness is distinct from request activity:
@@ -113,6 +115,8 @@ Visual layout, animation, scroll anchoring, keyboard geometry, navigation treatm
 ## Supported Workflows
 
 ### Food Draft Workflow
+
+Add Food AI analysis is an explicit workflow: it bypasses ordinary Chat intent selection, and a successful terminal result must contain an editable Food Draft. Ordinary AI Chat can return a Food Draft through either high-confidence deterministic selection or bounded model selection; both paths use the same canonical schema and confirmation boundary.
 
 Inputs may include a text description, up to three current-request images, selected date, and user corrections.
 
@@ -192,7 +196,7 @@ Backend request counts and model cost may be logged internally. The UI must not 
 
 ## Output, Retention, And Privacy
 
-All provider replies are untrusted until the Gateway validates the provider-independent envelope, expected output, domain rules, and write policy. OpenAI uses strict Structured Outputs; Qwen uses JSON Mode plus the same deterministic validator. Correctable structured failures receive at most one bounded correction attempt. Complete rules are in [AIOutputContract.md](AIOutputContract.md).
+All provider replies are untrusted until the Gateway validates the provider-independent envelope, output selection, domain rules, and write policy. The ordinary-Chat resolver may abstain with `auto`, allowing the model to select from bounded types; explicit product entries do not participate in that inference. OpenAI uses strict Structured Outputs; Qwen uses JSON Mode plus the same deterministic validator. Correctable structured failures receive at most one bounded correction attempt. Complete rules are in [AIOutputContract.md](AIOutputContract.md).
 
 Cloud retention may include:
 

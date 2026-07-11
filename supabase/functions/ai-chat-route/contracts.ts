@@ -3,6 +3,7 @@ import {
   type ExpectedOutput,
   type GatewayDraft,
   type ParsedProviderGatewayBody,
+  type ProviderOutputType,
   parseProviderGatewayEnvelope,
 } from "../_shared/ai_output_contract.ts";
 
@@ -12,6 +13,7 @@ export type {
   FoodDraftItem,
   GatewayDraft,
   ParsedProviderGatewayBody,
+  ProviderOutputType,
   WorkoutDraft,
   WorkoutDraftExercise,
   WorkoutDraftSet,
@@ -191,7 +193,7 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     allowRecordSummaryContext: body.allow_record_summary_context === true,
     conversationContext: parseConversationContext(body.conversation_context),
     phase5Context: null,
-    expectedOutput: "text",
+    expectedOutput: "auto",
   };
 }
 
@@ -230,6 +232,7 @@ export function gatewayResponse(params: {
   messageText?: string | null;
   language?: string | null;
   workflow?: WorkflowType | string | null;
+  outputType?: ProviderOutputType | null;
   draft?: GatewayDraft | null;
   needsClarification?: boolean;
   clarificationQuestions?: string[];
@@ -247,6 +250,7 @@ export function gatewayResponse(params: {
       language: params.language ?? "zh",
     },
     workflow: params.workflow ?? "auto",
+    output_type: params.outputType ?? null,
     needs_clarification: params.needsClarification ?? false,
     clarification_questions: params.clarificationQuestions ?? [],
     draft: params.draft ?? null,

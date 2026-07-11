@@ -255,24 +255,28 @@ void main() {
       expect(response.hasUnsupportedDraftPayload, isFalse);
     });
 
-    test('parses clarification and a saveable draft payload', () {
+    test('parses a clarification payload without a false draft success', () {
       final response = AiGatewayResponse.fromJson(<String, dynamic>{
         'workflow': 'food_logging',
+        'output_type': 'clarification',
+        'message': <String, dynamic>{'text': '还需要确认食物重量。'},
         'needs_clarification': true,
         'clarification_questions': <String>['这份食物的重量大概是多少？'],
-        'draft': _validDraftJson(),
+        'draft': null,
       });
 
       expect(response.needsClarification, isTrue);
       expect(response.clarificationQuestions, hasLength(1));
-      expect(response.foodDraft?.mealName, 'Chicken rice');
+      expect(response.foodDraft, isNull);
       expect(response.hasUnsupportedDraftPayload, isFalse);
-      expect(response.toJson()['draft'], isNotNull);
+      expect(response.toJson()['draft'], isNull);
     });
 
     test('parses a workout draft payload', () {
       final response = AiGatewayResponse.fromJson(<String, dynamic>{
         'workflow': 'auto',
+        'output_type': 'workout_draft',
+        'message': <String, dynamic>{'text': '请确认训练草稿。'},
         'draft': _validWorkoutDraftJson(),
       });
 

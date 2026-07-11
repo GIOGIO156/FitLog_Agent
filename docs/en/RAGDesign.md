@@ -121,6 +121,8 @@ The server router selects a bounded workflow and its required dimensions:
 
 Client workflow hints are hints, not authority. The server route and safety flags decide the actual workflow and allowed actions.
 
+Workflow routing and output selection are separate decisions. Routing chooses which authorized context to build, whether documents are retrieved, and which actions are allowed; it does not turn every unrecognized request into `text`. Explicit product entries fix their output family. In ordinary AI Chat, a high-confidence resolver may select text or a draft directly; after resolver abstention, the model uses the current request, images, and authorized context to select a bounded `output_type`. Model selection never expands RAG or write authority.
+
 ## Permission And Data Minimization
 
 User-record summaries require the user-visible record-summary permission. When permission is off:
@@ -217,8 +219,8 @@ Vector or semantic retrieval may be evaluated later for stable product/help/desi
 
 Prompt assembly keeps these layers distinct:
 
-1. system safety and output contract
-2. workflow and language instruction
+1. system safety, output contract, and fixed or selectable output family
+2. workflow, language, and permission instructions
 3. typed Structured RAG objects
 4. Document RAG source objects
 5. same-chat continuity
@@ -248,6 +250,8 @@ Evidence contains source metadata and bounded excerpts, not complete documents, 
 - Document retrieval returning no matching source for an app-logic question must produce a no-matching-document limitation rather than an invented FitLog rule.
 - Structured context source failure is recorded as a missing dimension.
 - A safety-blocked workflow returns a deterministic boundary response.
+- Missing context cannot silently downgrade a fixed draft request into ordinary prose; the result must be a contract-valid clarification or a stable failure when necessary.
+- When the model selects an output type under `auto`, it may use only the current request, images, and authorized context and cannot invent missing evidence as a selection basis.
 - RAG failure never grants broader data access or write permission.
 
 ## Document Update Lifecycle

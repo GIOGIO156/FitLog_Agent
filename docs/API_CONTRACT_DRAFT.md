@@ -398,6 +398,7 @@ Rules:
 - The AI Gateway calls the selected provider through server-side adapters. Text, vision and structured-output model names must be environment-configured, not hard-coded in Flutter.
 - Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
 - Every Chat provider reply uses the internal versioned machine-readable envelope; user-facing Markdown remains inside `message.text`, and Flutter still receives the public response shape below. Exact schemas, provider mapping, validation, correction, and failure rules are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
+- The public `output_type` is `text`, `food_draft`, `workout_draft`, or `clarification`. It is selected by a fixed product workflow, the high-confidence Chat resolver, or bounded model selection after resolver abstention, then validated against the payload before exposure.
 - The dedicated Add Food AI food-analysis workflow uses a narrower internal `food_analysis_envelope.v1` without chat-style explanation text while sharing the canonical `food_draft.v1` validator.
 - Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
 
@@ -416,6 +417,7 @@ Rules:
     "language": "zh"
   },
   "workflow": "meal_decision",
+  "output_type": "food_draft",
   "needs_clarification": false,
   "clarification_questions": [],
   "draft": {
@@ -440,6 +442,7 @@ If clarification is needed:
 ```json
 {
   "workflow": "food_logging",
+  "output_type": "clarification",
   "needs_clarification": true,
   "clarification_questions": [
     "这张图里的肉看不清，你知道是鸡肉、牛肉还是猪肉吗？"
@@ -447,6 +450,8 @@ If clarification is needed:
   "draft": null
 }
 ```
+
+`output_type` and the payload must agree: text has no draft, each draft type carries the matching versioned object, and clarification has `needs_clarification = true`, non-empty questions, and no draft. A response that claims a draft was created without the matching artifact is invalid rather than a successful text response. Older successful responses without `output_type` remain readable through client inference during compatibility rollout.
 
 If the request or final provider result fails, no draft/action is returned and `error.code` is one of:
 

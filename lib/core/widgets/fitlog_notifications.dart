@@ -18,6 +18,11 @@ class FitLogNotifications {
   static const Key actionButtonKey = ValueKey<String>(
     'fitlog_notification_action_button',
   );
+  static const Key closeButtonKey = ValueKey<String>(
+    'fitlog_notification_close_button',
+  );
+  static final NavigatorObserver navigatorObserver =
+      _FitLogNotificationNavigatorObserver();
 
   static const double _screenMargin = 16;
   static const double _edgeGap = 16;
@@ -160,6 +165,7 @@ class FitLogNotifications {
                             dismiss();
                             onActionPressed();
                           },
+                    onDismiss: dismiss,
                   ),
                 ),
               ),
@@ -209,6 +215,28 @@ class FitLogNotifications {
   }
 }
 
+class _FitLogNotificationNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    FitLogNotifications.dismiss();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    FitLogNotifications.dismiss();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    FitLogNotifications.dismiss();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    FitLogNotifications.dismiss();
+  }
+}
+
 class _AnimatedNotificationBanner extends StatelessWidget {
   const _AnimatedNotificationBanner({
     required this.topAligned,
@@ -243,6 +271,7 @@ class _FitLogNotificationBanner extends StatelessWidget {
     required this.fitTheme,
     this.actionLabel,
     this.onActionPressed,
+    required this.onDismiss,
   });
 
   final FitLogNotificationKind kind;
@@ -250,6 +279,7 @@ class _FitLogNotificationBanner extends StatelessWidget {
   final FitLogThemeData fitTheme;
   final String? actionLabel;
   final VoidCallback? onActionPressed;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +350,19 @@ class _FitLogNotificationBanner extends StatelessWidget {
                       child: Text(actionLabel!),
                     ),
                   ],
+                  IconButton(
+                    key: FitLogNotifications.closeButtonKey,
+                    onPressed: onDismiss,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).closeButtonTooltip,
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: style.textColor,
+                    ),
+                  ),
                 ],
               ),
             ),

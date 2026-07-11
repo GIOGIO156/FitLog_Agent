@@ -2020,6 +2020,12 @@ Spec -> Scenario -> Oracle -> Eval -> Repair -> Evidence
 
 自动化判据：Phase 4 client-only 文案只能基于请求类型和等待时长；Phase 5 以后显示 `正在检索 FitLog 规则`、`正在读取今日摘要`、`正在检查数据是否足够` 等文案时，必须有对应 workflow / retrieved source / context object evidence；文案不能出现 chain-of-thought、debug trace、raw context、`已保存`、`已修改目标`、`已应用 carb taper`、无证据的 `已识别` 或 `已计算`。
 
+#### 8. `intent_output_routing_regression`
+
+目标：验证普通 AI Chat 的两层 output selection、明确工作流固定结果和客户端错误生命周期。覆盖确定性 resolver 命中与 `auto` 放弃、自然语言纯文字问题、中文/英文 Food Draft 与 Workout Draft、图片识别/记录和图片用餐决策的差异、Add Food 明确入口、同会话 clarification、`output_type` 与 draft 不一致、文字声称已生成但没有 artifact、真实 transport 失败、response decode 失败，以及错误提示的关闭、过期、输入编辑、session/tab/route 切换。
+
+自动化判据：第一层无匹配必须是 `auto` 而不是 `text`；第二层选择只接受受限类型；明确 Add Food 成功必须有 Food Draft；workflow/context routing 不覆盖明确 draft 意图；结构合法但语义矛盾仍失败；网络、provider 和 output-invalid 分类真实；错误不跨 surface 持续；用户可重试输入和图片保持；正式写入仍为 0。
+
 ### 评分体系
 
 Phase 6 使用三层评分，不依赖单一裁判。
@@ -2057,11 +2063,12 @@ LLM-as-judge 只用于语义类评分和小样本辅助归因，不能覆盖 har
 6. 建立 answer eval：mock provider 用固定输出测 parser/UI/guard；optional live provider 小样本 smoke suite 测真实 provider contract compatibility。
 7. 建立 safety red-team eval：检查 no-write、no-claim-saved、no-medical-diagnosis。
 8. 建立 draft confirmation regression：从 Chat artifact 到 Food Preview / Workout editor，覆盖 invalid schema、discard、review、save 后刷新。
-9. 建立 progress status truthfulness eval：检查 UI 文案是否只表达 request type、elapsed time 或已有 Gateway/RAG/context evidence，不展示 chain-of-thought 或无证据阶段。
-10. 建立 report generator：输出 suite summary、pass/fail、阈值、失败 case id、归因、推荐修复 area 和 release-blocker list。
-11. 建立 failure corpus：阻断样本进入 regression corpus，修复后继续保留。
-12. 写运行说明：deterministic eval 默认本地运行；live eval 需要 provider secrets / Supabase 配置；默认不上传真实用户数据。
-13. 对 Phase 5 结果做第一次完整评测，先形成可解释报告，再进入 Phase 7 修复。
+9. 建立 intent/output routing regression：覆盖 resolver 命中/放弃、模型 output type、明确工作流、假成功、错误分类和通知生命周期。
+10. 建立 progress status truthfulness eval：检查 UI 文案是否只表达 request type、elapsed time 或已有 Gateway/RAG/context evidence，不展示 chain-of-thought 或无证据阶段。
+11. 建立 report generator：输出 suite summary、pass/fail、阈值、失败 case id、归因、推荐修复 area 和 release-blocker list。
+12. 建立 failure corpus：阻断样本进入 regression corpus，修复后继续保留。
+13. 写运行说明：deterministic eval 默认本地运行；live eval 需要 provider secrets / Supabase 配置；默认不上传真实用户数据。
+14. 对 Phase 5 结果做第一次完整评测，先形成可解释报告，再进入 Phase 7 修复。
 
 ### 自动化验证
 

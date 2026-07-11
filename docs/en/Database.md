@@ -597,6 +597,9 @@ Fields:
 - `token_estimate`
 - `image_count`
 - `expected_output`
+- `intent_resolution_source`
+- `selected_output_type`
+- `validation_issue_codes_json`
 - `validator_version`
 - `first_pass_validation_status`
 - `correction_attempt_count`
@@ -607,8 +610,11 @@ Fields:
 This table is a server-side operational record:
 
 - The additive `202607100001_ai_output_contract_observability.sql` migration idempotently adds output-family, validator, first-pass/final validation, correction-count, and provider completion-category fields. It does not change SQLite `AppDatabase.dbVersion`.
+- The additive `202607110001_ai_intent_output_observability.sql` migration permits `expected_output = auto` and adds `fixed_workflow` / `deterministic` / `model` resolution source, the final validated output type, and a privacy-safe issue-code array. It likewise does not change the SQLite schema version.
+- Migration `202607110002_ai_observability_update_grants.sql` allows the Edge Function service role to finalize `ai_request_logs` and `ai_debug_summaries` after the initial RPC insert. Authenticated clients still have no direct read or write policy.
 - Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v1`.
 - Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
+- `selected_output_type` is written only after provider output passes contract validation. Issue codes are fixed categories and contain no field values, user prompt, or provider text.
 - Authenticated clients have no direct read policy.
 
 ### `ai_debug_summaries`

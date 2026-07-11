@@ -56,6 +56,7 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
   if (request.expectedOutput === "food_draft") {
     return {
       ...common,
+      output_type: "food_draft",
       draft: {
         schema_version: "food_draft.v1",
         meal_name: "Mock meal",
@@ -73,6 +74,7 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
   if (request.expectedOutput === "workout_draft") {
     return {
       ...common,
+      output_type: "workout_draft",
       draft: {
         schema_version: "workout_draft.v1",
         record_name: "Mock workout",
@@ -91,5 +93,5 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
       },
     };
   }
-  return { ...common, draft: null };
+  return { ...common, output_type: "text", draft: null };
 }

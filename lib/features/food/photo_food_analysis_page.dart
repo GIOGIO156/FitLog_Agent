@@ -71,6 +71,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
 
   @override
   void dispose() {
+    FitLogNotifications.dismiss();
     _noteController.removeListener(_handleNoteChanged);
     _noteController.dispose();
     super.dispose();

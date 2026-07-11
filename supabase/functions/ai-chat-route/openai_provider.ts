@@ -174,7 +174,8 @@ function systemInstructions(request: GatewayRequest): string {
     base,
     `Return exactly one ${providerGatewayEnvelopeSchemaVersion} object that conforms to the supplied JSON Schema.`,
     `Expected output: ${request.expectedOutput}. Markdown is allowed only inside message.text.`,
-    "For text, draft must be null. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
+    "If Expected output is auto, infer the user's natural intent from the message and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",
+    "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
   ].join("\n");
 }
 

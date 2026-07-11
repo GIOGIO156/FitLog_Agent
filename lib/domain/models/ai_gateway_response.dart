@@ -4,6 +4,17 @@ import 'ai_gateway_request.dart';
 import 'ai_food_photo_analysis.dart';
 import 'ai_workout_draft.dart';
 
+enum AiGatewayOutputType { text, foodDraft, workoutDraft, clarification }
+
+extension AiGatewayOutputTypeValue on AiGatewayOutputType {
+  String get value => switch (this) {
+    AiGatewayOutputType.text => 'text',
+    AiGatewayOutputType.foodDraft => 'food_draft',
+    AiGatewayOutputType.workoutDraft => 'workout_draft',
+    AiGatewayOutputType.clarification => 'clarification',
+  };
+}
+
 class AiGatewayResponse {
   const AiGatewayResponse({
     this.sessionId,
@@ -13,6 +24,7 @@ class AiGatewayResponse {
     this.messageText,
     this.messageLanguage,
     this.workflow = 'auto',
+    this.outputType,
     this.needsClarification = false,
     this.clarificationQuestions = const <String>[],
     this.foodDraft,
@@ -30,6 +42,7 @@ class AiGatewayResponse {
   final String? messageText;
   final String? messageLanguage;
   final String workflow;
+  final AiGatewayOutputType? outputType;
   final bool needsClarification;
   final List<String> clarificationQuestions;
   final AiFoodDraft? foodDraft;
@@ -55,6 +68,7 @@ class AiGatewayResponse {
         if (messageLanguage != null) 'language': messageLanguage,
       },
       'workflow': workflow,
+      if (outputType != null) 'output_type': outputType!.value,
       'needs_clarification': needsClarification,
       'clarification_questions': clarificationQuestions,
       'draft': foodDraft != null ? foodDraft!.toJson() : workoutDraft?.toJson(),
@@ -86,6 +100,29 @@ class AiGatewayResponse {
       hasUnsupportedDraftPayload = true;
     }
 
+    final error = AiGatewayError.fromJsonOrNull(json['error']);
+    if (error == null && (message['text']?.toString().trim() ?? '').isEmpty) {
+      throw const FormatException(
+        'Successful AI response requires message.text.',
+      );
+    }
+    final outputType = _outputTypeFromJson(
+      json['output_type'],
+      needsClarification: json['needs_clarification'] == true,
+      foodDraft: foodDraft,
+      workoutDraft: workoutDraft,
+      allowMissing: error != null,
+    );
+    if (hasUnsupportedDraftPayload) {
+      throw const FormatException('Unsupported AI draft payload.');
+    }
+    _validateOutputPayload(
+      outputType: outputType,
+      needsClarification: json['needs_clarification'] == true,
+      foodDraft: foodDraft,
+      workoutDraft: workoutDraft,
+    );
+
     return AiGatewayResponse(
       sessionId: json['session_id']?.toString(),
       assistantMessageId: json['assistant_message_id']?.toString(),
@@ -96,15 +133,64 @@ class AiGatewayResponse {
       messageText: message['text']?.toString(),
       messageLanguage: message['language']?.toString(),
       workflow: (json['workflow'] ?? 'auto').toString(),
+      outputType: outputType,
       needsClarification: json['needs_clarification'] == true,
       clarificationQuestions: _stringList(json['clarification_questions']),
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
       evidence: AiGatewayEvidence.fromJsonOrNull(json['evidence']),
       debugSummaryId: json['debug_summary_id']?.toString(),
-      error: AiGatewayError.fromJsonOrNull(json['error']),
+      error: error,
       hasUnsupportedDraftPayload: hasUnsupportedDraftPayload,
     );
+  }
+}
+
+AiGatewayOutputType? _outputTypeFromJson(
+  Object? value, {
+  required bool needsClarification,
+  required AiFoodDraft? foodDraft,
+  required AiWorkoutDraft? workoutDraft,
+  required bool allowMissing,
+}) {
+  switch (value?.toString()) {
+    case 'text':
+      return AiGatewayOutputType.text;
+    case 'food_draft':
+      return AiGatewayOutputType.foodDraft;
+    case 'workout_draft':
+      return AiGatewayOutputType.workoutDraft;
+    case 'clarification':
+      return AiGatewayOutputType.clarification;
+    case null:
+    case '':
+      if (needsClarification) return AiGatewayOutputType.clarification;
+      if (foodDraft != null) return AiGatewayOutputType.foodDraft;
+      if (workoutDraft != null) return AiGatewayOutputType.workoutDraft;
+      return allowMissing ? null : AiGatewayOutputType.text;
+    default:
+      throw FormatException('Unsupported AI output_type: $value');
+  }
+}
+
+void _validateOutputPayload({
+  required AiGatewayOutputType? outputType,
+  required bool needsClarification,
+  required AiFoodDraft? foodDraft,
+  required AiWorkoutDraft? workoutDraft,
+}) {
+  if (outputType == null) return;
+  final hasDraft = foodDraft != null || workoutDraft != null;
+  final valid = switch (outputType) {
+    AiGatewayOutputType.text => !needsClarification && !hasDraft,
+    AiGatewayOutputType.foodDraft =>
+      !needsClarification && foodDraft != null && workoutDraft == null,
+    AiGatewayOutputType.workoutDraft =>
+      !needsClarification && workoutDraft != null && foodDraft == null,
+    AiGatewayOutputType.clarification => needsClarification && !hasDraft,
+  };
+  if (!valid) {
+    throw const FormatException('AI output_type does not match its payload.');
   }
 }
 

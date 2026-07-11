@@ -158,6 +158,75 @@ void main() {
     expect(retried, isTrue);
     expect(find.byKey(FitLogNotifications.actionKey), findsNothing);
   });
+
+  testWidgets('notification can be closed and auto-dismisses', (tester) async {
+    await tester.pumpWidget(
+      _NotificationTestApp(
+        child: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => FitLogNotifications.error(context, 'Temporary'),
+            child: const Text('Show temporary'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Show temporary'));
+    await tester.pump(const Duration(milliseconds: 220));
+    expect(find.text('Temporary'), findsOneWidget);
+
+    await tester.tap(find.byKey(FitLogNotifications.closeButtonKey));
+    await tester.pump();
+    expect(find.text('Temporary'), findsNothing);
+
+    await tester.tap(find.text('Show temporary'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 5000));
+    await tester.pump();
+    expect(find.text('Temporary'), findsNothing);
+  });
+
+  testWidgets('route changes dismiss the originating notification', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: <NavigatorObserver>[
+          FitLogNotifications.navigatorObserver,
+        ],
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Column(
+              children: <Widget>[
+                TextButton(
+                  onPressed: () =>
+                      FitLogNotifications.error(context, 'Route error'),
+                  child: const Text('Show route error'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const Scaffold(body: Text('Next')),
+                    ),
+                  ),
+                  child: const Text('Open next'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Show route error'));
+    await tester.pump();
+    expect(find.text('Route error'), findsOneWidget);
+
+    await tester.tap(find.text('Open next'));
+    await tester.pumpAndSettle();
+    expect(find.text('Next'), findsOneWidget);
+    expect(find.text('Route error'), findsNothing);
+  });
 }
 
 class _NotificationTestApp extends StatelessWidget {

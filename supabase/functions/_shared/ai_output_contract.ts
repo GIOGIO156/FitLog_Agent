@@ -1,10 +1,17 @@
 export const providerGatewayEnvelopeSchemaVersion =
-  "provider_gateway_envelope.v1" as const;
+  "provider_gateway_envelope.v2" as const;
 export const foodDraftSchemaVersion = "food_draft.v1" as const;
 export const workoutDraftSchemaVersion = "workout_draft.v1" as const;
 export const outputValidatorVersion = "ai_output_validator.v1" as const;
 
-export type ExpectedOutput = "text" | "food_draft" | "workout_draft";
+export type ProviderOutputType =
+  | "text"
+  | "food_draft"
+  | "workout_draft"
+  | "clarification";
+export type ExpectedOutput =
+  | "auto"
+  | Exclude<ProviderOutputType, "clarification">;
 
 export interface FoodDraftItem {
   name: string;
@@ -56,6 +63,7 @@ export interface WorkoutDraft {
 export type GatewayDraft = FoodDraft | WorkoutDraft;
 
 export interface ParsedProviderGatewayBody {
+  outputType: ProviderOutputType;
   messageText: string;
   draft: GatewayDraft | null;
   needsClarification: boolean;
@@ -209,6 +217,7 @@ export const providerGatewayEnvelopeJsonSchema: Record<string, unknown> = {
   additionalProperties: false,
   required: [
     "schema_version",
+    "output_type",
     "message",
     "needs_clarification",
     "clarification_questions",
@@ -218,6 +227,10 @@ export const providerGatewayEnvelopeJsonSchema: Record<string, unknown> = {
     schema_version: {
       type: "string",
       enum: [providerGatewayEnvelopeSchemaVersion],
+    },
+    output_type: {
+      type: "string",
+      enum: ["text", "food_draft", "workout_draft", "clarification"],
     },
     message: {
       type: "object",
@@ -271,6 +284,7 @@ export function parseProviderGatewayEnvelope(
     root,
     [
       "schema_version",
+      "output_type",
       "message",
       "needs_clarification",
       "clarification_questions",
@@ -285,6 +299,12 @@ export function parseProviderGatewayEnvelope(
     "$.schema_version",
     issues,
   );
+  const outputType = enumString(
+    root.output_type,
+    "$.output_type",
+    ["text", "food_draft", "workout_draft", "clarification"],
+    issues,
+  ) as ProviderOutputType;
 
   const message = recordAt(root.message, "$.message", issues);
   exactKeys(message, ["text"], "$.message", issues);
@@ -312,11 +332,11 @@ export function parseProviderGatewayEnvelope(
     : parseDraft(root.draft, "$.draft", issues);
 
   if (needsClarification) {
-    if (expectedOutput === "text") {
+    if (outputType !== "clarification") {
       issue(
         issues,
-        "$.needs_clarification",
-        "text output cannot be a draft clarification",
+        "$.output_type",
+        "clarification requires output_type=clarification",
       );
     }
     if (draft !== null) {
@@ -333,41 +353,77 @@ export function parseProviderGatewayEnvelope(
         "at least one question is required",
       );
     }
-  } else if (clarificationQuestions.length !== 0) {
-    issue(
-      issues,
-      "$.clarification_questions",
-      "questions require needs_clarification=true",
-    );
+  } else {
+    if (outputType === "clarification") {
+      issue(
+        issues,
+        "$.output_type",
+        "output_type=clarification requires needs_clarification=true",
+      );
+    }
+    if (clarificationQuestions.length !== 0) {
+      issue(
+        issues,
+        "$.clarification_questions",
+        "questions require needs_clarification=true",
+      );
+    }
   }
 
-  if (expectedOutput === "text") {
+  if (outputType === "text") {
     if (draft !== null) {
       issue(issues, "$.draft", "text output must not include a draft");
     }
-  } else if (!needsClarification) {
+    if (claimsCompletedDraft(messageText)) {
+      issue(
+        issues,
+        "$.message.text",
+        "text output must not claim that a draft was created",
+      );
+    }
+  } else if (outputType === "food_draft" && !needsClarification) {
     if (draft === null) {
-      issue(issues, "$.draft", `expected ${expectedOutput}`);
-    } else if (
-      expectedOutput === "food_draft" &&
-      draft.schema_version !== foodDraftSchemaVersion
-    ) {
+      issue(issues, "$.draft", "expected food_draft");
+    } else if (draft.schema_version !== foodDraftSchemaVersion) {
       issue(issues, "$.draft.schema_version", "expected food_draft.v1");
-    } else if (
-      expectedOutput === "workout_draft" &&
-      draft.schema_version !== workoutDraftSchemaVersion
-    ) {
+    }
+  } else if (outputType === "workout_draft" && !needsClarification) {
+    if (draft === null) {
+      issue(issues, "$.draft", "expected workout_draft");
+    } else if (draft.schema_version !== workoutDraftSchemaVersion) {
       issue(issues, "$.draft.schema_version", "expected workout_draft.v1");
     }
   }
 
+  if (expectedOutput === "text" && outputType !== "text") {
+    issue(issues, "$.output_type", "expected text");
+  } else if (
+    expectedOutput === "food_draft" &&
+    outputType !== "food_draft" &&
+    outputType !== "clarification"
+  ) {
+    issue(issues, "$.output_type", "expected food_draft or clarification");
+  } else if (
+    expectedOutput === "workout_draft" &&
+    outputType !== "workout_draft" &&
+    outputType !== "clarification"
+  ) {
+    issue(issues, "$.output_type", "expected workout_draft or clarification");
+  }
+
   throwIfIssues(issues);
   return {
+    outputType,
     messageText,
     draft,
     needsClarification,
     clarificationQuestions,
   };
+}
+
+function claimsCompletedDraft(value: string): boolean {
+  return /(?:已|已经|为你|为您).{0,12}(?:生成|创建|整理|设置).{0,12}(?:饮食|食物|训练|运动|锻炼)?.{0,8}草稿|草稿.{0,8}(?:已|已经).{0,8}(?:生成|创建)|(?:created|generated|prepared).{0,36}(?:food|meal|workout|training|exercise)?\s*draft/i
+    .test(value);
 }
 
 export function parseFoodAnalysisEnvelope(

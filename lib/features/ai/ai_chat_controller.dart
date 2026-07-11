@@ -85,7 +85,13 @@ class AiChatController extends ChangeNotifier {
   }
 
   void showLocalError(AiGatewayError error) {
-    _lastError = error;
+    _setTransientError(error);
+    notifyListeners();
+  }
+
+  void clearError() {
+    if (_lastError == null) return;
+    _clearErrorState();
     notifyListeners();
   }
 
@@ -106,7 +112,7 @@ class AiChatController extends ChangeNotifier {
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
     _lastSuccessfulResponse = null;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
     if (_accountId != null) {
       unawaited(loadSessions());
@@ -119,7 +125,7 @@ class AiChatController extends ChangeNotifier {
       return;
     }
     _loadingSessions = true;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
     try {
       _sessions = await repository.listSessions(accountId: activeAccountId!);
@@ -129,9 +135,9 @@ class AiChatController extends ChangeNotifier {
         _messages = const <AiChatMessage>[];
       }
     } on Phase2RepositoryException catch (error) {
-      _lastError = _errorFromCode(error.code);
+      _setTransientError(_errorFromCode(error.code));
     } catch (_) {
-      _lastError = _errorFromCode('ai_chat_sessions_load_failed');
+      _setTransientError(_errorFromCode('ai_chat_sessions_load_failed'));
     } finally {
       _loadingSessions = false;
       notifyListeners();
@@ -149,7 +155,7 @@ class AiChatController extends ChangeNotifier {
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
     _lastSuccessfulResponse = null;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
     if ((sessionId ?? '').isNotEmpty) {
       await loadMessages(sessionId!);
@@ -162,7 +168,7 @@ class AiChatController extends ChangeNotifier {
       return;
     }
     _loadingMessages = true;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
     try {
       _messages = await repository.listMessages(
@@ -170,9 +176,9 @@ class AiChatController extends ChangeNotifier {
         sessionId: sessionId,
       );
     } on Phase2RepositoryException catch (error) {
-      _lastError = _errorFromCode(error.code);
+      _setTransientError(_errorFromCode(error.code));
     } catch (_) {
-      _lastError = _errorFromCode('ai_chat_messages_load_failed');
+      _setTransientError(_errorFromCode('ai_chat_messages_load_failed'));
     } finally {
       _loadingMessages = false;
       notifyListeners();
@@ -187,7 +193,7 @@ class AiChatController extends ChangeNotifier {
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
     _lastSuccessfulResponse = null;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
   }
 
@@ -208,7 +214,7 @@ class AiChatController extends ChangeNotifier {
       return false;
     }
     if ((activeAccountId ?? '').isEmpty) {
-      _lastError = _errorFromCode(AiGatewayErrorCode.authRequired.value);
+      _setTransientError(_errorFromCode(AiGatewayErrorCode.authRequired.value));
       notifyListeners();
       return false;
     }
@@ -219,7 +225,7 @@ class AiChatController extends ChangeNotifier {
       attachments,
     );
     _lastSuccessfulResponse = null;
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
 
     final request = AiGatewayRequest(
@@ -242,7 +248,7 @@ class AiChatController extends ChangeNotifier {
     try {
       final response = await repository.sendMessage(request);
       if (response.error != null) {
-        _lastError = response.error;
+        _setTransientError(response.error!);
         if (response.error!.isDeviceReplaced) {
           onDeviceReplaced?.call();
         }
@@ -251,7 +257,7 @@ class AiChatController extends ChangeNotifier {
       }
       final nextSessionId = response.sessionId;
       if ((nextSessionId ?? '').isEmpty) {
-        _lastError = _errorFromCode('unknown');
+        _setTransientError(_errorFromCode('unknown'));
         return false;
       }
       _selectedSessionId = nextSessionId;
@@ -268,7 +274,9 @@ class AiChatController extends ChangeNotifier {
       _pendingUserAttachments = const <AiGatewayImageAttachment>[];
       return true;
     } catch (_) {
-      _lastError = _errorFromCode(AiGatewayErrorCode.networkFailure.value);
+      _setTransientError(
+        _errorFromCode(AiGatewayErrorCode.networkFailure.value),
+      );
       await _refreshSelectedMessagesAfterFailure();
       return false;
     } finally {
@@ -295,7 +303,7 @@ class AiChatController extends ChangeNotifier {
       }
       await loadSessions();
     } catch (_) {
-      _lastError = _errorFromCode('ai_chat_archive_failed');
+      _setTransientError(_errorFromCode('ai_chat_archive_failed'));
       notifyListeners();
     }
   }
@@ -303,7 +311,7 @@ class AiChatController extends ChangeNotifier {
   Future<bool> renameSession(String sessionId, String title) async {
     final trimmed = title.trim();
     if (sessionId.isEmpty || trimmed.isEmpty) {
-      _lastError = _errorFromCode('ai_chat_rename_failed');
+      _setTransientError(_errorFromCode('ai_chat_rename_failed'));
       notifyListeners();
       return false;
     }
@@ -315,7 +323,7 @@ class AiChatController extends ChangeNotifier {
               : session,
         )
         .toList(growable: false);
-    _lastError = null;
+    _clearErrorState();
     notifyListeners();
     try {
       await repository.renameSession(sessionId, trimmed);
@@ -323,7 +331,7 @@ class AiChatController extends ChangeNotifier {
       return true;
     } catch (_) {
       _sessions = previousSessions;
-      _lastError = _errorFromCode('ai_chat_rename_failed');
+      _setTransientError(_errorFromCode('ai_chat_rename_failed'));
       notifyListeners();
       return false;
     }
@@ -345,7 +353,7 @@ class AiChatController extends ChangeNotifier {
       }
       await loadSessions();
     } catch (_) {
-      _lastError = _errorFromCode('ai_chat_delete_failed');
+      _setTransientError(_errorFromCode('ai_chat_delete_failed'));
       notifyListeners();
     }
   }
@@ -486,6 +494,14 @@ class AiChatController extends ChangeNotifier {
   AiGatewayError _errorFromCode(String code) {
     final mapped = aiGatewayErrorCodeFromValue(code);
     return AiGatewayError(code: mapped, rawCode: code);
+  }
+
+  void _setTransientError(AiGatewayError error) {
+    _lastError = error;
+  }
+
+  void _clearErrorState() {
+    _lastError = null;
   }
 }
 

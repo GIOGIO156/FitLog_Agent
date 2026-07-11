@@ -58,6 +58,7 @@ const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
 const Duration _aiKeyboardTransitionSettleDelay = Duration(milliseconds: 180);
 const Duration _aiImageRecoveryVisualOverrideTimeout = Duration(seconds: 6);
+const Duration _aiErrorLifetime = Duration(milliseconds: 4800);
 const Set<String> _supportedChatImageMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -255,6 +256,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   Timer? _composerNoticeTimer;
   Timer? _keyboardTransitionTimer;
   Timer? _imageRecoveryVisualOverrideTimer;
+  Timer? _gatewayErrorTimer;
+  String? _scheduledGatewayErrorCode;
   String? _accountBoundaryKey;
   String? _chatSyncKey;
   int _lastConsumedRecoveryVersion = 0;
@@ -283,6 +286,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     _composerNoticeTimer?.cancel();
     _keyboardTransitionTimer?.cancel();
     _imageRecoveryVisualOverrideTimer?.cancel();
+    _gatewayErrorTimer?.cancel();
     _keyboardTransitioning.dispose();
     _messageScrollController.dispose();
     _controller.dispose();
@@ -353,6 +357,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         ? null
         : _aiErrorLabel(context, chatController!.lastError!);
     final errorLabel = _composerNoticeText ?? gatewayErrorLabel;
+    _scheduleGatewayErrorDismiss(chatController);
     _scheduleComposerMeasure();
 
     return Stack(
@@ -395,6 +400,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
           onOpenHistory: () => setState(() => _historyOpen = true),
           onAttachPressed: _chooseImageAttachment,
           onRemoveAttachment: _removeImageAttachment,
+          onComposerChanged: _handleComposerChanged,
+          onDismissError: _dismissComposerError,
           onSend: (text) => _sendMessage(
             text: text,
             chatController: chatController,
@@ -856,6 +863,38 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     setState(() => _composerNoticeText = null);
   }
 
+  void _handleComposerChanged(String _) {
+    _dismissComposerError();
+  }
+
+  void _dismissComposerError() {
+    _gatewayErrorTimer?.cancel();
+    _gatewayErrorTimer = null;
+    _scheduledGatewayErrorCode = null;
+    _clearComposerNotice();
+    _maybeChatController(listen: false)?.clearError();
+  }
+
+  void _scheduleGatewayErrorDismiss(AiChatController? controller) {
+    final error = controller?.lastError;
+    if (error == null) {
+      _gatewayErrorTimer?.cancel();
+      _gatewayErrorTimer = null;
+      _scheduledGatewayErrorCode = null;
+      return;
+    }
+    final key = '${error.rawCode}:${error.message ?? ''}';
+    if (_scheduledGatewayErrorCode == key) return;
+    _gatewayErrorTimer?.cancel();
+    _scheduledGatewayErrorCode = key;
+    _gatewayErrorTimer = Timer(_aiErrorLifetime, () {
+      if (!mounted || _scheduledGatewayErrorCode != key) return;
+      _gatewayErrorTimer = null;
+      _scheduledGatewayErrorCode = null;
+      controller?.clearError();
+    });
+  }
+
   String? _validationErrorForImage(PickedFoodImage image) {
     final strings = context.stringsRead;
     if (!_supportedChatImageMimeTypes.contains(image.mimeType)) {
@@ -1086,6 +1125,8 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     required this.onOpenHistory,
     required this.onAttachPressed,
     required this.onRemoveAttachment,
+    required this.onComposerChanged,
+    required this.onDismissError,
     required this.onSend,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
@@ -1113,6 +1154,8 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   final VoidCallback onOpenHistory;
   final VoidCallback onAttachPressed;
   final ValueChanged<int> onRemoveAttachment;
+  final ValueChanged<String> onComposerChanged;
+  final VoidCallback onDismissError;
   final ValueChanged<String> onSend;
   final ValueChanged<AiFoodDraft> onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
@@ -1225,6 +1268,8 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                     onProviderChanged: onProviderChanged,
                     onAttachPressed: onAttachPressed,
                     onRemoveAttachment: onRemoveAttachment,
+                    onComposerChanged: onComposerChanged,
+                    onDismissError: onDismissError,
                     onSend: onSend,
                   ),
                 ),
@@ -1754,6 +1799,8 @@ class _AiComposer extends StatelessWidget {
     required this.onProviderChanged,
     required this.onAttachPressed,
     required this.onRemoveAttachment,
+    required this.onComposerChanged,
+    required this.onDismissError,
     required this.onSend,
   });
 
@@ -1770,6 +1817,8 @@ class _AiComposer extends StatelessWidget {
   final ValueChanged<_AiProvider> onProviderChanged;
   final VoidCallback onAttachPressed;
   final ValueChanged<int> onRemoveAttachment;
+  final ValueChanged<String> onComposerChanged;
+  final VoidCallback onDismissError;
   final ValueChanged<String> onSend;
 
   @override
@@ -1781,7 +1830,7 @@ class _AiComposer extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (errorLabel != null && !hasConversation) ...<Widget>[
-          _AiComposerError(label: errorLabel!),
+          _AiComposerError(label: errorLabel!, onDismiss: onDismissError),
           const SizedBox(height: 8),
         ],
         if (!hasConversation) ...<Widget>[
@@ -1793,7 +1842,7 @@ class _AiComposer extends StatelessWidget {
           const SizedBox(height: 10),
         ],
         if (errorLabel != null && hasConversation) ...<Widget>[
-          _AiComposerError(label: errorLabel!),
+          _AiComposerError(label: errorLabel!, onDismiss: onDismissError),
           const SizedBox(height: 8),
         ],
         ValueListenableBuilder<TextEditingValue>(
@@ -1867,6 +1916,7 @@ class _AiComposer extends StatelessWidget {
                               minLines: 1,
                               maxLines: 4,
                               textInputAction: TextInputAction.newline,
+                              onChanged: onComposerChanged,
                               decoration: InputDecoration(
                                 hintText: strings.aiComposerHint,
                                 border: InputBorder.none,
@@ -1921,16 +1971,17 @@ class _AiComposer extends StatelessWidget {
 }
 
 class _AiComposerError extends StatelessWidget {
-  const _AiComposerError({required this.label});
+  const _AiComposerError({required this.label, required this.onDismiss});
 
   final String label;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     return Align(
       key: const ValueKey<String>('ai_composer_error'),
       alignment: Alignment.center,
-      child: _AiErrorPill(label: label),
+      child: _AiErrorPill(label: label, onDismiss: onDismiss),
     );
   }
 }
@@ -3570,9 +3621,10 @@ MarkdownStyleSheet _aiMarkdownStyleSheet(
 }
 
 class _AiErrorPill extends StatelessWidget {
-  const _AiErrorPill({required this.label});
+  const _AiErrorPill({required this.label, required this.onDismiss});
 
   final String label;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -3602,6 +3654,18 @@ class _AiErrorPill extends StatelessWidget {
                   color: const Color(0xFF7A4814),
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              key: const ValueKey<String>('ai_composer_error_close'),
+              onPressed: onDismiss,
+              visualDensity: VisualDensity.compact,
+              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
+              icon: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: Color(0xFF7A4814),
               ),
             ),
           ],

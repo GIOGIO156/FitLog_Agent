@@ -42,6 +42,7 @@ Pages use `FitLogNotifications` for app-level transient feedback:
 - Profile success events such as body metric save, Profile save, export ready, sign-out, data clear, redemption success, and registration code sent use top notices. Auth, subscription, export, redemption, validation, and Cloud Profile failures use readable bottom errors.
 - AI uses informational notices for neutral unavailable states and errors for failed sends or preference saves.
 - A notification that offers retry, undo, open-file, or another action must use the shared action-notification API so its callback remains available.
+- App-level transient notices have a bounded lifetime and a close action; a new notice replaces the old one. Switching root tabs or leaving the originating page dismisses the old notice so it cannot contaminate another surface.
 
 On Android, an active unsaved workout draft with at least one selected exercise is also mirrored by a system workout-in-progress notification. It represents local draft state, not a background workout or official record:
 
@@ -80,6 +81,7 @@ A successful analysis creates an editable Food Draft:
 - When items exist, meal weight and nutrition totals are derived from the item sum.
 - Uncertainty remains visible and may produce a clarification question.
 - Only the user's confirmed Save action creates an official record.
+- A successful terminal result contains a Food Draft and opens Preview; ordinary explanation text cannot impersonate analysis success.
 
 AI Chat image picking has its own small recovery marker for composer text, selected provider, recovered attachments, and landing-background continuity. Recovery never bypasses account, subscription, active-device, network, or Gateway readiness checks.
 
@@ -98,6 +100,7 @@ AI is the main Agent surface: a full-screen conversation, not a shortcut grid.
 - The message viewport hard-clips older content below the top controls and keeps only a short bottom fade above the composer. Shared measured geometry protects the last message from the composer, navigation, keyboard, and system safe area. The floating composer attaches to the keyboard without acquiring a full-width footer background and never dips below its normal closed position during keyboard transitions.
 - Assistant text uses app-styled GitHub-flavored Markdown and selectable text. User messages remain selectable plain text. Remote Markdown images and link actions are disabled. A mixed image-and-text turn displays rounded media above a separate text bubble while remaining one request, retry lifecycle, and history turn.
 - Provider choice is device-local and survives restart. Unsent composer text survives tab changes and temporary disabled states during the current runtime; send start, explicit deletion, logout, or account switch clears it, while failure restores it.
+- Send errors expire after a bounded interval and can be dismissed manually. Editing, retrying, switching sessions, or leaving the AI tab clears the old error without deleting restored text or images.
 
 Detailed visual geometry, animation rationale, theme behavior, and Profile auth presentation are maintained in [Product.md](Product.md).
 
@@ -119,6 +122,8 @@ The account sheet exposes account/subscription state, sign-out, backend configur
 
 Every accepted provider reply crosses the validated output boundary described in [AIOutputContract.md](AIOutputContract.md). User-facing explanation is separate from structured draft data; raw provider JSON is never rendered as an assistant answer.
 
+Ordinary AI Chat fixes text or draft only for high-confidence requests; when the Gateway cannot decide, the model uses natural language, images, and same-chat context to select a bounded result type. Explicit entries such as Add Food do not participate in this inference. Regardless of selection source, a structurally or semantically inconsistent response is never shown as success.
+
 When a valid Food Draft or Workout Draft is returned, the assistant shows a native artifact card with `Review and confirm` / `查看并确认`:
 
 - Food review rebuilds Food Preview.
@@ -136,6 +141,8 @@ The client sends only bounded same-chat text and artifact summaries for continui
 - meal-decision advice
 - weekly review
 - app-logic Q&A
+
+A meal-decision answer without a request image starts by telling the user that they can upload a photo of available ingredients or a delivery-app screenshot for an image-informed recommendation. This tip does not change authorized context, record-summary permission, or confirmation boundaries.
 
 Chinese app-logic questions retrieve Chinese stable documents; English questions retrieve English stable documents. The answer follows the request language even when same-chat content contains another language.
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:fitlog_local/data/remote/ai_gateway_client.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
@@ -60,19 +62,44 @@ void main() {
     },
   );
 
+  test('TestAiGatewayClient maps a socket error to network failure', () async {
+    final client = TestAiGatewayClient((_) async {
+      throw const SocketException('offline');
+    });
+
+    final response = await client.send(_request());
+
+    expect(response.isSuccess, isFalse);
+    expect(response.error?.code, AiGatewayErrorCode.networkFailure);
+  });
+
   test(
-    'TestAiGatewayClient maps thrown transport error to network failure',
+    'TestAiGatewayClient does not mislabel an unknown SDK failure as network',
     () async {
       final client = TestAiGatewayClient((_) async {
-        throw StateError('offline');
+        throw StateError('SDK decode failed');
       });
 
       final response = await client.send(_request());
 
-      expect(response.isSuccess, isFalse);
-      expect(response.error?.code, AiGatewayErrorCode.networkFailure);
+      expect(response.error?.code, AiGatewayErrorCode.providerFailure);
     },
   );
+
+  test('TestAiGatewayClient rejects malformed successful payloads', () async {
+    final client = TestAiGatewayClient((_) async {
+      return <String, dynamic>{
+        'message': <String, dynamic>{'text': 'Claims success'},
+        'output_type': 'workout_draft',
+        'draft': null,
+        'error': null,
+      };
+    });
+
+    final response = await client.send(_request());
+
+    expect(response.error?.code, AiGatewayErrorCode.providerOutputInvalid);
+  });
 }
 
 class _FunctionFailure implements Exception {

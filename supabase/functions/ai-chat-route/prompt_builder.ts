@@ -26,11 +26,11 @@ export function phase5PromptContext(request: GatewayRequest): string {
   }));
 
   return [
-    "FitLog Phase 5 controlled context follows. Treat it as read-only evidence.",
+    "FitLog controlled context follows. Treat it as read-only evidence.",
     answerLanguageInstruction(request.language),
     `Routed workflow: ${context.route.workflow}`,
     `Routing reasons: ${context.route.reasons.join(", ") || "none"}`,
-    "Allowed actions: explain, summarize, suggest user-confirmed UI steps, ask a clarification.",
+    "Allowed actions: explain, summarize, suggest user-confirmed UI steps, ask a clarification, and create an editable draft when the output contract requests one.",
     "Forbidden actions: save official records, delete records, modify Profile, change goals, apply carb tapering, change carb cycling, request full raw history, expose debug traces.",
     "If status is planned or non_goal, say that clearly and do not present it as implemented.",
     "Document source context_prefix and heading_path define the chunk location and meaning; use them before interpreting the excerpt.",
@@ -45,4 +45,27 @@ export function phase5PromptContext(request: GatewayRequest): string {
     `Missing dimensions: ${context.missing_dimensions.join(", ") || "none"}`,
     `Safety flags: ${context.safety_flags.join(", ") || "none"}`,
   ].join("\n");
+}
+
+export function prependMealDecisionImageTip(
+  messageText: string,
+  request: GatewayRequest,
+): string {
+  if (
+    request.workflowType !== "meal_decision" ||
+    request.attachments.length > 0
+  ) {
+    return messageText;
+  }
+  const alreadyIncluded = request.language === "zh"
+    ? /上传.{0,16}(?:食材|照片|图片|外卖).{0,20}(?:截图|推荐)|外卖.{0,12}截图/i.test(
+      messageText,
+    )
+    : /upload.{0,20}(?:ingredient|food|delivery).{0,24}(?:photo|screenshot)/i
+      .test(messageText);
+  if (alreadyIncluded) return messageText;
+  const tip = request.language === "zh"
+    ? "你也可以上传现有食材照片或外卖平台截图，我可以结合图片帮你做推荐。"
+    : "You can also upload a photo of ingredients you have or a delivery-app screenshot, and I can use it to help with the recommendation.";
+  return `${tip}\n\n${messageText}`;
 }

@@ -7,7 +7,8 @@ import {
 Deno.test("strict text envelope accepts Markdown only inside message.text", () => {
   const parsed = parseProviderGatewayEnvelope(
     JSON.stringify({
-      schema_version: "provider_gateway_envelope.v1",
+      schema_version: "provider_gateway_envelope.v2",
+      output_type: "text",
       message: { text: "**Grounded answer**" },
       needs_clarification: false,
       clarification_questions: [],
@@ -22,7 +23,8 @@ Deno.test("strict text envelope accepts Markdown only inside message.text", () =
 Deno.test("Food Draft exact types and item totals are enforced and normalized", () => {
   const parsed = parseProviderGatewayEnvelope(
     JSON.stringify({
-      schema_version: "provider_gateway_envelope.v1",
+      schema_version: "provider_gateway_envelope.v2",
+      output_type: "food_draft",
       message: { text: "Review before saving." },
       needs_clarification: false,
       clarification_questions: [],
@@ -97,6 +99,7 @@ Deno.test("expected output and clarification combinations cannot silently degrad
     parseProviderGatewayEnvelope(
       JSON.stringify({
         ...envelope(null),
+        output_type: "clarification",
         needs_clarification: true,
         clarification_questions: [],
       }),
@@ -106,12 +109,34 @@ Deno.test("expected output and clarification combinations cannot silently degrad
   const clarification = parseProviderGatewayEnvelope(
     JSON.stringify({
       ...envelope(null),
+      output_type: "clarification",
       needs_clarification: true,
       clarification_questions: ["How much did you eat?"],
     }),
     "food_draft",
   );
   assertEquals(clarification.needsClarification, true);
+});
+
+Deno.test("auto output lets the model select a contract-consistent family", () => {
+  const parsed = parseProviderGatewayEnvelope(
+    JSON.stringify(envelope(workoutDraft())),
+    "auto",
+  );
+  assertEquals(parsed.outputType, "workout_draft");
+  assertEquals(parsed.draft?.schema_version, "workout_draft.v1");
+});
+
+Deno.test("text output cannot claim a draft was created without an artifact", () => {
+  assertOutputError(() =>
+    parseProviderGatewayEnvelope(
+      JSON.stringify({
+        ...envelope(null),
+        message: { text: "已为您生成卧推训练草稿。" },
+      }),
+      "auto",
+    )
+  );
 });
 
 Deno.test("dedicated food endpoint uses the same strict Food Draft validator", () => {
@@ -133,8 +158,16 @@ Deno.test("dedicated food endpoint uses the same strict Food Draft validator", (
 });
 
 function envelope(draft: unknown): Record<string, unknown> {
+  const outputType = draft !== null &&
+      typeof draft === "object" &&
+      (draft as Record<string, unknown>).schema_version === "workout_draft.v1"
+    ? "workout_draft"
+    : draft === null
+    ? "text"
+    : "food_draft";
   return {
-    schema_version: "provider_gateway_envelope.v1",
+    schema_version: "provider_gateway_envelope.v2",
+    output_type: outputType,
     message: { text: "Review result." },
     needs_clarification: false,
     clarification_questions: [],

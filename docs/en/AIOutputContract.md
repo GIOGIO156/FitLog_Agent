@@ -20,7 +20,7 @@ The same contract is enforced at generation, Gateway validation, persistence, an
 | Surface | Generation or input constraint | Enforcement responsibility |
 | --- | --- | --- |
 | Add Food AI analysis | Qwen non-thinking JSON Mode with `food_analysis_envelope.v1`. | Parse one object, apply the shared strict Food Draft validator, normalize item totals, and allow at most one bounded correction. |
-| AI Chat, Qwen text and images | Qwen non-thinking JSON Mode with `provider_gateway_envelope.v1` for every response. | Parse one strict envelope, validate the server-resolved expected output, and never degrade an expected draft into prose success. |
+| AI Chat, Qwen text and images | Qwen non-thinking JSON Mode with `provider_gateway_envelope.v2` for every response. | Parse one strict envelope; the Gateway fixes high-confidence families and otherwise lets the model select `output_type` inside the contract, without degrading an expected draft into prose success. |
 | AI Chat, OpenAI text | Responses API Structured Outputs with a strict canonical JSON Schema. | Separate completed, refusal, and incomplete outcomes before shared validation. The configured model must support the selected Responses API format. |
 | Shared Gateway validation | One module owns provider-compatible schemas and deterministic domain validation for Chat, Food Draft, Workout Draft, and clarification. | Reject unknown fields and coercion, enforce bounds and real dates, normalize Food item totals, and check workflow/write policy. |
 | Persistence boundary | Only the validated user-facing message, compatible artifact snapshot, evidence snapshot, and compact metadata may cross into storage. | Never persist raw failed provider output, correction prompts, chain-of-thought, provider secrets, or image/base64 payloads. |
@@ -34,29 +34,35 @@ Structured provider paths require exactly one directly parseable JSON object. Ma
 The following rules apply to every provider and model:
 
 1. Provider output is data, not trusted application state.
-2. The server determines the expected output family before calling the provider.
+2. Explicit product workflows fix the output family before provider generation; ordinary AI Chat fixes only high-confidence cases and otherwise lets the model choose from a bounded `output_type` set.
 3. OpenAI and Qwen must map to the same provider-independent Chat envelope.
 4. A draft is never an official record.
 5. A save/review action appears only for a structurally valid, semantically valid, policy-allowed draft.
-6. Read-only workflows must not return a saveable draft.
+6. Workflow controls authorized context and write permission, while output type controls result shape; read-only context may support a draft, but the draft is still not an official write.
 7. A request that expects a draft must not silently succeed as ordinary prose when the draft is missing or invalid.
 8. Deterministic FitLog calculations and source-of-truth data override model claims.
 9. Raw provider output, chain-of-thought, provider secrets, auth tokens, image bytes, and base64 payloads are not persisted in request/debug logs.
 10. Every contract change is versioned and covered by fixtures before rollout.
 
-## Output Families
+## Intent Resolution And Output Families
 
-The Gateway owns an internal expected-output decision:
+Explicit product workflows and ordinary AI Chat select outputs differently. A dedicated entry such as Add Food photo analysis does not infer intent again: the entry fixes `food_draft`, and a successful terminal result must contain an editable Food Draft. Missing information may produce clarification, but ordinary prose is not a successful downgrade.
 
-| Expected output | Valid result |
+Ordinary AI Chat uses two layers:
+
+1. The deterministic Gateway resolver accepts only high-confidence signals, including explicit Food/Workout draft requests, safety boundaries, and compact same-chat clarification continuation. A match fixes the expected output.
+2. If the resolver cannot decide, it returns `auto`, not `text`. The provider uses the natural-language request, current images, and authorized same-chat context to select one `output_type`: `text`, `food_draft`, `workout_draft`, or `clarification`.
+
+These layers do not vote. A first-layer match is authoritative; the second layer runs only after the first layer abstains. Flutter cannot submit or override `expected_output`.
+
+| Expected output | Valid provider result |
 | --- | --- |
-| `text` | A valid Chat envelope with user-facing `message.text`, `draft = null`, and no unsupported write claim. |
-| `food_draft` | A valid Chat envelope containing `food_draft.v1`, or one bounded clarification response. |
-| `workout_draft` | A valid Chat envelope containing `workout_draft.v1`, or one bounded clarification response. |
+| `auto` | The model selects one contract-consistent `output_type`. |
+| `text` | `output_type = text`, user-visible `message.text`, `draft = null`, and no claim that a draft or official record was created. |
+| `food_draft` | `output_type = food_draft` with `food_draft.v1`, or one bounded clarification. |
+| `workout_draft` | `output_type = workout_draft` with `workout_draft.v1`, or one bounded clarification. |
 
-Clarification is a valid result of a draft expectation: `needs_clarification = true`, non-empty questions, and `draft = null`. Safety blocking is a deterministic Gateway response generated before the provider call, not an expected provider-output value. Routing and output validation remain separate: routing selects what may be returned; validation proves that the payload satisfies that decision.
-
-The resolver is server-owned: read-only routes resolve to `text`; the routed `food_logging` workflow resolves to `food_draft`; explicit food/workout record intent resolves to the matching draft; and a compact same-chat clarification reply may continue the prior draft family. Flutter cannot submit or override `expected_output`.
+Clarification uses `output_type = clarification`, `needs_clarification = true`, non-empty questions, and `draft = null`. Safety blocking is generated deterministically before the provider call. Workflow routing and output selection are independent: routing selects context, RAG, and permissions, while output selection chooses the result shape; validation proves the final payload satisfies both.
 
 ## Provider-Independent Chat Envelope
 
@@ -64,7 +70,8 @@ The provider-facing Chat shape is:
 
 ```json
 {
-  "schema_version": "provider_gateway_envelope.v1",
+  "schema_version": "provider_gateway_envelope.v2",
+  "output_type": "text",
   "message": {
     "text": "User-facing Markdown is allowed inside this string."
   },
@@ -78,11 +85,13 @@ Rules:
 
 - All fields are explicit; providers must not add prose before or after the object.
 - `message.text` contains explanation, uncertainty, estimate rationale, and review instructions.
+- `output_type` must agree with the draft, clarification state, and user-visible message.
 - `draft` is exactly one Food Draft, one Workout Draft, or `null`.
 - A clarification response has `draft = null` and at least one short question.
 - A non-clarification response has an empty clarification array.
 - Normal Markdown answers remain possible because Markdown is carried inside `message.text`.
 - Raw draft JSON is never rendered as assistant Markdown.
+- A `text` result cannot claim that a draft was generated when no artifact exists.
 
 The dedicated Add Food endpoint may keep its narrower public response envelope, but it must use the same canonical `food_draft.v1` definition and the same validation/normalization pipeline as AI Chat.
 
@@ -141,10 +150,11 @@ Validation runs in this order:
 2. **Provider completion validation** checks HTTP status, provider refusal, incomplete/truncated completion, and expected content location.
 3. **JSON syntax validation** requires one complete JSON object for structured paths.
 4. **Structural schema validation** checks required fields, exact types, enums, nullable rules, array limits, string limits, and unknown fields.
-5. **Workflow validation** checks the payload against the routed expected output.
-6. **Domain validation and normalization** applies FitLog-specific invariants such as food item total recomputation and real-date checks.
-7. **Safety/write validation** removes or rejects unsupported write claims and prevents drafts in read-only workflows.
-8. **Client compatibility validation** allows Flutter to reject an artifact snapshot that can no longer rebuild an editor safely.
+5. **Output consistency validation** requires `output_type`, draft family, clarification state, and `message.text` to agree and satisfy the fixed or model-selected expected output.
+6. **Workflow validation** enforces the routed workflow's authorized context and safety boundary; the workflow name does not replace output selection.
+7. **Domain validation and normalization** applies FitLog-specific invariants such as food item total recomputation and real-date checks.
+8. **Safety/write validation** rejects unsupported official-write claims and prevents reviewable drafts from being described as saved records.
+9. **Client compatibility validation** rejects responses Flutter cannot reconstruct safely, while reading history artifacts only through versioned compatibility boundaries.
 
 Structural validation must not use permissive conversions such as parsing a numeric prefix from an otherwise invalid string. Unknown fields are rejected in strict provider schemas unless a versioned compatibility rule explicitly permits them.
 
@@ -205,6 +215,8 @@ The error taxonomy distinguishes:
 
 The existing `record_schema_mismatch` remains readable for compatibility with older server/database paths. New output codes are additive and mapped in Flutter.
 
+The client reports network failure only for recognizable socket or timeout transport errors. A server error envelope retains its stable code; response decoding or typed reconstruction failures after successful transport map to `provider_output_invalid`, while unclassified SDK/provider failures map to `provider_failure` instead of being mislabeled as offline.
+
 After final structured-output failure:
 
 - no artifact or save/review action is returned;
@@ -230,12 +242,13 @@ A provider alias or model update is not allowed to silently change the accepted 
 Compact logs may include:
 
 - provider and configured model
-- workflow and expected output
+- workflow, expected output, intent-resolution source, and final `output_type`
 - prompt/schema/validator versions
 - first-pass validation result
 - correction attempt count
 - final validation result
 - refusal/incomplete/failure category
+- privacy-safe validation issue codes without user content
 - latency and token estimate
 - whether a draft or clarification was returned
 
@@ -246,7 +259,7 @@ Required evaluation dimensions:
 - OpenAI and Qwen
 - text and image paths
 - Chinese and English
-- normal answer, clarification, Food Draft, Workout Draft, refusal, truncation, malformed JSON, wrong type, missing field, extra field, unsupported write claim
+- resolver match and abstention, model selection, normal answer, clarification, Food Draft, Workout Draft, false-success claims, refusal, truncation, malformed JSON, wrong type, missing field, extra field, and unsupported write claim
 - first-pass success, correction recovery, final success, invalid-artifact escape count, latency, and cost
 
 FitLog must not claim a universal error rate such as less than 0.1% without a versioned project evaluation dataset and measured provider/model/schema results.

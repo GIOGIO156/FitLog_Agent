@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-07-11 AI Intent Selection And Error-Lifecycle Hardening
+
+### Added
+
+- Added `provider_gateway_envelope.v2` with explicit `output_type` values for text, Food Draft, Workout Draft, and clarification, plus typed Flutter reconstruction and public API documentation.
+- Added privacy-safe request telemetry for intent-resolution source, validated output type, and validation issue categories, together with service-role update grants that allow successful request/debug rows to be finalized after the initial RPC insert.
+- Added Phase 6 regression coverage requirements for resolver abstention, model output selection, explicit workflow behavior, false draft success, error classification, and notification lifecycle.
+
+### Changed
+
+- Split ordinary AI Chat output selection into a high-confidence deterministic resolver and bounded model selection after `auto` abstention. Explicit Add Food analysis keeps a fixed Food Draft family and bypasses Chat intent inference.
+- Separated workflow/context routing from result shape so authorized read-only context can support an editable draft without granting an official record write.
+- Removed internal phase wording from provider-visible controlled context and prepended optional ingredient-photo or delivery-screenshot guidance to meal-decision answers without request images.
+- Rebuilt and uploaded the bilingual stable-document corpus with 504 generator v3 chunks across 19 source paths.
+
+### Fixed
+
+- Fixed natural Workout Draft requests such as bench press plus weight/reps being accepted as ordinary prose instead of producing a validated draft or clarification.
+- Rejected structurally valid text that claims a draft was created when no matching artifact exists, and enforced cross-field output-type, clarification, and draft-family consistency.
+- Stopped misclassifying response decoding and unknown SDK/provider failures as network outages; only recognizable socket/timeout failures use the network category.
+- Made app-level notices dismissible, bounded, replacement-based, and cleared on root-tab or originating-route exit. AI send errors also clear on editing, session/navigation changes, manual dismissal, or timeout while preserving retry text and images.
+- Restored successful output/debug telemetry finalization by granting the Edge Function service role the missing table-update permissions.
+
+### Validation
+
+- Deno type checks passed for both Edge Function entry points; all 51 deterministic Edge tests passed.
+- `flutter analyze` reported no issues and all 204 Flutter tests passed.
+- Built all three configured split debug APKs under `build/app/outputs/flutter-apk`.
+- Applied remote migrations `202607110001` and `202607110002`; deployed `ai-chat-route` version 19 and `ai-food-photo-analyze` version 12.
+- Verified 504 cloud chunks, 19 source paths, three new observability columns, and bilingual retrieval of the new intent-resolution and notification-lifecycle sections.
+- A real Qwen deterministic Workout Draft canary returned `workout_draft.v1` with first/final validation passed and finalized `deterministic` telemetry. A real dedicated Add Food text canary returned `food_draft.v1`.
+- A synthetic 1x1 image was rejected before provider completion as `provider_failure`; a user-approved real food-image device canary remains operational acceptance work and no private screenshot was exported during this landing.
+
 ## 2026-07-10 AI Output Contract Engineering Landing And RAG Documentation
 
 ### Added

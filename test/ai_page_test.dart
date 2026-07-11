@@ -1557,6 +1557,15 @@ void main() {
       find.byKey(const ValueKey<String>('ai_composer_error')),
       findsOneWidget,
     );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      '请保留这条消息，稍后重试',
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('ai_composer_error')),
+      findsNothing,
+    );
   });
 
   testWidgets('conversation switches the background to quiet motion', (
