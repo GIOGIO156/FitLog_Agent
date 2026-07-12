@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 15;
+  static const int dbVersion = 16;
 
   Database? _database;
 
@@ -141,6 +141,13 @@ class AppDatabase {
           await _ensureDailySummaryCacheColumns(db);
           await _dedupeDailySummaryCache(db);
           await _createDailySummaryCacheIndexes(db);
+        }
+        if (oldVersion < 16) {
+          await db.delete(
+            'workout_record_drafts',
+            where: 'kind = ?',
+            whereArgs: <Object?>['edit_record'],
+          );
         }
       },
     );

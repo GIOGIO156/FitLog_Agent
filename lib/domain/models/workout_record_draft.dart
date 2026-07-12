@@ -29,7 +29,7 @@ class WorkoutRecordDraft {
   final String createdAt;
   final String updatedAt;
 
-  bool get isEditDraft => kind == kindEditRecord;
+  bool get isNewRecordDraft => kind == kindNewRecord;
 
   Map<String, dynamic> get payload {
     final decoded = jsonDecode(payloadJson);

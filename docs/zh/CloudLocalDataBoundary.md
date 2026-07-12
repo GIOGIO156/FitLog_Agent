@@ -91,7 +91,7 @@
 | 训练记录 | sessions、sets、workout records | 云端 | 已确认按日 read model 和 partial cache |
 | Daily summaries | 选中日期 totals 和紧凑上下文 | 可重建云端 projection | 已确认 summary cache |
 | 本地专属 App 数据 | 主题、运行期 UI 状态、未完成 prompt、本地导出文件 | 本地 | 本地权威 |
-| 草稿 | 未发送 prompt、训练草稿、未确认 AI 饮食草稿 | 确认前本地 | 只做草稿存储 |
+| 草稿 | 未发送 prompt、手动/AI 新建训练草稿、未确认 AI 饮食草稿 | 确认前本地 | 只做草稿存储；已保存训练的编辑状态仅存在于当前页面 |
 | AI 记录 | chat sessions、messages、final answers、request metadata | 对应阶段落地后云端/服务端 | 运行期展示 cache |
 
 ## Source of Truth 规则
@@ -321,6 +321,7 @@ Workout：
 
 - 有已确认选中日期本地 sessions/sets/records 时立即渲染。
 - 登录后正式记录新增、编辑和删除都走 cloud write path。
+- 只保留手动/AI 新建训练草稿；已保存记录的编辑状态仅存在于当前页面，未成功保存就关闭编辑器时直接放弃。
 - 云端成功后更新训练 summary 和选中日期 read model。
 
 Profile：
@@ -402,7 +403,7 @@ AI：
 - 前台新增、编辑、删除失败时有可读错误和重试/恢复路径，不出现点击无反应。
 - 旧设备不能在 `device_replaced` 后继续新增、编辑、删除或发送 AI；该错误不能被展示成普通 upload failure。
 - 云端写入成功会更新本地 read models 和受影响 summaries。
-- 训练正式保存成功过程中切到后台不能重新创建已清理的本地训练草稿；保存失败则保留草稿。
+- 新建训练正式保存成功过程中切到后台不能重新创建已清理的本地草稿；新建记录保存失败则保留草稿。
 - 后台刷新结果一致时，不会出现可见 loading 闪烁。
 - 后台刷新受 freshness、可见窗口和失败退避限制，不出现持续轮询或用户眼前反复整页刷新。
 - cache 淘汰不会删除云端正式数据。

@@ -9,7 +9,6 @@ import '../../core/localization/localization_extensions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/exercise_thumbnail.dart';
 import '../../core/widgets/glass_panel.dart';
-import '../../domain/models/workout_record_draft.dart';
 import '../../domain/models/workout_session.dart';
 import 'add_workout_page.dart';
 import 'workout_draft_notification.dart';
@@ -82,7 +81,7 @@ class _WorkoutPlanPageState extends State<WorkoutPlanPage> {
     if (!mounted) {
       return;
     }
-    if (activeDraft != null && !_matchesCurrentDraft(activeDraft, seed)) {
+    if (activeDraft != null) {
       final strings = context.stringsRead;
       final decision =
           await showDialog<_WorkoutPlanDraftAction>(
@@ -160,18 +159,6 @@ class _WorkoutPlanPageState extends State<WorkoutPlanPage> {
       context.read<RefreshNotifier>().markDataChanged();
       await _load();
     }
-  }
-
-  bool _matchesCurrentDraft(WorkoutRecordDraft draft, WorkoutSession seed) {
-    if (!draft.isEditDraft) {
-      return false;
-    }
-    final activePlanId = (draft.sourcePlanId ?? '').trim();
-    final currentPlanId = (seed.planId ?? '').trim();
-    if (currentPlanId.isNotEmpty) {
-      return activePlanId == currentPlanId;
-    }
-    return activePlanId.isEmpty && draft.sourceSessionId == seed.id;
   }
 
   DateTime _createdAtRaw(WorkoutSession session) {

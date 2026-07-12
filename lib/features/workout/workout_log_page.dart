@@ -106,16 +106,8 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: Text(
-                draft.isEditDraft
-                    ? strings.discardWorkoutChangesTitle
-                    : strings.discardWorkoutDraftTitle,
-              ),
-              content: Text(
-                draft.isEditDraft
-                    ? strings.discardWorkoutChangesMessage
-                    : strings.discardWorkoutDraftMessage,
-              ),
+              title: Text(strings.discardWorkoutDraftTitle),
+              content: Text(strings.discardWorkoutDraftMessage),
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
@@ -123,11 +115,7 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
                 ),
                 FilledButton.tonal(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(
-                    draft.isEditDraft
-                        ? strings.discardWorkoutChangesAction
-                        : strings.discardWorkoutDraftAction,
-                  ),
+                  child: Text(strings.discardWorkoutDraftAction),
                 ),
               ],
             );

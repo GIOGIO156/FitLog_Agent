@@ -43,7 +43,7 @@ System notifications are app-level transient feedback, not business logic.
 - Passive transient notices keep a compact shape, have no close icon, expire automatically, and stay scoped to the relevant surface; tab, route, or app-lifecycle changes cannot carry stale feedback into an unrelated module. A confirmed save that closes its editor captures the root notification surface before navigation and emits one fresh success notice on the destination page, where the same bounded timer applies.
 - A short app-background transition does not cancel an in-flight AI request. The pending state resumes with the page; only a real transport timeout, network interruption, or Gateway failure becomes an error, and failed-send input remains available for retry.
 - Notification colors and text styles come from the active FitLog theme, so Green and Black Orange keep consistent surfaces, accents, and `NotoSansSC` typography.
-- Android mirrors an active unsaved workout draft with any selected exercise as a system "workout in progress" notification. This is a draft-resume surface, not a background task or new official record.
+- Android mirrors an active unsaved new-workout draft with any selected exercise as a system "workout in progress" notification. This is a draft-resume surface, not a background task or new official record. Editing an existing official workout is page-local and never creates this retained draft or notification.
   - With a next strength set, the title is the current exercise and the body is the next incomplete set using current weight/reps values; otherwise it shows a short return-to-continue prompt.
   - The right-side image reuses the workout editor exercise/body-part asset. The platform may tint the small status-bar icon monochrome.
   - Focus follows the most recently checked set while that exercise remains unfinished, then returns to the first unfinished strength exercise in workout order.
@@ -57,7 +57,7 @@ System notifications are app-level transient feedback, not business logic.
 | Food Log | Official food-record management. | Supports manual entry, external AI JSON paste, copy-to-date, edit, delete, and confirmed AI-assisted records. | Signed-in official writes are cloud-first; every AI result remains a draft until save confirmation. |
 | Add Food | Food creation workflow. | AI Food Analysis is first and accepts a text-only description or up to three optional images; manual entry and external AI JSON paste remain available. | Higher image limits or richer refinement require an explicit privacy and confirmation design. |
 | AI | Primary Agent entry. | Provides gated ChatGPT/Qwen chat, cloud history, up to three Qwen images, validated Food/Workout Draft cards, scoped read-only RAG, and an Answer basis panel. | Provider credentials stay server-side; AI cannot silently write records or settings. |
-| Workout | Official workout-record management. | Supports workout records, custom exercises, a local editor draft, deterministic calorie heuristics, and draft-resume notification. | AI may draft or review but cannot silently change official records. |
+| Workout | Official workout-record management. | Supports workout records, custom exercises, retained manual/AI new-record drafts, deterministic calorie heuristics, and draft-resume notification. | Editing saved history is page-local; AI may draft or review but cannot silently change official records. |
 | Profile | Account, body, diet, and presentation settings. | Signed-out users see authentication; signed-in users edit one Cloud Profile draft plus separate historical body records. | Cloud Profile is authoritative; official diet changes occur only through Profile confirmation. |
 | Export | User-controlled data export. | Supports XLSX and CSV ZIP built from the authoritative record set. | Local cache may accelerate export but is not required for completeness or treated as backup. |
 
@@ -156,6 +156,8 @@ Official records are created only after save confirmation.
 ### Workout Drafts
 
 AI Chat can return a schema-validated Workout Draft when the user asks to turn a described workout into a record. The assistant shows a readable summary plus a native artifact card. Tapping review rebuilds the existing workout editor draft from the stored snapshot, asks before replacing any unsaved workout draft, and still requires the user to save in the workout editor before any official workout record is written.
+
+Retained workout drafts belong only to new records created manually or handed off from AI. Opening or changing a saved history record uses a page-local edit state; leaving that editor without saving discards the pending changes and does not create a resume bar or workout-in-progress notification.
 
 Starting the official workout save freezes lifecycle autosave. Cloud-confirmed completion is followed by a final ordered draft deletion, so backgrounding the app during save cannot leave a duplicate stale draft; a failed save preserves the editable draft.
 

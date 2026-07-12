@@ -44,7 +44,7 @@ Pages use `FitLogNotifications` for app-level transient feedback:
 - A notification that offers retry, undo, open-file, or another action must use the shared action-notification API so its callback remains available.
 - App-level transient notices keep the compact passive shape used by the app and have no close icon. They expire automatically; a new notice replaces the old one. Switching root tabs, leaving the originating page, or moving the app out of the foreground dismisses stale notices. When a confirmed Food or Workout save closes its editor, one fresh success notice is deliberately shown on the destination page and then follows the same bounded auto-dismiss lifecycle.
 
-On Android, an active unsaved workout draft with at least one selected exercise is also mirrored by a system workout-in-progress notification. It represents local draft state, not a background workout or official record:
+On Android, an active unsaved new-workout draft with at least one selected exercise is also mirrored by a system workout-in-progress notification. It represents local draft state, not a background workout or official record. Saved-history editing never creates this notification:
 
 - It points to the next incomplete strength set, follows the most recently completed set while that exercise remains active, then falls back to the first unfinished strength exercise.
 - After all strength sets are complete it enters a return-to-save state. Cardio-only or setless drafts use a short return-to-continue message.
@@ -153,7 +153,9 @@ Read more: [AgentDesign.md](AgentDesign.md), [AIOutputContract.md](AIOutputContr
 
 ## Workout
 
-Workout contains official workout records and the active local editor draft. Users can create a named record, add built-in or custom exercises, record cardio or strength details, mark supported sets complete, review deterministic calorie estimates, and edit or delete saved records.
+Workout contains official workout records and at most one retained new-record draft. Users can create a named record, add built-in or custom exercises, record cardio or strength details, mark supported sets complete, review deterministic calorie estimates, and edit or delete saved records.
+
+The resume bar and Android workout-in-progress notification apply only to a manually created or AI-generated new workout. Editing saved history is page-local: saving commits the update, while leaving without saving discards the pending changes and does not create a retained draft.
 
 AI may explain bounded recent patterns and may return a Workout Draft artifact. It cannot silently create, replace, edit, or delete an official workout record. Clarification is capped at one turn; incomplete values remain editable in the normal workout editor.
 

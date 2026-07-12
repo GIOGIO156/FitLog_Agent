@@ -12,8 +12,11 @@ class WorkoutDraftRepository {
     final db = await _database.database;
     final rows = await db.query(
       'workout_record_drafts',
-      where: 'id = ?',
-      whereArgs: <Object?>[WorkoutRecordDraft.activeDraftId],
+      where: 'id = ? AND kind = ?',
+      whereArgs: <Object?>[
+        WorkoutRecordDraft.activeDraftId,
+        WorkoutRecordDraft.kindNewRecord,
+      ],
       limit: 1,
     );
     if (rows.isEmpty) {
@@ -23,6 +26,13 @@ class WorkoutDraftRepository {
   }
 
   Future<void> saveActiveDraft(WorkoutRecordDraft draft) async {
+    if (!draft.isNewRecordDraft) {
+      throw ArgumentError.value(
+        draft.kind,
+        'draft.kind',
+        'Only new workout records can be retained as active drafts.',
+      );
+    }
     final db = await _database.database;
     final map = draft.toMap()..['id'] = WorkoutRecordDraft.activeDraftId;
     await db.insert(

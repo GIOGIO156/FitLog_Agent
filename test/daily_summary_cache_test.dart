@@ -14,8 +14,8 @@ import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('AppDatabase schema version includes daily summary cache repair', () {
-    expect(AppDatabase.dbVersion, 15);
+  test('AppDatabase schema version includes workout edit draft cleanup', () {
+    expect(AppDatabase.dbVersion, 16);
   });
 
   test(

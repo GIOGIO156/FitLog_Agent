@@ -265,23 +265,10 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   }
 
   WorkoutRecordDraft? _resolveRestorableDraft(WorkoutRecordDraft? activeDraft) {
-    if (activeDraft == null) {
+    if (activeDraft == null || _isEditing) {
       return null;
     }
-    if ((_editingPlanId ?? '').isEmpty && _editingSeedSessionId == null) {
-      return activeDraft;
-    }
-    if (!activeDraft.isEditDraft) {
-      return null;
-    }
-    final activePlanId = _normalizePlanId(activeDraft.sourcePlanId);
-    if ((_editingPlanId ?? '').isNotEmpty) {
-      return activePlanId == _editingPlanId ? activeDraft : null;
-    }
-    return activePlanId == null &&
-            activeDraft.sourceSessionId == _editingSeedSessionId
-        ? activeDraft
-        : null;
+    return activeDraft;
   }
 
   void _resetToEmptyState() {
@@ -319,8 +306,6 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         reordered[exerciseDraft.exerciseKey] = exerciseDraft;
       }
     }
-    _editingPlanId = _normalizePlanId(draft.sourcePlanId) ?? _editingPlanId;
-    _editingSeedSessionId = draft.sourceSessionId ?? _editingSeedSessionId;
     _draftCreatedAt = draft.createdAt;
     _date = draft.date;
     _recordNameController.text = draft.recordName;
@@ -339,9 +324,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
   Map<String, dynamic> _buildDraftPayload() {
     return <String, dynamic>{
-      'kind': _isEditing
-          ? WorkoutRecordDraft.kindEditRecord
-          : WorkoutRecordDraft.kindNewRecord,
+      'kind': WorkoutRecordDraft.kindNewRecord,
       'date': _date,
       'record_name': _recordNameController.text.trim(),
       'notes': _notesController.text.trim(),
@@ -376,7 +359,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   }
 
   Future<void> _saveOrClearDraft({bool notifyRefresh = false}) async {
-    if (!mounted || _loadingPage || _saving) {
+    if (!mounted || _loadingPage || _saving || _isEditing) {
       return;
     }
     final services = context.read<AppServices>();
@@ -398,11 +381,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     _draftCreatedAt = createdAt;
     final draft = WorkoutRecordDraft(
       id: WorkoutRecordDraft.activeDraftId,
-      kind: _isEditing
-          ? WorkoutRecordDraft.kindEditRecord
-          : WorkoutRecordDraft.kindNewRecord,
-      sourcePlanId: _editingPlanId,
-      sourceSessionId: _editingSeedSessionId,
+      kind: WorkoutRecordDraft.kindNewRecord,
       date: _date,
       recordName: _recordNameController.text.trim(),
       notes: _notesController.text.trim(),

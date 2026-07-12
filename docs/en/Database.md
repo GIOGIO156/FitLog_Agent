@@ -10,7 +10,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 | Storage | Purpose | Authority and lifecycle |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v15. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
+| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v16. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
 | Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
 | SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
@@ -20,7 +20,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `15`.
+Current local SQLite schema version: `16`.
 
 Foreign keys are enabled with:
 
@@ -49,6 +49,7 @@ Local migrations must remain additive and compatible.
 | 13 | Added cloud confirmed-read-model metadata to local food/workout/body caches: `account_id`, `cloud_id`, `record_version`, `cloud_updated_at`, `deleted_at`, `cache_confirmed`, `cached_at`, plus `daily_summary_cache`. |
 | 14 | Re-runs the idempotent cloud-cache column migration so devices that installed an intermediate v13 build receive the missing columns without clearing local data. |
 | 15 | Adds an idempotent `daily_summary_cache` repair for devices that installed an intermediate v14 build before the selected-day summary JSON cache columns, unique index, and cache-write downgrade were complete. |
+| 16 | Deletes legacy `edit_record` workout drafts so only manually or AI-created new workout records remain resumable. |
 
 Compatibility rules:
 
@@ -221,15 +222,15 @@ Important fields:
 
 ### `workout_record_drafts`
 
-Purpose: one active unsaved workout editor state.
+Purpose: one active unsaved new-workout editor state created manually or handed off from AI.
 
 Important fields:
 
 | Field | Meaning |
 | --- | --- |
 | `id` | Fixed active draft id. |
-| `kind` | `new_record` or `edit_record`. |
-| `source_plan_id`, `source_session_id` | Saved-record origin when editing. |
+| `kind` | Current writes use `new_record`; legacy `edit_record` rows are removed by the v16 migration. |
+| `source_plan_id`, `source_session_id` | Legacy nullable compatibility fields; current new-record drafts leave them empty. |
 | `date`, `record_name`, `notes` | Draft-visible metadata. |
 | `payload_json` | Serialized editor snapshot. |
 | `created_at`, `updated_at` | ISO timestamps. |
@@ -238,6 +239,7 @@ Rules:
 
 - Drafts do not feed Home totals.
 - Drafts are not official workout history.
+- Editing a saved workout is page-local and never writes this table.
 - Explicit save validates editor state before writing official workout tables.
 - Draft strength-set entries may include draft-only `completed_at` timestamps inside `payload_json` so the Android workout-in-progress notification can identify the most recently checked set. This does not change the `workout_sets` SQLite schema or the official saved-record migration version.
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-07-12 Workout Draft Retention Boundary
+
+### Changed
+
+- Limited retained workout drafts, the Workout resume bar, and Android workout-in-progress notifications to manually created or AI-generated new workout records.
+- Kept saved-history edits page-local: leaving without a successful save now discards pending changes instead of creating a resumable draft.
+- Advanced local SQLite to schema v16 with an idempotent cleanup of legacy `edit_record` draft rows while preserving the existing table and new-record payload compatibility.
+
+### Fixed
+
+- Prevented merely opening a saved workout through the edit action from copying the official record into the active draft slot and showing a misleading draft bar on return.
+- Added a repository boundary that rejects non-`new_record` active-draft writes and filters legacy edit drafts from active reads.
+
+### Validation
+
+- Added regression coverage for legacy edit-draft classification, repository write rejection, and the v16 schema boundary.
+- `flutter analyze`: no issues; `flutter test`: all 214 tests passed.
+- Regenerated the bilingual Document RAG seed with 510 generator-v3 chunks after the stable Product, AppGuide, Database, and Cloud/Local boundary updates.
+- Built configured split debug APKs for `armeabi-v7a`, `arm64-v8a`, and `x86_64` with `config/supabase.local.json`.
+
 ## 2026-07-12 Notification And AI Request Lifecycle
 
 ### Fixed

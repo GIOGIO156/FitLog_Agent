@@ -91,7 +91,7 @@ Transition rules:
 | Workout records | sessions, sets, workout records | Cloud | Confirmed day read model and partial cache |
 | Daily summaries | selected-day totals and compact context | Rebuildable cloud projection | Confirmed summary cache |
 | Local-only app data | theme, runtime UI state, unfinished prompts, local export files | Local | Local authority |
-| Drafts | unsaved prompts, workout drafts, unconfirmed AI food drafts | Local until confirmed | Draft storage only |
+| Drafts | unsaved prompts, manual/AI new-workout drafts, unconfirmed AI food drafts | Local until confirmed | Draft storage only; saved-workout edits remain page-local |
 | AI records | chat sessions, messages, final answers, request metadata | Cloud/service after their phases | Runtime display cache only |
 
 ## Source Of Truth Rules
@@ -321,6 +321,7 @@ Workout:
 
 - Render confirmed selected-date local sessions/sets/records immediately when available.
 - Create, edit, and delete official records through the cloud write path after sign-in.
+- Retain only manual/AI new-workout drafts; saved-record editing stays page-local and is discarded when the editor closes without a successful save.
 - Update workout summaries and the selected-day read model after cloud success.
 
 Profile:
@@ -402,7 +403,7 @@ Automated tests and manual acceptance should preserve these invariants:
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.
 - A successful cloud write updates local read models and affected summaries.
-- Backgrounding during a successful workout save cannot recreate the cleared local workout draft; a failed save keeps it available.
+- Backgrounding during a successful new-workout save cannot recreate the cleared local draft; a failed new-record save keeps that draft available.
 - Matching background refresh results do not cause visible loading flashes.
 - Background refresh is bounded by freshness, visible window, and failure backoff, with no continuous polling or repeated full-page refreshes in front of the user.
 - Cache eviction never deletes cloud official data.
