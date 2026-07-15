@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -57,7 +56,6 @@ const double _aiMessageListBottomSafePadding = 14;
 const double _aiMessageBottomSoftEdgeHeight = 12;
 const double _aiDefaultComposerHeight = 88;
 const double _aiKeyboardComposerGap = 12;
-const double _aiKeyboardVeilTopFadeHeight = 36;
 const double _aiSendingTurnEstimatedHeight = 96;
 const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
@@ -1218,17 +1216,11 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     final composerBottomPadding = composerAttachedToKeyboard
         ? bottomInset + _aiKeyboardComposerGap
         : restingComposerBottomPadding;
-    final messageViewportGap = composerAttachedToKeyboard
-        ? 0.0
-        : _aiMessageBottomGap;
+    const messageViewportGap = _aiMessageBottomGap;
     final readableBottomObstruction =
         composerBottomPadding + composerHeight + messageViewportGap;
-    final messageViewportBottomObstruction = composerAttachedToKeyboard
-        ? composerBottomPadding
-        : readableBottomObstruction;
-    final messageListBottomPadding =
-        _aiMessageListBottomSafePadding +
-        (composerAttachedToKeyboard ? composerHeight : 0.0);
+    final messageViewportBottomObstruction = readableBottomObstruction;
+    const messageListBottomPadding = _aiMessageListBottomSafePadding;
     final contentTopPadding = hasConversation
         ? _aiTopBarHeight + _aiMessageTopGap
         : 74.0;
@@ -1288,15 +1280,13 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
             onOpenHistory: onOpenHistory,
           ),
           if (composerAttachedToKeyboard) ...<Widget>[
-            _AiKeyboardComposerVeil(
-              bottomInset: bottomInset,
-              composerHeight: composerHeight,
-            ),
             Positioned.fill(
               child: GestureDetector(
                 key: const ValueKey<String>('ai_keyboard_dismiss_region'),
                 behavior: HitTestBehavior.opaque,
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                onVerticalDragStart: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
               ),
             ),
           ],
@@ -1323,7 +1313,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                     attachedImages: attachedImages,
                     mode: mode,
                     status: status,
-                    solidSurface: composerAttachedToKeyboard,
                     hasConversation: hasConversation,
                     onProviderChanged: onProviderChanged,
                     onAttachPressed: onAttachPressed,
@@ -1336,52 +1325,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AiKeyboardComposerVeil extends StatelessWidget {
-  const _AiKeyboardComposerVeil({
-    required this.bottomInset,
-    required this.composerHeight,
-  });
-
-  final double bottomInset;
-  final double composerHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final surface = Theme.of(context).colorScheme.surface;
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: bottomInset,
-      height:
-          composerHeight +
-          _aiKeyboardComposerGap +
-          _aiKeyboardVeilTopFadeHeight,
-      child: IgnorePointer(
-        child: ClipRect(
-          child: BackdropFilter(
-            key: const ValueKey<String>('ai_composer_keyboard_veil'),
-            filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[
-                    surface.withValues(alpha: 0),
-                    surface.withValues(alpha: 0.52),
-                    surface.withValues(alpha: 0.90),
-                  ],
-                  stops: const <double>[0, 0.38, 1],
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1750,6 +1693,7 @@ class _AiTopBar extends StatelessWidget {
                 child: _AiProviderStatusRow(
                   provider: provider,
                   status: status,
+                  compactStatus: true,
                   onProviderChanged: onProviderChanged,
                 ),
               ),
@@ -1898,7 +1842,6 @@ class _AiComposer extends StatelessWidget {
     required this.attachedImages,
     required this.mode,
     required this.status,
-    required this.solidSurface,
     required this.hasConversation,
     required this.onProviderChanged,
     required this.onAttachPressed,
@@ -1914,7 +1857,6 @@ class _AiComposer extends StatelessWidget {
   final List<PickedFoodImage> attachedImages;
   final AiShellMode mode;
   final _AiStatusPresentation status;
-  final bool solidSurface;
   final bool hasConversation;
   final ValueChanged<_AiProvider> onProviderChanged;
   final VoidCallback onAttachPressed;
@@ -1945,12 +1887,8 @@ class _AiComposer extends StatelessWidget {
                 canSend &&
                 !sending &&
                 (value.text.trim().isNotEmpty || attachedImages.isNotEmpty);
-            final surfaceColor = solidSurface
-                ? const Color(0xFFF9FDFB)
-                : Colors.white.withValues(alpha: 0.76);
-            final borderColor = solidSurface
-                ? const Color(0xFFCFE0D4).withValues(alpha: 0.58)
-                : Colors.white.withValues(alpha: 0.82);
+            final surfaceColor = Colors.white.withValues(alpha: 0.76);
+            final borderColor = Colors.white.withValues(alpha: 0.82);
             return DecoratedBox(
               key: const ValueKey<String>('ai_composer_surface'),
               decoration: BoxDecoration(
@@ -2257,22 +2195,23 @@ class _AiProviderStatusRow extends StatelessWidget {
     required this.provider,
     required this.status,
     required this.onProviderChanged,
+    this.compactStatus = false,
   });
 
   final _AiProvider provider;
   final _AiStatusPresentation status;
   final ValueChanged<_AiProvider> onProviderChanged;
+  final bool compactStatus;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         _AiProviderSelector(provider: provider, onChanged: onProviderChanged),
-        _AiStatusPill(status: status),
+        const SizedBox(width: 8),
+        _AiStatusPill(status: status, compact: compactStatus),
       ],
     );
   }
@@ -2315,9 +2254,10 @@ class _AiProviderSelector extends StatelessWidget {
 }
 
 class _AiStatusPill extends StatelessWidget {
-  const _AiStatusPill({required this.status});
+  const _AiStatusPill({required this.status, this.compact = false});
 
   final _AiStatusPresentation status;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2333,35 +2273,45 @@ class _AiStatusPill extends StatelessWidget {
       _AiStatusTone.unavailable => palette.statusUnavailableText,
     };
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.50),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              key: const ValueKey<String>('ai_status_indicator'),
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                color: indicatorColor,
-                shape: BoxShape.circle,
-              ),
+    return Tooltip(
+      message: status.label,
+      child: Semantics(
+        label: compact ? status.label : null,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.50),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.70)),
+          ),
+          child: Padding(
+            padding: compact
+                ? const EdgeInsets.all(8)
+                : const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  key: const ValueKey<String>('ai_status_indicator'),
+                  width: 9,
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: indicatorColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                if (!compact) ...<Widget>[
+                  const SizedBox(width: 6),
+                  Text(
+                    status.label,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(width: 6),
-            Text(
-              status.label,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: textColor,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

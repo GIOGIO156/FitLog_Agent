@@ -20,7 +20,8 @@ Generated snapshots are evidence, not stable architecture documents and not App 
 4. Inspect `rag_foundation_cloud_p6_release.v1.md` for the final all-workflow canary.
 5. Inspect `rag_foundation_cloud_p6_useful_retry.v1.md` for stress and unsampled useful-retry evidence.
 6. Inspect `rag_foundation_cloud_corpus-refresh-recheck-20260715.v1.md` for the passing 577-chunk cloud-refresh verification; the adjacent non-recheck report preserves the first transient latency miss.
-7. Use adjacent JSON only when exact samples or automated comparison are required.
+7. Inspect `rag_foundation_cloud_ui-refresh-20260716.v1.md` for the post-UI/documentation corpus activation and live regression canary.
+8. Use adjacent JSON only when exact samples or automated comparison are required.
 
 ## Name Groups
 
@@ -38,6 +39,7 @@ Generated snapshots are evidence, not stable architecture documents and not App 
 | `p6_release` | Final release canary. |
 | `p6_useful_retry` | High-complexity stress and useful-retry sampling attempt. |
 | `corpus-refresh*` | Stable-document embedding, activation, runtime-build, retrieval, and access revalidation. |
+| `ui-refresh*` | Post-UI/documentation corpus activation and full live regression evidence. |
 | `final*` / `closure*` | Earlier remediation closure snapshots retained for audit history. |
 
 Reports are designed not to store full prompts, vectors, excerpts, Provider output, secrets, tokens, images, raw user business history, or chain-of-thought. Review newly added evidence for privacy and size before committing it.

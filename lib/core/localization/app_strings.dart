@@ -550,11 +550,14 @@ class AppStrings {
   );
   String get comingSoon => _t('Coming soon', '即将上线');
 
-  String get copyAiFoodPrompt => _t('Copy reusable AI prompt', '复制长期对话 Prompt');
+  String get copyAiFoodPrompt =>
+      _t('Set up a reusable food-estimation chat', '建立长期食物估算对话');
+  String get copyPromptOneTimeBadge => _t('One-time setup', '只需设置一次');
   String get copyPromptSubtitle => _t(
-    'Send it once at the start of a new external AI chat; afterward, just send food photos and descriptions',
-    '在新的外部 AI 对话开头发送一次；之后只需发送食物图片和描述',
+    'Send this prompt once in a new chat; afterward, upload food photos or add descriptions, then paste the complete JSON response below for parsing.\nFor ChatGPT, we recommend “FitLog 中文助手” or “FitLog Estimator”.',
+    '在新对话中发送一次此 Prompt；之后只需上传食物图片或补充描述，再将返回的完整 JSON 粘贴到下方解析。\n推荐在 ChatGPT 中使用「FitLog 中文助手」或「FitLog Estimator」。',
   );
+  String get copyPromptAction => _t('Copy Prompt', '复制 Prompt');
   String get promptCopied => _t(
     'Prompt copied. Send it once in a new external AI chat, then keep using that chat for food photos and descriptions.',
     'Prompt 已复制。请在新的外部 AI 对话开头发送一次，之后在该对话中直接发送食物图片和描述。',

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-07-16 Food Prompt Entry And AI Chat Keyboard Geometry
+
+### Changed
+
+- Removed the duplicate reusable-Prompt action from Add Food. Paste AI Result now owns a one-time setup card with a single labeled copy button, explains the photo/description-to-JSON return flow before recommending `FitLog 中文助手` and `FitLog Estimator`, and continues to copy the Chinese or English standing prompt according to the app language.
+- Made the fixed conversation header use a compact same-row readiness light so the provider selector cannot push status onto a second line. The empty-chat composer retains the labeled readiness pill.
+- Reused the closed-keyboard message/composer separation while the keyboard is open: the same 10 px region gap, 14 px list-bottom padding, and short bottom fade preserve a 24 px bubble-to-composer visual distance. The composer keeps its normal glass surface instead of switching to a theme-colored solid surface and oversized veil.
+
+### Fixed
+
+- Added vertical-drag keyboard dismissal while preserving the first outside tap as a dismiss-only action and keeping message scrolling locked until the keyboard closes.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 230 Flutter tests passed, including updated Add Food, Paste AI Result, compact status, keyboard geometry, outside-tap, and vertical-drag coverage. The corpus/document deterministic suite passed all 20 tests.
+- Regenerated 577 chunks from 21 stable bilingual sources as build `d555656c39225eb8bcf1a289`, generated only the 24 missing/stale Qwen embeddings, pruned 21 obsolete records, reached 577/577 local parity, atomically activated the build in Supabase, and verified 577 cloud rows with zero mismatches.
+- The post-activation live canary passed 28/28 checks with retrieval hit 13/13, reviewed precision@3 97.44%, critical top-1 5/5, zero embedding fallbacks, and Edge retrieval p50/p95 1,119/1,435 ms. Rebuilt the configured `armeabi-v7a`, `arm64-v8a`, and `x86_64` debug split APKs.
+
 ## 2026-07-15 RAG Foundation Remediation Canary And Stage Diagnostics
 
 ### Added

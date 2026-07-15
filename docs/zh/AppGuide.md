@@ -74,7 +74,7 @@ Food 保存选中日期的正式食物记录。用户通过正常确认流程查
 
 Add Food 把 AI 食物分析放在第一入口。用户可以只输入文字描述，也可以同时添加最多三张相机/相册图片，并使用与 AI Chat 相互独立的 ChatGPT/千问选择器。当前发布已配置 Qwen；选择 ChatGPT 时显示正常生命周期的“当前模型不可用”错误，选择器短暂响应后自动滑回千问，保留文字和图片，不发送 request，也不改变 AI Chat 选择。小型本地 picker-recovery marker 允许 Android activity 重建后恢复分析内容，而不是返回空页面。
 
-兼容流程还会在 Add Food 和 Paste AI Result 顶部提供“复制长期对话 Prompt”。用户只需在新的外部 ChatGPT、Gemini 或同类网页对话开头发送一次，之后在同一个对话中只发送食物图片、说明和食物数据修正。外部模型每次仍只返回一个使用既有 schema 的完整扁平 JSON 对象；最后的 `estimation_notes` 通常为空，只允许放置餐食字段或具体 item note 无法表达的必要补充，不能重复基础餐食总结。复制内容会跟随 App 当前的中文或英文模式。
+兼容流程只在 Paste AI Result 顶部提供“建立长期食物估算对话”卡片，Add Food 不再重复显示 Prompt 入口。卡片先说明：“在新对话中发送一次此 Prompt；之后只需上传食物图片或补充描述，再将返回的完整 JSON 粘贴到下方解析。”随后推荐在 ChatGPT 中使用“FitLog 中文助手”或“FitLog Estimator”。卡片只有一个带文字的复制按钮，复制内容跟随 App 当前的中文或英文模式。外部模型每次仍只返回一个使用既有 schema 的完整扁平 JSON 对象；最后的 `estimation_notes` 通常为空，只允许放置餐食字段或具体 item note 无法表达的必要补充，不能重复基础餐食总结。
 
 分析成功只创建可编辑 Food Draft：
 
@@ -100,7 +100,7 @@ AI 是主要 Agent surface：一个全屏对话，而不是快捷入口网格。
 - 首页状态文案优先使用 Cloud Profile nickname。页面还包含底部 composer、紧凑 ChatGPT/Qwen selector、左侧聊天历史入口、右上账号/订阅入口，以及紧凑 privacy/readiness hint；不使用 quick chips。
 - Composer 接受文字和最多三张 JPEG、PNG 或 WebP 图片；相册可以一次填满剩余名额。当前文字和图片 turn 通过 Qwen 路由。选择未配置 ChatGPT 时显示相同的短暂错误，选择器使用与底部导航一致的滑动动画自动回到千问，保留 composer 和附件且不发送 request。状态灯仍保持订阅/设备/Gateway readiness 的真实状态；自动回到千问只是 UI 恢复，不会暗中发送请求。具体模型名和 provider key 只保留在服务端。
 - 发送时立即清空 composer 并加入 pending 用户 turn。真实 pending bubble 锚定在顶部 controls 下方，不越界、不回弹；assistant loading bubble 保持到合法回复完成持久化并重新加载。失败会恢复本次输入，最终回复不会再次强制滚动。
-- Message viewport 在顶部 controls 下方 hard clip 旧内容，只在 composer 上方保留短 bottom fade。共享 measured geometry 保护最后一条消息不被 composer、导航、键盘或系统 safe area 遮挡。键盘打开时，浮动 composer 在键盘上方保留 12 px 呼吸间距，局部模糊渐变 veil 避免聊天内容从 composer 与键盘之间透出；消息滚动在键盘关闭前锁定，点击 composer 以外的页面区域会先收起键盘，再恢复完整阅读空间和正常滚动。其他 App 输入页面继续保留原有键盘交互。
+- Message viewport 在顶部 controls 下方 hard clip 旧内容，并在键盘开合两种状态下复用相同的 10 px 区域间隔、14 px 列表底部留白和短 bottom fade，使最后气泡与 composer 始终保持 24 px 视觉距离。键盘打开时，浮动 composer 在键盘上方保留 12 px 呼吸间距并继续使用普通玻璃 surface，不增加主题色 veil。消息滚动在键盘关闭前锁定；点击 composer 外部或开始竖向拖动都会先收起键盘，再恢复完整阅读空间和正常滚动。其他 App 输入页面继续保留原有键盘交互。
 - Assistant 文字使用 App 风格的 GitHub-flavored Markdown 和可选择文本；用户消息保持可选择 plain text。禁用远程 Markdown 图片和 link action。图片加文字的同一 turn 把圆角 media 放在独立文字 bubble 上方，但仍保持一个 request、retry 生命周期和 history turn。
 - Provider 选择保存在设备本地并跨重启恢复。未发送 composer 文本在当前运行期跨 tab 和暂时禁用状态保留；开始发送、用户主动删除、退出或切换账号会清除，发送失败则恢复。
 - 发送错误使用不带关闭图标的共享被动通知，并在限定时间后自动消失；用户编辑输入、重试、切换 session、离开 AI tab 或让 App 进入后台时清除旧提示，但不删除已恢复的文字或图片。正常短暂切后台不会取消请求本身；真实超时、网络中断或 Gateway 错误在 App 回到前台后显示。

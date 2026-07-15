@@ -55,7 +55,7 @@ FitLog_Agent V1 是一款以确定性计划规则为基础、由用户控制 AI 
 | --- | --- | --- | --- |
 | Home | 选中日期 dashboard。 | 展示确定性 daily summary 和符合当前模式的 kcal 或 macro 信号；后台刷新前可以先显示匹配的 confirmed cache。 | 保持 dashboard，不变成 AI 工作台。 |
 | Food Log | 正式 food record 管理。 | 支持手动录入、外部 AI JSON 粘贴、复制日期、编辑、删除和用户确认后的 AI 辅助记录。 | 登录后正式写入 cloud-first；所有 AI 结果在确认保存前都是草稿。 |
-| Add Food | 食物创建 workflow。 | AI 食物分析作为第一入口，接受纯文字或最多三张可选图片，并提供与 AI Chat 独立的 ChatGPT/千问选择；当前请求使用 Qwen，未配置 ChatGPT 只报告不可用而不发送。手动录入、可复用的外部对话 Prompt 和外部 AI JSON 粘贴继续保留。 | Provider 状态不改变共享 Food policy、语义 Preview Gate、隐私或确认边界。 |
+| Add Food | 食物创建 workflow。 | AI 食物分析作为第一入口，接受纯文字或最多三张可选图片，并提供与 AI Chat 独立的 ChatGPT/千问选择；当前请求使用 Qwen，未配置 ChatGPT 只报告不可用而不发送。手动录入和外部 AI JSON 粘贴继续保留；可复用外部对话 Prompt 的唯一入口位于 Paste AI Result。 | Provider 状态不改变共享 Food policy、语义 Preview Gate、隐私或确认边界。 |
 | AI | Agent 主入口。 | 提供 gated Qwen 文字与图片对话、保留但未配置的 ChatGPT 选择反馈、云端 history、最多三张图片、校验后的 Food/Workout Draft 卡片、受限只读 RAG 和“回答依据”面板。 | Provider credentials 留在服务端；AI 不能静默写记录或设置。 |
 | Workout | 正式训练记录管理。 | 支持训练记录、自定义动作、手动/AI 新建记录保留草稿、确定性热量估算和草稿恢复通知。 | 已保存历史的编辑状态仅存在于当前页面；AI 可以起草或复盘，但不能静默修改正式记录。 |
 | Profile | 账号、身体资料、饮食和显示设置。 | 未登录显示 auth；登录后编辑一份 Cloud Profile draft 和独立历史身体记录。 | Cloud Profile 是权威来源；正式饮食设置只能通过 Profile 确认修改。 |
@@ -81,7 +81,7 @@ Home | Food | AI | Workout | Profile
 - Home 首屏盒子使用 SafeArea 内容高度减去导航避让。g/kg macro strip 和 energy-ratio 卡片保持在盒子内，不把导航预留当成内容内部间距。`energy_ratio` 模式下，热量卡保留自然圆环、字号、padding 和顶部位置，macro 卡保留底部自然高度，中间空间弹性伸缩。
 - 可滚动阅读 padding 与固定底部 controls 使用独立 geometry。Food 和 Workout 添加 CTA 是有自身滚动避让的透明 overlay；它们和 AI composer 一样用屏幕坐标锚定到导航顶部，并共享同一视觉间距。
 - 键盘 inset 动画期间，底部导航保持稳定的 `viewPadding`，字段或 AI composer 移动时 nav pill 不下探。
-- AI message list 把 composer 当成真实遮挡物，但不使用全宽 footer plate。Viewport 从顶部 action row 下方开始、hard clip 旧消息，并保留短 bottom fade。键盘关闭时 viewport 截止在 composer 上方；键盘打开时 composer 在键盘上方保留 12 px 间距，限定范围的模糊渐变 veil 覆盖底部阅读边缘，列表禁止手动滚动，第一次点击 composer 外部只负责收起键盘，不会触发被遮挡的页面内容。键盘关闭后恢复正常滚动和完整阅读区域；composer 运动仍限制在键盘避让位置与导航上方静止位置之间。
+- AI message list 把 composer 当成真实遮挡物，但不使用全宽 footer plate。Viewport 从顶部 action row 下方开始、hard clip 旧消息，并在键盘开合两种状态下复用相同的 10 px 区域间隔、14 px 列表底部留白和短 bottom fade，因此最后气泡与 composer 保持一致的 24 px 视觉距离。键盘打开时 composer 在键盘上方保留 12 px 间距，继续使用普通玻璃 surface，不叠加主题色 veil；列表禁止手动滚动，第一次点击 composer 外部或开始竖向拖动只负责收起键盘，不会触发被遮挡的页面内容。键盘关闭后恢复正常滚动和完整阅读区域；composer 运动仍限制在键盘避让位置与导航上方静止位置之间。
 - 全屏程序化液态渐变 AI 背景；空白首页让顶部粉色和从中下部进入底部的蓝色在视觉上更均衡，中间保留略小但足以包裹中心状态文案的绿色色带，并通过全屏流场采样、过渡最小宽度和适度采样密度让颜色持续变形，而不是移动局部圆形色块或出现压缩后的块状条纹。发出第一条消息前，键盘输入仍保持可见的首页动效；第一条消息发出后、打开历史会话或发送等待期间，同一全屏色场才切换为更低幅度的安静流动，让页面不会完全静止，也不抢夺聊天阅读注意力。
 - 中心文案优先使用已保存的 Cloud Profile 昵称。
 - 底部输入框。
@@ -101,7 +101,7 @@ Home | Food | AI | Workout | Profile
 - 配置 Supabase URL 和 anon key 后，Supabase Auth、订阅状态和 Cloud Profile 访问已接入。
 - 历史入口打开云端 chat-history 侧栏，支持新建 chat、切换 session、通过服务端 RPC inline 重命名，以及二次确认后软删除 session。由于当前没有归档列表/恢复 UI，归档入口不再暴露。
 - AI 页面调用 `ai-chat-route` Edge Function 发送 Qwen 文本 turn 和最多三张图片的多模态 turn；请求语言按当前用户消息推断，并通过服务端 RPC 持久化通过校验的 user/assistant 文本消息。当前发布客户端不会调用保留的 OpenAI adapter。
-- 可用的 Qwen 选择保存在本机 `SharedPreferences`，不同步到云端；不可用 ChatGPT 不会持久化为 active provider，并在短暂点击反馈后自动恢复 Qwen。状态 pill 与 provider availability 解耦，只表达账号订阅、Profile、设备、网络和 Gateway readiness：这些发送条件满足时，即使用户刚尝试选择不可用 ChatGPT，状态仍显示紧凑的 `可用`；只有相应 readiness gate 阻止发送时才显示紧凑的 `不可用`。发送中的状态只由发送按钮 spinner 和 assistant loading 气泡表达。
+- 可用的 Qwen 选择保存在本机 `SharedPreferences`，不同步到云端；不可用 ChatGPT 不会持久化为 active provider，并在短暂点击反馈后自动恢复 Qwen。状态与 provider availability 解耦，只表达账号订阅、Profile、设备、网络和 Gateway readiness：空对话 composer 上方显示带标签的状态 pill，进入对话后的固定顶部栏使用同排紧凑状态灯，避免窄屏换行；发送中的状态只由发送按钮 spinner 和 assistant loading 气泡表达。
 - AI Chat 的交互强调色跟随当前本机 FitLog 主题：用户气泡、发送/确认按钮、草稿 artifact 卡片边框、Markdown 强调色和 history 选中态在 Green 主题保持绿色，在 Black/黑橙主题切换为柔和但明确的橙色。可用状态灯保持语义绿色，因为它表达账号订阅、设备和 Gateway readiness，而不是具体 provider 或品牌强调。AI 页液态背景保留自己的粉绿蓝色场，不因为黑橙主题而整页变成深色表面。
 - 发送时输入框立即清空，用户消息先显示为 pending 气泡并从可见区域内单向定位到顶部可读边界，不允许先越过边界再回弹或整条消失；最终边界与顶部控件保持约 10 px 间距。旧消息在顶部直接裁切，不做顶部 soft fade；输入框上方保留底部 soft fade；等待期间显示 assistant loading 气泡；如果发送失败，会恢复刚才尝试发送的草稿。loading 气泡只根据请求类型和等待时长显示保守的客户端进度文案，例如正在发送、正在等待、图片请求可能更慢、服务端或模型响应较慢；它不展示模型真实思考链，也不会在缺少证据时声称已经完成图片识别、营养计算、RAG 检索或摘要读取。
 - 当同一条用户 turn 同时包含图片附件和文字时，消息列表把图片附件渲染为右对齐裸圆角 media，并把文字渲染为独立用户气泡；请求、pending 状态、重试和云端 history 仍然保持为同一条 turn。悬浮输入框使用很轻的 hairline 和分层阴影，让它在 AI 背景上保持清晰的悬浮感，并且键盘收起运动只在键盘顶部和导航上方静止位置之间发生。

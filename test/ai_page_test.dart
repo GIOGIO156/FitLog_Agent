@@ -369,6 +369,19 @@ void main() {
       lessThan(80),
     );
     expect(tester.getRect(find.text('Qwen')).top, lessThan(80));
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('ai_status_indicator')))
+          .center
+          .dy,
+      closeTo(
+        tester
+            .getRect(find.byKey(const ValueKey<String>('ai_provider_selector')))
+            .center
+            .dy,
+        0.5,
+      ),
+    );
     expect(tester.getRect(find.byTooltip('Chat history')).left, lessThan(80));
     expect(
       tester.getRect(find.byTooltip('Account and subscription')).right,
@@ -499,7 +512,7 @@ void main() {
   });
 
   testWidgets(
-    'keyboard adds a veiled composer gap and locks message scrolling',
+    'keyboard reuses the resting message separation and locks scrolling',
     (tester) async {
       tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1;
@@ -580,7 +593,7 @@ void main() {
               as BoxDecoration;
       expect(
         find.byKey(const ValueKey<String>('ai_composer_keyboard_veil')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('ai_keyboard_dismiss_region')),
@@ -589,14 +602,14 @@ void main() {
       expect(messageList.physics, isA<NeverScrollableScrollPhysics>());
       expect(messageList.controller!.offset, closeTo(lockedOffset, 0.1));
       expect(composerRect.bottom, closeTo(852 - 336 - 12, 0.1));
-      expect(composerDecoration.color, const Color(0xFFF9FDFB));
+      expect(composerDecoration.color, Colors.white.withValues(alpha: 0.76));
       expect(composerDecoration.border, isA<Border>());
       final composerBorder = composerDecoration.border! as Border;
       expect(composerBorder.top.width, closeTo(0.8, 0.01));
       expect(composerDecoration.boxShadow, hasLength(2));
       expect(composerDecoration.boxShadow!.first.blurRadius, 30);
-      expect(listBottom, closeTo(composerRect.bottom, 0.5));
-      expect(listBottom, greaterThan(composerRect.top));
+      expect(listBottom, closeTo(composerRect.top - 10, 0.5));
+      expect(messageList.padding, const EdgeInsets.fromLTRB(2, 0, 2, 14));
     },
   );
 
@@ -666,6 +679,37 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 336);
     await tester.pump();
     await tester.tapAt(const Offset(20, 120));
+    await tester.pump();
+
+    expect(editable.focusNode.hasFocus, isFalse);
+  });
+
+  testWidgets('dragging the message area dismisses the keyboard', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _buildAiTestApp(
+        const AiPage(mode: AiShellMode.ready),
+        resizeToAvoidBottomInset: false,
+      ),
+    );
+    await tester.pump();
+
+    final field = find.byKey(const ValueKey<String>('ai_composer_field'));
+    await tester.tap(field);
+    await tester.pump();
+    final editable = tester.widget<EditableText>(
+      find.descendant(of: field, matching: find.byType(EditableText)),
+    );
+    expect(editable.focusNode.hasFocus, isTrue);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    await tester.dragFrom(const Offset(196, 240), const Offset(0, -160));
     await tester.pump();
 
     expect(editable.focusNode.hasFocus, isFalse);
@@ -1337,7 +1381,10 @@ void main() {
       find.byKey(const ValueKey<String>('ai_assistant_loading_bubble')),
       findsOneWidget,
     );
-    expect(find.text('Ready'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('ai_status_indicator')),
+      findsOneWidget,
+    );
     expect(find.text('Sending your question...'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 1600));
     expect(find.text('Waiting for the reply...'), findsOneWidget);

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
+import '../../core/theme/fitlog_theme.dart';
 import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/services/nutrition_calculator.dart';
@@ -91,40 +92,12 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            GlassPanel(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: <Widget>[
-                  const Icon(Icons.content_copy_rounded),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          strings.copyAiFoodPrompt,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          strings.copyPromptSubtitle,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  IconButton.filledTonal(
-                    key: const ValueKey<String>(
-                      'paste_copy_food_prompt_action',
-                    ),
-                    onPressed: _copyPrompt,
-                    tooltip: strings.copyAiFoodPrompt,
-                    icon: const Icon(Icons.copy_all_rounded),
-                  ),
-                ],
-              ),
+            _ReusablePromptSetupCard(
+              title: strings.copyAiFoodPrompt,
+              badge: strings.copyPromptOneTimeBadge,
+              body: strings.copyPromptSubtitle,
+              actionLabel: strings.copyPromptAction,
+              onCopy: _copyPrompt,
             ),
             Expanded(
               child: GlassPanel(
@@ -164,6 +137,88 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReusablePromptSetupCard extends StatelessWidget {
+  const _ReusablePromptSetupCard({
+    required this.title,
+    required this.badge,
+    required this.body,
+    required this.actionLabel,
+    required this.onCopy,
+  });
+
+  final String title;
+  final String badge;
+  final String body;
+  final String actionLabel;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
+    return GlassPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: fitTheme.primarySoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.forum_outlined, color: fitTheme.primaryDeep),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: fitTheme.primarySoft,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    badge,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: fitTheme.primaryDeep,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(body, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              key: const ValueKey<String>('paste_copy_food_prompt_action'),
+              onPressed: onCopy,
+              icon: const Icon(Icons.content_copy_rounded),
+              label: Text(actionLabel),
+            ),
+          ),
+        ],
       ),
     );
   }
