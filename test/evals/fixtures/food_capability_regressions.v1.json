@@ -1,0 +1,7 @@
+{"schema":"fitlog_eval_suite.v1","suite":"food_capability","cases":[
+  {"case_id":"zh_wrong_language","language":"zh","input":"一份鸡胸饭","draft_language":"en","expected_issue":"response_language_mismatch"},
+  {"case_id":"explicit_protein","language":"zh","input":"蛋白质 20g","draft":{"protein_g":8.5},"expected_issue":"user_explicit_fact_mismatch"},
+  {"case_id":"label_tolerance","language":"en","input":"package label","notes":"fiber and rounding","expected":"accepted"},
+  {"case_id":"dedicated_revision","surface":"food_photo","invalid":true,"terminal":"input_revision_required"},
+  {"case_id":"provider_parity","providers":["openai","qwen"],"required_invariants":["facts","language","no_write","preview_gate"]}
+]}

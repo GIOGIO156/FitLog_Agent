@@ -1,7 +1,7 @@
 export const providerGatewayEnvelopeSchemaVersion =
   "provider_gateway_envelope.v2" as const;
 export const foodDraftSchemaVersion = "food_draft.v2" as const;
-export const workoutDraftSchemaVersion = "workout_draft.v2" as const;
+export const workoutDraftSchemaVersion = "workout_draft.v3" as const;
 export const outputValidatorVersion = "ai_output_validator.v2" as const;
 
 export type ProviderOutputType =
@@ -44,9 +44,14 @@ export interface WorkoutDraftSet {
 
 export interface WorkoutDraftExercise {
   exercise_name: string;
-  exercise_key: string | null;
-  exercise_type: "strength" | "cardio" | null;
-  body_part: string | null;
+  exercise_key: string;
+  exercise_source: "builtin" | "custom";
+  definition_hash: string;
+  exercise_type: "strength" | "cardio";
+  body_part: string;
+  load_input_mode: "total_load" | "per_side_load" | "bodyweight_added" | "assistance_load";
+  reps_input_mode: "total_reps" | "per_side_reps";
+  set_metric_type: "reps" | "duration_seconds";
   duration_minutes: number | null;
   active_duration_minutes: number | null;
   cardio_intensity_basis: string | null;
@@ -171,8 +176,13 @@ export const workoutDraftJsonSchema: Record<string, unknown> = {
         required: [
           "exercise_name",
           "exercise_key",
+          "exercise_source",
+          "definition_hash",
           "exercise_type",
           "body_part",
+          "load_input_mode",
+          "reps_input_mode",
+          "set_metric_type",
           "duration_minutes",
           "active_duration_minutes",
           "cardio_intensity_basis",
@@ -180,14 +190,14 @@ export const workoutDraftJsonSchema: Record<string, unknown> = {
         ],
         properties: {
           exercise_name: { type: "string" },
-          exercise_key: nullableStringSchema(120),
-          exercise_type: {
-            anyOf: [
-              { type: "string", enum: ["strength", "cardio"] },
-              { type: "null" },
-            ],
-          },
-          body_part: nullableStringSchema(120),
+          exercise_key: { type: "string" },
+          exercise_source: { type: "string", enum: ["builtin", "custom"] },
+          definition_hash: { type: "string" },
+          exercise_type: { type: "string", enum: ["strength", "cardio"] },
+          body_part: { type: "string" },
+          load_input_mode: { type: "string", enum: ["total_load", "per_side_load", "bodyweight_added", "assistance_load"] },
+          reps_input_mode: { type: "string", enum: ["total_reps", "per_side_reps"] },
+          set_metric_type: { type: "string", enum: ["reps", "duration_seconds"] },
           duration_minutes: nullableNumberSchema(),
           active_duration_minutes: nullableNumberSchema(),
           cardio_intensity_basis: nullableStringSchema(500),
@@ -248,6 +258,32 @@ export const providerGatewayEnvelopeJsonSchema: Record<string, unknown> = {
     },
   },
 };
+
+export function providerGatewayEnvelopeJsonSchemaForExpectedOutput(
+  expectedOutput: ExpectedOutput,
+): Record<string, unknown> {
+  if (expectedOutput === "auto") return providerGatewayEnvelopeJsonSchema;
+  const properties = providerGatewayEnvelopeJsonSchema.properties as Record<
+    string,
+    unknown
+  >;
+  const outputType = expectedOutput === "text"
+    ? ["text", "clarification"]
+    : [expectedOutput, "clarification"];
+  const draft = expectedOutput === "text"
+    ? { type: "null" }
+    : expectedOutput === "food_draft"
+    ? { anyOf: [foodDraftJsonSchema, { type: "null" }] }
+    : { anyOf: [workoutDraftJsonSchema, { type: "null" }] };
+  return {
+    ...providerGatewayEnvelopeJsonSchema,
+    properties: {
+      ...properties,
+      output_type: { type: "string", enum: outputType },
+      draft,
+    },
+  };
+}
 
 export const foodAnalysisEnvelopeJsonSchema: Record<string, unknown> = {
   type: "object",
@@ -703,8 +739,13 @@ function validateWorkoutExercise(
     [
       "exercise_name",
       "exercise_key",
+      "exercise_source",
+      "definition_hash",
       "exercise_type",
       "body_part",
+      "load_input_mode",
+      "reps_input_mode",
+      "set_metric_type",
       "duration_minutes",
       "active_duration_minutes",
       "cardio_intensity_basis",
@@ -713,14 +754,7 @@ function validateWorkoutExercise(
     path,
     issues,
   );
-  const exerciseType = map.exercise_type === null
-    ? null
-    : enumString(map.exercise_type, `${path}.exercise_type`, [
-      "strength",
-      "cardio",
-    ], issues) as
-      | "strength"
-      | "cardio";
+  const exerciseType = enumString(map.exercise_type, `${path}.exercise_type`, ["strength", "cardio"], issues) as "strength" | "cardio";
   return {
     exercise_name: boundedString(
       map.exercise_name,
@@ -729,14 +763,14 @@ function validateWorkoutExercise(
       200,
       issues,
     ),
-    exercise_key: nullableString(
-      map.exercise_key,
-      `${path}.exercise_key`,
-      120,
-      issues,
-    ),
+    exercise_key: boundedString(map.exercise_key, `${path}.exercise_key`, 1, 120, issues),
+    exercise_source: enumString(map.exercise_source, `${path}.exercise_source`, ["builtin", "custom"], issues) as "builtin" | "custom",
+    definition_hash: boundedString(map.definition_hash, `${path}.definition_hash`, 8, 64, issues),
     exercise_type: exerciseType,
-    body_part: nullableString(map.body_part, `${path}.body_part`, 120, issues),
+    body_part: boundedString(map.body_part, `${path}.body_part`, 1, 120, issues),
+    load_input_mode: enumString(map.load_input_mode, `${path}.load_input_mode`, ["total_load", "per_side_load", "bodyweight_added", "assistance_load"], issues) as WorkoutDraftExercise["load_input_mode"],
+    reps_input_mode: enumString(map.reps_input_mode, `${path}.reps_input_mode`, ["total_reps", "per_side_reps"], issues) as WorkoutDraftExercise["reps_input_mode"],
+    set_metric_type: enumString(map.set_metric_type, `${path}.set_metric_type`, ["reps", "duration_seconds"], issues) as WorkoutDraftExercise["set_metric_type"],
     duration_minutes: nullableNumber(
       map.duration_minutes,
       `${path}.duration_minutes`,

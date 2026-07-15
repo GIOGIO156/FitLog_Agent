@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
+import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import 'manual_food_entry_page.dart';
@@ -12,6 +15,16 @@ class AddFoodPage extends StatelessWidget {
   const AddFoodPage({super.key, this.initialDate});
 
   final String? initialDate;
+
+  Future<void> _copyPrompt(BuildContext context) async {
+    final language = context.languageController.language;
+    await Clipboard.setData(
+      ClipboardData(text: PromptTemplates.promptForLanguage(language)),
+    );
+    if (context.mounted) {
+      FitLogNotifications.success(context, context.stringsRead.promptCopied);
+    }
+  }
 
   Future<void> _openPasteAi(BuildContext context) async {
     final saved = await Navigator.of(context).push<bool>(
@@ -68,6 +81,14 @@ class AddFoodPage extends StatelessWidget {
               title: strings.photoAiAnalysis,
               subtitle: strings.photoAiEntrySubtitle,
               onTap: () => _openPhotoAi(context),
+            ),
+            _AddFoodActionCard(
+              key: const ValueKey<String>('copy_food_prompt_action'),
+              icon: Icons.content_copy_rounded,
+              color: const Color(0xFF6C8FE7),
+              title: strings.copyAiFoodPrompt,
+              subtitle: strings.copyPromptSubtitle,
+              onTap: () => _copyPrompt(context),
             ),
             _AddFoodActionCard(
               icon: Icons.paste_outlined,
@@ -194,6 +215,7 @@ class _PrimaryPhotoAiButton extends StatelessWidget {
 
 class _AddFoodActionCard extends StatelessWidget {
   const _AddFoodActionCard({
+    super.key,
     required this.icon,
     required this.color,
     required this.title,

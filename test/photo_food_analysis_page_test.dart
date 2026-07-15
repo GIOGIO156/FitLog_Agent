@@ -60,6 +60,55 @@ void main() {
     expect(enabledSubmit.onPressed, isNotNull);
   });
 
+  testWidgets('photo ChatGPT choice slides back to Qwen without a request', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _scrollUntilVisible(
+      tester,
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('photo_food_note_field')),
+      '100g salmon',
+    );
+    await _scrollUntilVisible(tester, find.text('ChatGPT'));
+    await tester.tap(find.text('ChatGPT'));
+    await tester.pump();
+    expect(find.text('The current model is unavailable.'), findsOneWidget);
+    expect(
+      tester
+          .widget<AnimatedPositioned>(
+            find.byKey(const ValueKey<String>('photo_food_model_indicator')),
+          )
+          .left,
+      3,
+    );
+    expect(harness.client.requests, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 240));
+    expect(
+      tester
+          .widget<AnimatedPositioned>(
+            find.byKey(const ValueKey<String>('photo_food_model_indicator')),
+          )
+          .left,
+      greaterThan(3),
+    );
+    await tester.pump(const Duration(milliseconds: 240));
+
+    expect(harness.client.requests, isEmpty);
+    expect(find.text('100g salmon'), findsOneWidget);
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('photo_food_ai_model_choice_v1'), 'qwen');
+    expect(find.text('The current model is unavailable.'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('The current model is unavailable.'), findsNothing);
+  });
+
   testWidgets('selected image shows preview and enables submit', (
     tester,
   ) async {

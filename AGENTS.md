@@ -60,6 +60,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Preserve Confirmed Scope And Decisions
+
+**Discussion refines scope; it does not silently reopen decisions that the user has already confirmed.**
+
+- Maintain a clear distinction between proposals, rejected options, and confirmed requirements throughout a task.
+- Once the user confirms a capability, architecture choice, validation requirement, or delivery scope, keep it in every subsequent summary and plan unless the user explicitly changes it.
+- Do not silently delete, downgrade to "optional," defer to a later phase, or replace a confirmed requirement because a smaller plan appears simpler, safer, faster, or easier to test.
+- Simplicity and phased delivery may change implementation order, but they must not reduce the confirmed end state. If sequencing is necessary, show where every confirmed item lands and preserve an acceptance gate for it.
+- Before presenting a revised plan, compare it against the accumulated confirmed scope. Explicitly list anything added, removed, deferred, or reinterpreted and obtain user agreement for any reduction or material change.
+- When a discussion uncovers several interacting root causes, plan for the complete agreed resolution and its end-to-end verification. Do not fix only the triggering example while leaving confirmed systemic causes unresolved.
+- Treat evaluation as proof of the agreed implementation, not as a substitute for implementing already confirmed foundational work. Do not move confirmed implementation scope into a later evaluation phase without approval.
+
 ---
 
 ## FitLog Project Rules

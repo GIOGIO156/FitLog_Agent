@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_notifications.dart';
+import '../../core/widgets/fitlog_sliding_segmented_control.dart';
 import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_availability.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
@@ -23,6 +25,7 @@ import '../../domain/models/ai_gateway_evidence.dart';
 import '../../domain/models/ai_gateway_error.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/ai_workout_draft.dart';
+import '../../domain/services/ai_workout_draft_handoff_validator.dart';
 import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/subscription_status.dart';
 import '../account/account_controller.dart';
@@ -53,6 +56,8 @@ const double _aiMessageListTopPadding = 0;
 const double _aiMessageListBottomSafePadding = 14;
 const double _aiMessageBottomSoftEdgeHeight = 12;
 const double _aiDefaultComposerHeight = 88;
+const double _aiKeyboardComposerGap = 12;
+const double _aiKeyboardVeilTopFadeHeight = 36;
 const double _aiSendingTurnEstimatedHeight = 96;
 const double _aiComposerHorizontalPadding = 16;
 const double _aiComposerMaxWidth = 620;
@@ -248,7 +253,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   final GlobalKey _latestUserMessageKey = GlobalKey();
   final ValueNotifier<bool> _keyboardTransitioning = ValueNotifier<bool>(false);
   late final FoodImagePicker _imagePicker;
-  _AiProvider _provider = _AiProvider.chatGpt;
+  _AiProvider _provider = _AiProvider.qwen;
   bool _historyOpen = false;
   List<PickedFoodImage> _attachedImages = const <PickedFoodImage>[];
   Timer? _keyboardTransitionTimer;
@@ -639,6 +644,10 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     required AccountController? accountController,
     required CloudRuntimeContext? cloudRuntimeContext,
   }) async {
+    if (_provider == _AiProvider.chatGpt && !fitLogOpenAiProviderEnabled) {
+      _showComposerNotice(context.stringsRead.aiCurrentModelUnavailable);
+      return;
+    }
     if (chatController == null ||
         accountController == null ||
         cloudRuntimeContext == null) {
@@ -662,10 +671,6 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final cloudProfile = accountController.cloudProfileState.cloudProfile;
     final strings = context.stringsRead;
     final sentImages = List<PickedFoodImage>.unmodifiable(_attachedImages);
-    if (sentImages.isNotEmpty && _provider != _AiProvider.qwen) {
-      _showComposerNotice(strings.aiImageRequiresQwen);
-      return;
-    }
     String? validationError;
     for (final image in sentImages) {
       validationError = _validationErrorForImage(image);
@@ -923,8 +928,17 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _openFoodDraftPreview(AiFoodDraft draft) async {
-    final record = draft.toFoodRecord(modelProvider: 'qwen');
+  Future<void> _openFoodDraftPreview(
+    AiFoodDraft draft,
+    String? modelProvider,
+  ) async {
+    final record = draft.toFoodRecord(
+      modelProvider: switch (modelProvider) {
+        'openai' => 'openai',
+        'qwen' => 'qwen',
+        _ => _provider == _AiProvider.chatGpt ? 'openai' : 'qwen',
+      },
+    );
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => FoodPreviewPage(initialRecord: record),
@@ -934,6 +948,16 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
 
   Future<void> _openWorkoutDraftPreview(AiWorkoutDraft draft) async {
     final services = context.read<AppServices>();
+    try {
+      await AiWorkoutDraftHandoffValidator(
+        services.customExerciseRepository,
+      ).validate(draft);
+    } on FormatException {
+      if (mounted) {
+        _showComposerNotice(context.stringsRead.aiWorkoutDefinitionChanged);
+      }
+      return;
+    }
     final existingDraft = await services.workoutDraftRepository
         .getActiveDraft();
     if (!mounted) {
@@ -994,6 +1018,13 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     final provider = _providerFromPreferenceValue(
       prefs.getString(_selectedAiProviderPreferenceKey),
     );
+    if (provider == _AiProvider.chatGpt && !fitLogOpenAiProviderEnabled) {
+      await prefs.setString(
+        _selectedAiProviderPreferenceKey,
+        _providerPreferenceValue(_AiProvider.qwen),
+      );
+      return;
+    }
     if (!mounted || provider == null || provider == _provider) {
       return;
     }
@@ -1001,6 +1032,23 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   }
 
   Future<void> _selectProvider(_AiProvider provider) async {
+    if (provider == _AiProvider.chatGpt && !fitLogOpenAiProviderEnabled) {
+      if (_provider != provider) {
+        setState(() => _provider = provider);
+      }
+      _showComposerNotice(context.stringsRead.aiCurrentModelUnavailable);
+      await Future<void>.delayed(const Duration(milliseconds: 240));
+      if (!mounted || _provider != _AiProvider.chatGpt) {
+        return;
+      }
+      setState(() => _provider = _AiProvider.qwen);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _selectedAiProviderPreferenceKey,
+        _providerPreferenceValue(_AiProvider.qwen),
+      );
+      return;
+    }
     if (_provider != provider) {
       setState(() => _provider = provider);
     }
@@ -1157,7 +1205,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   final ValueChanged<int> onRemoveAttachment;
   final ValueChanged<String> onComposerChanged;
   final ValueChanged<String> onSend;
-  final ValueChanged<AiFoodDraft> onOpenFoodDraft;
+  final void Function(AiFoodDraft draft, String? modelProvider) onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
 
   @override
@@ -1165,12 +1213,11 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final restingComposerBottomPadding =
         FitLogBottomNavBar.floatingControlScreenBottomPaddingFor(context);
-    final composerBottomPadding = math.max(
-      bottomInset,
-      restingComposerBottomPadding,
-    );
     final composerAttachedToKeyboard =
         bottomInset > restingComposerBottomPadding;
+    final composerBottomPadding = composerAttachedToKeyboard
+        ? bottomInset + _aiKeyboardComposerGap
+        : restingComposerBottomPadding;
     final messageViewportGap = composerAttachedToKeyboard
         ? 0.0
         : _aiMessageBottomGap;
@@ -1213,6 +1260,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                   topPadding: messageListTopPadding,
                   bottomPadding: messageListBottomPadding,
                   sendAnchorBottomPadding: sendAnchorPadding,
+                  scrollingDisabled: composerAttachedToKeyboard,
                   onOpenFoodDraft: onOpenFoodDraft,
                   onOpenWorkoutDraft: onOpenWorkoutDraft,
                 ),
@@ -1239,6 +1287,19 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
             onProviderChanged: onProviderChanged,
             onOpenHistory: onOpenHistory,
           ),
+          if (composerAttachedToKeyboard) ...<Widget>[
+            _AiKeyboardComposerVeil(
+              bottomInset: bottomInset,
+              composerHeight: composerHeight,
+            ),
+            Positioned.fill(
+              child: GestureDetector(
+                key: const ValueKey<String>('ai_keyboard_dismiss_region'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              ),
+            ),
+          ],
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
@@ -1275,6 +1336,52 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AiKeyboardComposerVeil extends StatelessWidget {
+  const _AiKeyboardComposerVeil({
+    required this.bottomInset,
+    required this.composerHeight,
+  });
+
+  final double bottomInset;
+  final double composerHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = Theme.of(context).colorScheme.surface;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: bottomInset,
+      height:
+          composerHeight +
+          _aiKeyboardComposerGap +
+          _aiKeyboardVeilTopFadeHeight,
+      child: IgnorePointer(
+        child: ClipRect(
+          child: BackdropFilter(
+            key: const ValueKey<String>('ai_composer_keyboard_veil'),
+            filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[
+                    surface.withValues(alpha: 0),
+                    surface.withValues(alpha: 0.52),
+                    surface.withValues(alpha: 0.90),
+                  ],
+                  stops: const <double>[0, 0.38, 1],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2104,17 +2211,6 @@ class _AiAccountStatusSheet extends StatelessWidget {
                   height: 1.35,
                 ),
               ),
-            if (isSignedIn) ...<Widget>[
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  accountController.signOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: Text(strings.signOut),
-              ),
-            ],
             const SizedBox(height: 8),
             Text(
               accountController.aiAvailability.canSend
@@ -2191,75 +2287,29 @@ class _AiProviderSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.54),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _AiProviderChip(
-            key: const ValueKey<String>('ai_provider_chatgpt'),
-            label: strings.aiProviderChatGpt,
-            selected: provider == _AiProvider.chatGpt,
-            onTap: () => onChanged(_AiProvider.chatGpt),
-          ),
-          _AiProviderChip(
-            key: const ValueKey<String>('ai_provider_qwen'),
-            label: strings.aiProviderQwen,
-            selected: provider == _AiProvider.qwen,
-            onTap: () => onChanged(_AiProvider.qwen),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AiProviderChip extends StatelessWidget {
-  const _AiProviderChip({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
     final palette = _AiThemePalette.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white.withValues(alpha: 0.86) : null,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: selected
-                  ? palette.providerSelectedText
-                  : palette.providerText,
-              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            ),
-          ),
+    return FitLogSlidingSegmentedControl<_AiProvider>(
+      key: const ValueKey<String>('ai_provider_selector'),
+      indicatorKey: const ValueKey<String>('ai_provider_indicator'),
+      segments: <FitLogSlidingSegment<_AiProvider>>[
+        FitLogSlidingSegment<_AiProvider>(
+          value: _AiProvider.chatGpt,
+          label: strings.aiProviderChatGpt,
+          key: const ValueKey<String>('ai_provider_chatgpt'),
         ),
-      ),
+        FitLogSlidingSegment<_AiProvider>(
+          value: _AiProvider.qwen,
+          label: strings.aiProviderQwen,
+          key: const ValueKey<String>('ai_provider_qwen'),
+        ),
+      ],
+      selected: provider,
+      onChanged: onChanged,
+      backgroundColor: Colors.white.withValues(alpha: 0.54),
+      borderColor: Colors.white.withValues(alpha: 0.72),
+      indicatorColor: Colors.white.withValues(alpha: 0.86),
+      selectedTextColor: palette.providerSelectedText,
+      unselectedTextColor: palette.providerText,
     );
   }
 }
@@ -2326,6 +2376,7 @@ class _AiMessageList extends StatelessWidget {
     required this.topPadding,
     required this.bottomPadding,
     required this.sendAnchorBottomPadding,
+    required this.scrollingDisabled,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
   });
@@ -2336,7 +2387,8 @@ class _AiMessageList extends StatelessWidget {
   final double topPadding;
   final double bottomPadding;
   final double sendAnchorBottomPadding;
-  final ValueChanged<AiFoodDraft> onOpenFoodDraft;
+  final bool scrollingDisabled;
+  final void Function(AiFoodDraft draft, String? modelProvider) onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
 
   @override
@@ -2367,7 +2419,8 @@ class _AiMessageList extends StatelessWidget {
           foodDraft: controller.foodDraftArtifactFor(message),
           workoutDraft: controller.workoutDraftArtifactFor(message),
           evidence: message.gatewayEvidence,
-          onOpenFoodDraft: onOpenFoodDraft,
+          onOpenFoodDraft: (draft) =>
+              onOpenFoodDraft(draft, message.modelProvider),
           onOpenWorkoutDraft: onOpenWorkoutDraft,
         ),
         isUser: message.isUser,
@@ -2424,7 +2477,7 @@ class _AiMessageList extends StatelessWidget {
     return ListView(
       key: const ValueKey<String>('ai_message_list'),
       controller: scrollController,
-      physics: controller.sending
+      physics: controller.sending || scrollingDisabled
           ? const NeverScrollableScrollPhysics()
           : const ClampingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(2, topPadding, 2, bottomPadding),
@@ -3749,8 +3802,7 @@ class _AiHistoryPanel extends StatelessWidget {
                                 deleting: controller!.isDeletingSession(
                                   session.id,
                                 ),
-                                operationsDisabled:
-                                    controller!.deletingSession,
+                                operationsDisabled: controller!.deletingSession,
                                 onTap: () {
                                   unawaited(
                                     controller!.selectSession(session.id),

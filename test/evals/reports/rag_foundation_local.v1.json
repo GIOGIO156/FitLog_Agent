@@ -1,0 +1,132 @@
+{
+  "schema": "fitlog_rag_eval_report.v1",
+  "pipeline_version": "rag_foundation_v1",
+  "corpus_id": "fitlog_user_stable_docs",
+  "build_id": "86820ab67bab9ba229f08530",
+  "fixture_suites": [
+    {
+      "name": "document_retrieval.v1.json",
+      "suite": "document_retrieval",
+      "cases": 14,
+      "hash": "c665b17ab8ec08878645930026ab255edef92f36bbc4b4b7bdb2b7ffccbd6181"
+    },
+    {
+      "name": "exercise_context.v1.json",
+      "suite": "exercise_context",
+      "cases": 7,
+      "hash": "85b36748365c0793df5f3f2454b02e7de721d4e8aecfd64a55b0e77fc724afa3"
+    },
+    {
+      "name": "failure_retry.v1.json",
+      "suite": "failure_retry",
+      "cases": 6,
+      "hash": "41654d2497e7c8d70faab2b6c091655f94468270866b73f3c89b7ed551ac4d31"
+    },
+    {
+      "name": "first_pass_reliability.v1.json",
+      "suite": "first_pass_reliability",
+      "cases": 40,
+      "hash": "0fcbf09c09831ab1de8e1b3839771f6383fc8ce69386251b1a52c9668c5dd8f1"
+    },
+    {
+      "name": "food_capability_regressions.v1.json",
+      "suite": "food_capability",
+      "cases": 5,
+      "hash": "3c1fbe810239ec82a14a5f14a8157647070b39b2ab553bd69198911c69d71b21"
+    },
+    {
+      "name": "grounded_output.v1.json",
+      "suite": "grounded_output",
+      "cases": 4,
+      "hash": "f6c7ba8053259d5eb852da9d6526401acd92a8f7f874366bd7bd07869b30fd7f"
+    },
+    {
+      "name": "provider_canary.v1.json",
+      "suite": "provider_canary",
+      "cases": 4,
+      "hash": "b919401fd59860cdb14827359420ce9a9532998f5372c05ac43150fef8a9f00a"
+    },
+    {
+      "name": "provider_capability_parity.v1.json",
+      "suite": "provider_parity",
+      "cases": 4,
+      "hash": "f6d1ccd6ba9907e2f801a33fe664d2bb2d9bb04f8eba6a922203ee8738a5aa12"
+    },
+    {
+      "name": "safety_privacy.v1.json",
+      "suite": "safety_privacy",
+      "cases": 7,
+      "hash": "0dc69dff1da2fd587b778ab5eddcdd67faefab9f33fb575a670da335b2f6fa38"
+    },
+    {
+      "name": "structured_context.v1.json",
+      "suite": "structured_context",
+      "cases": 5,
+      "hash": "f93fc3af99d9c8aa21f00e9fd7c949e2bd3f5dcbf6e1346edb9abd7d4d8f933c"
+    },
+    {
+      "name": "task_planning.v1.json",
+      "suite": "task_planning",
+      "cases": 6,
+      "hash": "9019fe26f05b12458c8dd009060e00c5845652de9e275512bec46a6ecf7179dd"
+    }
+  ],
+  "fixture_case_count": 102,
+  "checks": [
+    {
+      "metric": "required_corpus_source_coverage",
+      "status": "pass",
+      "evidence": "21/21"
+    },
+    {
+      "metric": "bilingual_required_file_pairing",
+      "status": "pass",
+      "evidence": "10 en + 10 zh"
+    },
+    {
+      "metric": "protected_markdown_token_fidelity",
+      "status": "pass",
+      "evidence": "forbidden patterns=0"
+    },
+    {
+      "metric": "active_chunks_embedding_freshness_parity",
+      "status": "blocked",
+      "evidence": "569/572; Qwen key/cloud authorization required when incomplete"
+    },
+    {
+      "metric": "per_side_total_reps_fixture_confusion",
+      "status": "pass",
+      "evidence": "covered by deterministic Edge tests"
+    },
+    {
+      "metric": "catalog_snapshot_parity",
+      "status": "pass",
+      "evidence": "57/57; verified by tool test"
+    },
+    {
+      "metric": "document_recall_precision_release_thresholds",
+      "status": "pass",
+      "evidence": "recall@3=1; precision@3=0.9744; critical top1=1"
+    },
+    {
+      "metric": "openai_unavailable_ui_no_request",
+      "status": "pass",
+      "evidence": "covered by AI Chat and Food photo Flutter lifecycle tests"
+    },
+    {
+      "metric": "qwen_live_canaries",
+      "status": "pass",
+      "evidence": "5/5; synthetic inputs only"
+    },
+    {
+      "metric": "edge_embedding_hybrid_latency_p95",
+      "status": "fail",
+      "evidence": "16602 ms / 1500 ms; samples=3"
+    }
+  ],
+  "summary": {
+    "pass": 8,
+    "fail": 1,
+    "blocked": 1
+  }
+}

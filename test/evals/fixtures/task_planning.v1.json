@@ -1,0 +1,8 @@
+{"schema":"fitlog_eval_suite.v1","suite":"task_planning","cases":[
+  {"case_id":"implicit_food","input":"鸡胸 200g 米饭 150g","workflow":"food_logging","output":"food_draft"},
+  {"case_id":"meal_image","input":"今天还能吃这个吗","image_count":1,"workflow":"meal_decision","output":"text"},
+  {"case_id":"workout_log","input":"记录保加利亚分腿蹲 3 组，每侧 12","workflow":"workout_logging","output":"workout_draft"},
+  {"case_id":"app_rule_exercise","input":"保加利亚分腿蹲每侧次数怎么算","workflow":"app_logic_answer","contexts":["document_context","exercise_definition"]},
+  {"case_id":"general","input":"你好","workflow":"general_chat","contexts":[]},
+  {"case_id":"permission_off","input":"复盘最近 7 天","permission":false,"forbidden_contexts":["recent_food_summary","recent_workout_summary"]}
+]}

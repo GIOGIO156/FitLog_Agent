@@ -15,7 +15,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 | SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
 | Cloud account and AI storage | Supabase Auth identity, subscription entitlement, Cloud Profile, AI chat sessions/messages, request logs, compact debug summaries, evidence/artifact snapshots, and document chunks. | Account-bound or service-owned cloud data protected by RLS/RPC/service boundaries. |
-| AI document index | Searchable stable documentation chunks for Document RAG. | Supabase Postgres keyword/full-text/trigram retrieval with service-role-only writes. |
+| AI document index | Versioned active-build stable documentation chunks and embeddings for Document RAG. | Supabase Postgres lexical/vector candidate retrieval with service-role-only staging, activation, search, and rollback. |
 | In-memory providers | Selected date, refresh version, app services, language state, and runtime summaries. | Ephemeral runtime coordination only. |
 
 Current local database name: `fitlog_local.db`.
@@ -201,6 +201,10 @@ Rules:
 - Unchecked sets are discarded before save.
 - Saved sets are renumbered from `1..n`.
 - Raw and normalized values are both stored to keep historical records explainable.
+- `total_load` keeps `input_weight_kg` as the calculation load; `per_side_load` stores `calculation_load_kg = input_weight_kg * 2`.
+- `bodyweight_added` and `assistance_load` preserve the entered external/assistance value; the calorie service combines it with the saved bodyweight snapshot instead of overwriting the raw field.
+- `total_reps` keeps `input_reps` as the calculation count; `per_side_reps` stores `calculation_reps = input_reps * 2`.
+- `duration_seconds` preserves `input_duration_seconds`; its bounded calculation equivalent is stored separately and does not change the displayed duration.
 
 ### `custom_exercises`
 
@@ -607,6 +611,7 @@ Fields:
 - `correction_attempt_count`
 - `final_validation_status`
 - `provider_completion_status`
+- `latency_breakdown_json`
 - `created_at`
 
 This table is a server-side operational record:
@@ -614,7 +619,9 @@ This table is a server-side operational record:
 - The additive `202607100001_ai_output_contract_observability.sql` migration idempotently adds output-family, validator, first-pass/final validation, correction-count, and provider completion-category fields. It does not change SQLite `AppDatabase.dbVersion`.
 - The additive `202607110001_ai_intent_output_observability.sql` migration permits `expected_output = auto` and adds `fixed_workflow` / `deterministic` / `model` resolution source, the final validated output type, and a privacy-safe issue-code array. It likewise does not change the SQLite schema version.
 - Migration `202607110002_ai_observability_update_grants.sql` allows the Edge Function service role to finalize `ai_request_logs` and `ai_debug_summaries` after the initial RPC insert. Authenticated clients still have no direct read or write policy.
-- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`.
+- The additive `202607150001_rag_latency_breakdown.sql` migration adds a bounded `ai_latency_breakdown.v1` object. It separates Edge runtime age, environment/auth/request/device checks, planning, context building, query normalization, embedding, hybrid RPC, reranking, rewrite planning, provider generation/validation/correction, and persistence. Missing or inapplicable stages remain `null` or `not_requested`; the object never stores raw messages, vectors, document excerpts, images, provider output, secrets, business records, or chain-of-thought.
+- The additive `202607150002_ai_chat_turn_rag_workflows.sql` migration aligns the `record_ai_chat_turn` RPC validation with the table contract for `workout_logging`, `general_chat`, and `safety_boundary`; existing workflow values and the service-role-only execution boundary remain intact.
+- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`. Additive workflow constraints preserve legacy values and also accept server-planned `workout_logging`, `general_chat`, and `safety_boundary`.
 - Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
 - `selected_output_type` is written only after provider output passes contract validation. Issue codes are fixed categories and contain no field values, user prompt, or provider text.
 - Authenticated clients have no direct read policy.
@@ -641,7 +648,8 @@ Fields:
 
 Rules:
 
-- This server-side operational table stores compact Gateway summaries. Chat debug rows include routed intent confidence, called tools, retrieved dimensions, missing dimensions, safety flags, schema-validation status, and final action. Add Food stores compact `food_photo_analysis` summaries with input kind, selected date, note presence, image count, optional mime type/compressed byte length, validation status, and safety/error flags. Authenticated clients have no direct read policy.
+- This server-side operational table stores compact Gateway summaries. Additive observability fields cover surface/capability/provider-policy versions, Task Plan source and approved/rejected context types, reviewed canonical concept IDs, corpus/build/embedding/reranker versions, branch counts, coverage/retry/issues, bounded latency/context-size metrics, grounding/language/Food semantic status, fact/conflict counts, and final action. Add Food also stores input kind, selected date, note presence, image count, and optional mime type/compressed byte length. Authenticated clients have no direct read policy.
+- These fields never duplicate the complete question, custom-exercise names, raw Context/history rows, original images/base64, provider-invalid output, secrets, or chain-of-thought.
 - JSON fields are compact arrays, not unrestricted traces.
 - Production stores compact sanitized summaries.
 - User-facing UI shows final messages and draft cards, not debug traces.
@@ -666,8 +674,23 @@ Fields:
 - `context_note`
 - `tags`
 - `status`
+- `authority`
+- `corpus_id`
+- `build_id`
+- `source_hash`
+- `chunk_hash`
 - `content_hash`
+- `manifest_hash`
 - `generator_version`
+- `term_version`
+- `search_tokens`
+- `search_tsv` (stored generated `tsvector`)
+- `embedding`
+- `embedding_model`
+- `embedding_dimension`
+- `embedding_input_hash`
+- `embedding_normalization_version`
+- `embedding_generated_at`
 - `source_updated_at`
 - `created_at`
 - `updated_at`
@@ -679,11 +702,13 @@ Allowed sources:
 
 Rules:
 
-- Migration `202607080001_phase5_document_rag_index.sql` creates this table.
-- `search_document_chunks(input_language, input_query, input_limit)` is a service-role RPC that filters by language and ranks by full-query text search, trigram signals, and keyword-term overlap over heading, heading path, deterministic context prefix, optional reviewed context note, and chunk content. The term-overlap fallback keeps long natural-language questions from returning no rows when the exact full sentence does not match a chunk.
-- `supabase/seed_phase5_document_chunks.sql` is generated from stable docs by `tool/phase5_document_rag/build_document_chunks.mjs`; apply it manually after the migration in Supabase SQL editor.
+- Migration `202607080001_phase5_document_rag_index.sql` creates the legacy-compatible base table; additive migration `202607130001_rag_foundation_document_hybrid.sql` adds versioned corpus-build and 1536-dimension embedding metadata without deleting lexical rows. Migration `202607150003_rag_hybrid_indexed_candidates.sql` adds generated `search_tsv`, its GIN index, and bounded indexed-candidate retrieval. Migration `202607150004_rag_parallel_candidate_fusion.sql` adds the lexical-candidate and final v3 fusion RPCs without replacing the compatibility functions.
+- `document_corpus_builds` stores staging/active/superseded build state, expected source/chunk counts, manifest/generator/term versions, and optional embedding model/dimension. One partial build never becomes visible as a mixture with the previous active build.
+- Legacy `search_document_chunks`, foundation `search_document_chunks_hybrid`, and bounded v2 remain available for compatibility and fail-closed rollback. Production uses service-role-only `search_document_chunk_lexical_candidates_v1` to obtain indexed term/FTS/trigram candidate IDs while query embedding runs, then `search_document_chunks_hybrid_v3` applies the active-corpus, language, authority and status filters, computes global lexical/vector ranks, and returns at most 30 fused candidates for Edge reranking. Staging and activation RPCs validate source/chunk parity; embedding-required activation also validates vector count.
+- `supabase/seed_phase5_document_chunks.sql` and the reviewable corpus-build JSON are generated from the canonical manifest by `tool/phase5_document_rag/build_document_chunks.mjs`. Qwen `text-embedding-v4` build/sync/verify is idempotent, uses 1536 dimensions, and checks content, chunker, terms, model, dimension, and input hash before cloud activation.
 - Authenticated clients do not read or write this table directly. It is for documents, not user business data.
 - Only Document RAG requires a dedicated persistent index. Structured RAG reuses Cloud Profile, Cloud Records, and summary tables through `ai-chat-route` context builders.
+- `build_exercise_history_summary` is a service-role-only bounded aggregate over official workout sessions/sets. It filters a verified account, at most four exercise keys, a bounded date range and session limit, and never returns notes or complete set rows.
 
 The exact source allowlist, chunking, contextual metadata, status semantics, retrieval behavior, seed-refresh lifecycle, privacy boundary, and RAG evaluation rules live in [RAGDesign.md](RAGDesign.md). Database owns only the persisted schema and RPC data flow.
 
@@ -755,7 +780,7 @@ Export correctness comes from cloud official records, cloud summaries, or builde
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
 - AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`
 - Supabase AI Gateway: `supabase/functions/_shared/ai_output_contract.ts`, `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
 - Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat and AI food analysis repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`

@@ -10,12 +10,15 @@ import { buildPhase5Context } from "./context_builders.ts";
 import { MockProviderError, runMockProvider } from "./mock_provider.ts";
 import { extractOpenAiCompletion } from "./openai_provider.ts";
 import type { Phase5WorkflowRoute } from "./phase5_types.ts";
-import { providerForChoice } from "./providers.ts";
+import { ProviderError, providerForChoice } from "./providers.ts";
 import {
   phase5PromptContext,
   prependMealDecisionImageTip,
 } from "./prompt_builder.ts";
-import { extractQwenCompletion } from "./qwen_provider.ts";
+import {
+  buildQwenRequestBody,
+  extractQwenCompletion,
+} from "./qwen_provider.ts";
 import { OutputContractError } from "../_shared/ai_output_contract.ts";
 
 Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
@@ -73,6 +76,66 @@ Deno.test("controlled context stays product-facing and meal advice gets image gu
   assert(answer.startsWith("你也可以上传现有食材照片或外卖平台截图"));
 });
 
+Deno.test("provider context avoids duplicated document metadata and pretty-print bytes", () => {
+  const base = parseGatewayRequest({
+    message: { text: "FitLog 的碳水模式是什么？" },
+    language: "zh",
+    model_choice: "qwen",
+    workflow_hint: "app_logic_answer",
+    device_id: "device-a",
+  });
+  const prompt = phase5PromptContext({
+    ...base,
+    workflowType: "app_logic_answer",
+    expectedOutput: "text",
+    phase5Context: {
+      route: {
+        workflow: "app_logic_answer",
+        confidence: 1,
+        reasons: ["test"],
+        required_context: ["document_context"],
+        safety_flags: [],
+        read_only: true,
+      },
+      context_objects: [{
+        type: "document_context",
+        version: "v1",
+        language: "zh",
+        date_range: null,
+        source: "document_chunks",
+        data: { sources: [{ doc_path: "docs/zh/Algorithm.md" }] },
+        missing: [],
+        privacy: {
+          contains_raw_records: false,
+          contains_images: false,
+          contains_user_free_text_notes: false,
+        },
+      }],
+      document_sources: [{
+        doc_path: "docs/zh/Algorithm.md",
+        heading: "饮食模式",
+        heading_path: ["饮食模式"],
+        section_id: "diet-mode",
+        chunk_index: 1,
+        chunk_count: 1,
+        status: "implemented",
+        score: 1,
+        context_prefix: "Algorithm > 饮食模式",
+        context_note: null,
+        excerpt: "energy_ratio 以热量为主。",
+      }],
+      retrieved_dimensions: ["document_context"],
+      missing_dimensions: [],
+      safety_flags: [],
+      called_tools: ["search_document_chunks_hybrid"],
+    },
+  });
+  assertEquals(prompt.includes('"type":"document_context"'), false);
+  assertEquals(prompt.includes("\n  {"), false);
+  assertEquals(prompt.match(/docs\/zh\/Algorithm\.md/g)?.length, 1);
+  assert(prompt.includes("energy_ratio 以热量为主"));
+});
+
 Deno.test("parseGatewayRequest accepts compact conversation context", () => {
   const parsed = parseGatewayRequest({
     session_id: "00000000-0000-4000-8000-000000000001",
@@ -102,7 +165,7 @@ Deno.test("parseGatewayRequest accepts compact conversation context", () => {
   assertEquals(parsed.allowRecordSummaryContext, true);
 });
 
-Deno.test("parseGatewayRequest accepts up to three Qwen image attachments", () => {
+Deno.test("parseGatewayRequest accepts up to three provider-neutral image attachments", () => {
   const parsed = parseGatewayRequest({
     message: { text: "Can this work as dinner?" },
     language: "en",
@@ -159,22 +222,21 @@ Deno.test("parseGatewayRequest rejects future-phase fields", () => {
   );
 });
 
-Deno.test("parseGatewayRequest rejects unsupported image requests", () => {
-  assertThrowsGatewayRequest(() =>
-    parseGatewayRequest({
-      message: { text: "inspect image" },
-      language: "en",
-      model_choice: "chatgpt",
-      workflow_hint: "food_logging",
-      device_id: "device-a",
-      attachments: [{
-        kind: "image",
-        mime_type: "image/jpeg",
-        base64_data: "abc123",
-        byte_length: 128,
-      }],
-    })
-  );
+Deno.test("parseGatewayRequest accepts OpenAI images and rejects invalid image contracts", () => {
+  const openAi = parseGatewayRequest({
+    message: { text: "inspect image" },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+    attachments: [{
+      kind: "image",
+      mime_type: "image/jpeg",
+      base64_data: "abc123",
+      byte_length: 128,
+    }],
+  });
+  assertEquals(openAi.attachments.length, 1);
 
   assertThrowsGatewayRequest(() =>
     parseGatewayRequest({
@@ -473,13 +535,18 @@ Deno.test("parseProviderGatewayBody parses workout draft JSON", () => {
       expectedOutput: "workout_draft",
       targetDate: "2026-07-10",
       dateResolutionSource: "default",
+      phase5Context: exerciseContext(
+        "barbell_flat_bench_press",
+        "Bench Press",
+        "1234abcd",
+      ),
     },
   );
 
   assertEquals(parsed.messageText, "Review this workout draft before saving.");
   assertEquals(
     (parsed.draft as { schema_version?: string } | null)?.schema_version,
-    "workout_draft.v2",
+    "workout_draft.v3",
   );
 });
 
@@ -667,6 +734,7 @@ Deno.test("OpenAI adapter sends the canonical strict Structured Outputs schema",
   const body = capturedBody as unknown as Record<string, unknown>;
   const text = body.text as Record<string, unknown>;
   const format = text.format as Record<string, unknown>;
+  assertEquals(body.model, "openai-model");
   assertEquals(format.type, "json_schema");
   assertEquals(format.strict, true);
   const schemaJson = JSON.stringify(format.schema);
@@ -686,6 +754,114 @@ Deno.test("OpenAI adapter sends the canonical strict Structured Outputs schema",
   ) {
     assertEquals(schemaJson.includes(unsupportedKeyword), false);
   }
+});
+
+Deno.test("OpenAI adapter uses the unified configured model for image inputs", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const provider = providerForChoice("chatgpt", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, async (_url, init) => {
+    capturedBody = JSON.parse(init?.body?.toString() ?? "{}");
+    return new Response(JSON.stringify({ output_text: "{}" }), { status: 200 });
+  });
+
+  await provider.generateText(parseGatewayRequest({
+    message: { text: "estimate this meal" },
+    language: "en",
+    model_choice: "chatgpt",
+    workflow_hint: "food_logging",
+    device_id: "device-a",
+    attachments: [{
+      kind: "image",
+      mime_type: "image/webp",
+      base64_data: "base64-image",
+      byte_length: 256,
+    }],
+  }));
+
+  const body = capturedBody as unknown as Record<string, unknown>;
+  assertEquals(body.model, "openai-model");
+  const input = body.input as Array<Record<string, unknown>>;
+  const content = input[0].content as Array<Record<string, unknown>>;
+  assertEquals(
+    content.some((part) =>
+      part.type === "input_image" &&
+      part.image_url === "data:image/webp;base64,base64-image"
+    ),
+    true,
+  );
+});
+
+Deno.test("OpenAI image failure stays on the selected provider without fallback", async () => {
+  const requestedUrls: string[] = [];
+  const provider = providerForChoice("chatgpt", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, (url) => {
+    requestedUrls.push(String(url));
+    return Promise.resolve(new Response("unsupported image", { status: 400 }));
+  });
+
+  try {
+    await provider.generateText(parseGatewayRequest({
+      message: { text: "inspect image" },
+      language: "en",
+      model_choice: "chatgpt",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/jpeg",
+        base64_data: "base64-image",
+        byte_length: 256,
+      }],
+    }));
+    throw new Error("expected provider failure");
+  } catch (error) {
+    assert(error instanceof ProviderError);
+    assertEquals((error as ProviderError).code, "provider_failure");
+  }
+  assertEquals(requestedUrls, ["https://api.openai.com/v1/responses"]);
+});
+
+Deno.test("Provider adapters reject a missing unified generation model", () => {
+  assertThrowsProviderFailure(() =>
+    providerForChoice("chatgpt", {
+      openAiApiKey: "openai-key",
+      openAiModel: "",
+      qwenApiKey: "qwen-key",
+      qwenModel: "qwen-model",
+      qwenBaseUrl: "https://example.test/qwen",
+      timeoutMs: 1000,
+      allowMockProvider: false,
+    }, () => {
+      throw new Error("fetch must not be called");
+    })
+  );
+  assertThrowsProviderFailure(() =>
+    providerForChoice("qwen", {
+      openAiApiKey: "openai-key",
+      openAiModel: "openai-model",
+      qwenApiKey: "qwen-key",
+      qwenModel: "",
+      qwenBaseUrl: "https://example.test/qwen",
+      timeoutMs: 1000,
+      allowMockProvider: false,
+    }, () => {
+      throw new Error("fetch must not be called");
+    })
+  );
 });
 
 Deno.test("provider adapter builds safe request without leaking unsupported fields", async () => {
@@ -719,11 +895,45 @@ Deno.test("provider adapter builds safe request without leaking unsupported fiel
   assertEquals(result.content, "ok");
   assertEquals(body.model, "qwen-model");
   assertEquals(body.enable_thinking, false);
+  assertEquals(body.max_tokens, 1600);
   assert(json.includes("provider_gateway_envelope.v2"));
   assert(json.includes("output_type"));
   assert(json.includes("message.text"));
   assertEquals("attachments" in body, false);
   assertEquals("context_objects" in body, false);
+});
+
+Deno.test("Qwen receives only the selected output-family contract", () => {
+  const base = parseGatewayRequest({
+    message: { text: "Explain the confirmation boundary" },
+    language: "en",
+    model_choice: "qwen",
+    workflow_hint: "app_logic_answer",
+    device_id: "device-a",
+  });
+  const textBody = buildQwenRequestBody(
+    { ...base, expectedOutput: "text" },
+    "qwen-model",
+  );
+  const textJson = JSON.stringify(textBody);
+  assertEquals(textBody.max_tokens, 384);
+  assert(textJson.includes("Return output_type=text"));
+  assertEquals(textJson.includes("food_draft.v2"), false);
+  assertEquals(textJson.includes("workout_draft.v3"), false);
+
+  const foodBody = buildQwenRequestBody(
+    {
+      ...base,
+      expectedOutput: "food_draft",
+      targetDate: "2026-07-15",
+      dateResolutionSource: "default",
+    },
+    "qwen-model",
+  );
+  const foodJson = JSON.stringify(foodBody);
+  assert(foodJson.includes("food_draft.v2"));
+  assertEquals(foodJson.includes("workout_draft.v3"), false);
+  assertEquals(foodBody.max_tokens, 1600);
 });
 
 Deno.test("Qwen provider adapter builds multimodal image request", async () => {
@@ -776,6 +986,7 @@ Deno.test("Qwen provider adapter builds multimodal image request", async () => {
 
   const body = capturedBody as unknown as Record<string, unknown>;
   const json = JSON.stringify(body);
+  assertEquals(body.model, "qwen-model");
   assertEquals(body.response_format, { type: "json_object" });
   assert(json.includes("data:image/webp;base64,base64-image"));
   assert(json.includes("data:image/png;base64,second-image"));
@@ -879,15 +1090,20 @@ function mismatchedFoodDraft() {
 
 function validWorkoutDraft() {
   return {
-    schema_version: "workout_draft.v2",
+    schema_version: "workout_draft.v3",
     record_name: "Bench press",
     date: "2026-07-10",
     notes: "Generated by AI chat.",
     exercises: [{
       exercise_name: "Bench Press",
-      exercise_key: null,
+      exercise_key: "barbell_flat_bench_press",
+      exercise_source: "builtin",
+      definition_hash: "1234abcd",
       exercise_type: "strength",
-      body_part: null,
+      body_part: "Chest",
+      load_input_mode: "total_load",
+      reps_input_mode: "total_reps",
+      set_metric_type: "reps",
       duration_minutes: null,
       active_duration_minutes: null,
       cardio_intensity_basis: null,
@@ -897,6 +1113,48 @@ function validWorkoutDraft() {
         duration_seconds: null,
       }],
     }],
+  };
+}
+
+function exerciseContext(key: string, name: string, definitionHash: string) {
+  return {
+    route: {
+      workflow: "auto" as const,
+      confidence: 1,
+      reasons: [],
+      required_context: [],
+      safety_flags: [],
+      read_only: false,
+    },
+    context_objects: [{
+      type: "exercise_definition",
+      version: "v1" as const,
+      language: "en" as const,
+      date_range: null,
+      source: "builtin_exercise_catalog",
+      data: {
+        key,
+        name,
+        definition_hash: definitionHash,
+        source: "builtin",
+        exercise_type: "strength",
+        body_part: "Chest",
+        load_input_mode: "total_load",
+        reps_input_mode: "total_reps",
+        set_metric_type: "reps",
+      },
+      missing: [],
+      privacy: {
+        contains_raw_records: false as const,
+        contains_images: false as const,
+        contains_user_free_text_notes: false as const,
+      },
+    }],
+    document_sources: [],
+    called_tools: [],
+    retrieved_dimensions: ["exercise_definition"],
+    missing_dimensions: [],
+    safety_flags: [],
   };
 }
 

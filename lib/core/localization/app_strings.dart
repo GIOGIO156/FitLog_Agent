@@ -1,4 +1,4 @@
-import '../constants/prompt_templates.dart';
+import '../constants/exercise_catalog.dart';
 import 'app_language.dart';
 
 class AppStrings {
@@ -89,6 +89,10 @@ class AppStrings {
     '当前已有一条未保存训练草稿。要用这条 AI 生成的训练草稿替换它吗？',
   );
   String get aiWorkoutDraftReplaceAction => _t('Replace draft', '替换草稿');
+  String get aiWorkoutDefinitionChanged => _t(
+    'This exercise definition changed. Ask AI to rebuild the workout draft before opening it.',
+    '该动作定义已变化，请让 AI 重新生成训练草稿后再打开。',
+  );
   String get aiEvidenceTitle => _t('Answer basis', '回答依据');
   String get aiEvidenceSourcesTitle => _t('Reference docs', '参考文档');
   String get aiEvidenceContextTitle => _t('Used data', '使用数据');
@@ -134,6 +138,8 @@ class AppStrings {
       _t('Open account, subscription, and privacy settings.', '打开账号、订阅和隐私设置。');
   String get aiProviderChatGpt => _t('ChatGPT', 'ChatGPT');
   String get aiProviderQwen => _t('Qwen', '千问');
+  String get aiCurrentModelUnavailable =>
+      _t('The current model is unavailable.', '当前模型不可用。');
   String get aiSignedOutStatus => _t('Signed out', '未登录');
   String get aiAvailableStatus => _t('Ready', '可用');
   String get aiUnavailableStatus => _t('Off', '不可用');
@@ -465,15 +471,6 @@ class AppStrings {
     }
   }
 
-  String get recommendedGpt => _t('Recommended GPT', '推荐 GPT');
-
-  String get recommendedGptHint {
-    if (isChinese) {
-      return '中文：打开 ${PromptTemplates.chineseGptName}\nEnglish: Open ${PromptTemplates.englishGptName}';
-    }
-    return 'Chinese: Open ${PromptTemplates.chineseGptName}\nEnglish: Open ${PromptTemplates.englishGptName}';
-  }
-
   String get pasteAiResult => _t('Paste AI Result', '粘贴 AI 结果');
   String get pasteAiSubtitle =>
       _t('Paste external AI JSON and parse', '粘贴外部 AI JSON 并解析');
@@ -553,9 +550,14 @@ class AppStrings {
   );
   String get comingSoon => _t('Coming soon', '即将上线');
 
-  String get pasteInstruction => _t(
-    'Paste the JSON output from ChatGPT or Gemini:',
-    '粘贴来自 ChatGPT 或 Gemini 的 JSON 输出：',
+  String get copyAiFoodPrompt => _t('Copy reusable AI prompt', '复制长期对话 Prompt');
+  String get copyPromptSubtitle => _t(
+    'Send it once at the start of a new external AI chat; afterward, just send food photos and descriptions',
+    '在新的外部 AI 对话开头发送一次；之后只需发送食物图片和描述',
+  );
+  String get promptCopied => _t(
+    'Prompt copied. Send it once in a new external AI chat, then keep using that chat for food photos and descriptions.',
+    'Prompt 已复制。请在新的外部 AI 对话开头发送一次，之后在该对话中直接发送食物图片和描述。',
   );
 
   String get parse => _t('Parse', '解析');
@@ -1496,79 +1498,7 @@ class AppStrings {
   }
 
   String exerciseDisplayName(String exerciseName) {
-    if (!isChinese) {
-      return exerciseName;
-    }
-
-    const map = <String, String>{
-      'Barbell Flat Bench Press': '杠铃平板卧推',
-      'Barbell Incline Bench Press': '杠铃上斜卧推',
-      'Dumbbell Flat Bench Press': '哑铃平板卧推',
-      'Dumbbell Fly': '哑铃平板飞鸟',
-      'Cable Fly': '钢线飞鸟',
-      'Machine Chest Press': '坐姿器械推胸',
-      'Machine Pec Fly': '坐姿器械夹胸',
-      'Kneeling Push-up': '跪姿俯卧撑',
-      'Bench Press': '卧推',
-      'Incline Dumbbell Press': '哑铃上斜卧推',
-      'Push-up': '俯卧撑',
-      'Chest Fly': '飞鸟',
-      'Pull-up': '引体向上',
-      'Assisted Pull-up': '引体向上（辅助）',
-      'Lat Pulldown': '高位下拉',
-      'Barbell Row': '杠铃划船',
-      'Seated Cable Row': '坐姿划船',
-      'Seated Row': '坐姿划船',
-      'Bent-over Barbell Row': '杠铃俯身划船',
-      'Underhand Barbell Row': '杠铃反手划船',
-      'Seal Barbell Row': '杠铃海豹划船',
-      'Chest-supported T-Bar Row': '俯卧 T-bar 划船',
-      'Iso-lateral High Row': '分动式高位划船',
-      'Hammer Strength High Row': '分动式高位划船',
-      'Barbell High Pull': '杠铃上斜提拉',
-      'Barbell Pullover': '杠铃抱拉',
-      'Barbell Straight-leg Deadlift': '杠铃直腿硬拉',
-      'Single-arm Dumbbell Row': '哑铃俯身单臂提拉',
-      'Squat': '深蹲',
-      'Bulgarian Split Squat': '保加利亚分腿蹲',
-      'Deadlift': '硬拉',
-      'Leg Press': '腿举',
-      'Romanian Deadlift': '罗马尼亚硬拉',
-      'Leg Extension': '腿屈伸',
-      'Leg Curl': '腿弯举',
-      'Barbell Hip Thrust': '杠铃臀冲',
-      'Barbell Overhead Press': '杠铃推举',
-      'Overhead Press': '杠铃推举',
-      'Lateral Raise': '侧平举',
-      'Dumbbell Rear Delt Fly': '哑铃反向飞鸟',
-      'Rear Delt Fly': '哑铃反向飞鸟',
-      'Standing Dumbbell Shoulder Press': '哑铃站姿推肩',
-      'Standing Barbell Shoulder Press': '杠铃站姿推肩',
-      'Seated Barbell Shoulder Press': '杠铃坐姿推肩',
-      'Standing Barbell Front Raise': '杠铃站姿前平举',
-      'Barbell Upright Row': '杠铃提拉',
-      'Barbell Biceps Curl': '杠铃二头弯举',
-      'Dumbbell Biceps Curl': '哑铃二头弯举',
-      'Biceps Curl': '二头弯举',
-      'Triceps Pushdown': '三头下压',
-      'Hammer Curl': '锤式弯举',
-      'Close-grip Bench Press': '杠铃窄距平板卧推',
-      'Dip': '双杠臂屈伸',
-      'Assisted Dip': '辅助双杠臂屈伸',
-      'Plank': '平板支撑',
-      'Crunch': '卷腹',
-      'Hanging Leg Raise': '悬垂举腿',
-      'Running': '跑步',
-      'Walking': '步行',
-      'Cycling': '骑行',
-      'Rowing Machine': '划船机',
-      'Stair Climber': '登阶机',
-      'Kettlebell Swing': '壶铃摆动',
-      'Burpee': '波比跳',
-      'Jumping Jack': '开合跳',
-    };
-
-    return map[exerciseName] ?? exerciseName;
+    return ExerciseCatalog.displayName(exerciseName, isChinese: isChinese);
   }
 
   String get loading => _t('Loading...', '加载中...');

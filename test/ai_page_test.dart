@@ -376,6 +376,22 @@ void main() {
     );
   });
 
+  testWidgets('AI account sheet does not expose sign out', (tester) async {
+    final harness = _readyAiHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.tap(find.byTooltip('Account and subscription'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      find.byKey(const ValueKey<String>('ai_local_context_permission_switch')),
+      findsOneWidget,
+    );
+    expect(find.text('Sign out'), findsNothing);
+  });
+
   testWidgets('conversation reading area starts below the top controls', (
     tester,
   ) async {
@@ -483,11 +499,10 @@ void main() {
   });
 
   testWidgets(
-    'keyboard lets messages flow behind the floating composer safely',
+    'keyboard adds a veiled composer gap and locks message scrolling',
     (tester) async {
       tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1;
-      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
       addTearDown(tester.view.reset);
 
       final harness = _readyAiHarness();
@@ -541,6 +556,15 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 240));
 
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      await tester.pump();
+      final messageList = tester.widget<ListView>(
+        find.byKey(const ValueKey<String>('ai_message_list')),
+      );
+      final lockedOffset = messageList.controller!.offset;
+      await tester.dragFrom(const Offset(196, 240), const Offset(0, 180));
+      await tester.pump(const Duration(milliseconds: 240));
+
       final listBottom = tester
           .getRect(find.byKey(const ValueKey<String>('ai_message_list')))
           .bottom;
@@ -554,15 +578,17 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      final finalLineBottom = tester
-          .getRect(find.text('Keyboard final readable line'))
-          .bottom;
-
       expect(
-        find.byKey(const ValueKey<String>('ai_composer_lower_veil')),
-        findsNothing,
+        find.byKey(const ValueKey<String>('ai_composer_keyboard_veil')),
+        findsOneWidget,
       );
-      expect(composerRect.bottom, closeTo(852 - 336, 0.1));
+      expect(
+        find.byKey(const ValueKey<String>('ai_keyboard_dismiss_region')),
+        findsOneWidget,
+      );
+      expect(messageList.physics, isA<NeverScrollableScrollPhysics>());
+      expect(messageList.controller!.offset, closeTo(lockedOffset, 0.1));
+      expect(composerRect.bottom, closeTo(852 - 336 - 12, 0.1));
       expect(composerDecoration.color, const Color(0xFFF9FDFB));
       expect(composerDecoration.border, isA<Border>());
       final composerBorder = composerDecoration.border! as Border;
@@ -571,7 +597,6 @@ void main() {
       expect(composerDecoration.boxShadow!.first.blurRadius, 30);
       expect(listBottom, closeTo(composerRect.bottom, 0.5));
       expect(listBottom, greaterThan(composerRect.top));
-      expect(finalLineBottom, lessThanOrEqualTo(composerRect.top - 12));
     },
   );
 
@@ -602,7 +627,7 @@ void main() {
 
     tester.view.viewInsets = const FakeViewPadding(bottom: 336);
     await tester.pump();
-    expect(composerBottomDistance(), closeTo(336, 0.1));
+    expect(composerBottomDistance(), closeTo(336 + 12, 0.1));
 
     final closingInset = restingBottomDistance / 2;
     tester.view.viewInsets = FakeViewPadding(bottom: closingInset);
@@ -613,6 +638,37 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 0);
     await tester.pump();
     expect(composerBottomDistance(), closeTo(restingBottomDistance, 0.1));
+  });
+
+  testWidgets('tapping outside the keyboard composer dismisses focus', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _buildAiTestApp(
+        const AiPage(mode: AiShellMode.ready),
+        resizeToAvoidBottomInset: false,
+      ),
+    );
+    await tester.pump();
+
+    final field = find.byKey(const ValueKey<String>('ai_composer_field'));
+    await tester.tap(field);
+    await tester.pump();
+    final editable = tester.widget<EditableText>(
+      find.descendant(of: field, matching: find.byType(EditableText)),
+    );
+    expect(editable.focusNode.hasFocus, isTrue);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    await tester.tapAt(const Offset(20, 120));
+    await tester.pump();
+
+    expect(editable.focusNode.hasFocus, isFalse);
   });
 
   testWidgets('sending anchors the new user bubble to the reading top', (
@@ -977,6 +1033,60 @@ void main() {
     );
     expect(textBubbleRect.width, greaterThan(attachmentMediaRect.width));
   });
+
+  testWidgets(
+    'unconfigured ChatGPT reports unavailable and slides back to Qwen',
+    (tester) async {
+      final harness = _readyAiHarness();
+      final picker = _FakeFoodImagePicker(_tinyPngImage());
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(harness, imagePicker: picker),
+      );
+      await _attachAiGalleryImage(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ai_composer_field')),
+        'Estimate this meal.',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ai_provider_chatgpt')),
+      );
+      await tester.pump();
+      expect(find.text('The current model is unavailable.'), findsOneWidget);
+      expect(find.text('Ready'), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedPositioned>(
+              find.byKey(const ValueKey<String>('ai_provider_indicator')),
+            )
+            .left,
+        3,
+      );
+      expect(harness.repository.lastRequest, isNull);
+
+      await tester.pump(const Duration(milliseconds: 240));
+      expect(
+        tester
+            .widget<AnimatedPositioned>(
+              find.byKey(const ValueKey<String>('ai_provider_indicator')),
+            )
+            .left,
+        greaterThan(3),
+      );
+      await tester.pump(const Duration(milliseconds: 240));
+
+      expect(harness.repository.lastRequest, isNull);
+      expect(find.text('Estimate this meal.'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('ai_attached_image_preview')),
+        findsOneWidget,
+      );
+      expect(find.text('The current model is unavailable.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      expect(find.text('The current model is unavailable.'), findsNothing);
+    },
+  );
 
   testWidgets('sent image media stays bare and stable across keyboard inset', (
     tester,
@@ -1696,13 +1806,13 @@ void main() {
     );
     await tester.pump();
 
-    final qwenText = tester.widget<Text>(
+    final qwenStyle = tester.widget<AnimatedDefaultTextStyle>(
       find.descendant(
         of: find.byKey(const ValueKey<String>('ai_provider_qwen')),
-        matching: find.text('Qwen'),
+        matching: find.byType(AnimatedDefaultTextStyle),
       ),
     );
-    expect(qwenText.style?.fontWeight, FontWeight.w800);
+    expect(qwenStyle.style.fontWeight, FontWeight.w800);
   });
 
   testWidgets('provider selector writes the local provider preference', (

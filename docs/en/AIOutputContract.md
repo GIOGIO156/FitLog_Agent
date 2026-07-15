@@ -19,10 +19,10 @@ The same contract is enforced at generation, Gateway validation, persistence, an
 
 | Surface | Generation or input constraint | Enforcement responsibility |
 | --- | --- | --- |
-| Add Food AI analysis | Qwen non-thinking JSON Mode with `food_analysis_envelope.v1`. | Parse one object, apply the shared strict Food Draft validator, normalize item totals, and allow at most one bounded correction. |
-| AI Chat, Qwen text and images | Qwen non-thinking JSON Mode with `provider_gateway_envelope.v2` for every response. | Parse one strict envelope; the Gateway fixes high-confidence families and otherwise lets the model select `output_type` inside the contract, without degrading an expected draft into prose success. |
-| AI Chat, OpenAI text | Responses API Structured Outputs with a strict canonical JSON Schema. | Separate completed, refusal, and incomplete outcomes before shared validation. The configured model must support the selected Responses API format. |
-| Shared Gateway validation | One module owns provider-compatible schemas and deterministic domain validation for Chat, Food Draft, Workout Draft, and clarification. | Reject unknown fields and coercion, enforce bounds and real dates, normalize Food item totals, and check workflow/write policy. |
+| Add Food AI analysis | The dedicated surface fixes Food capability and maps it to an explicitly selected image-capable OpenAI Structured Outputs or Qwen JSON Mode adapter with `food_analysis_envelope.v1`. | Parse one object, apply shared fact-priority, target-language, structural and semantic Food validation, normalize item totals, and allow at most one bounded correction. |
+| AI Chat, Qwen text and images | The same configured Qwen multimodal generation model handles text and image turns in non-thinking JSON Mode with `provider_gateway_envelope.v2`. | Parse one strict envelope; the Gateway fixes high-confidence families and otherwise lets the model select `output_type` inside the contract, without degrading an expected draft into prose success. |
+| AI Chat, OpenAI text and images | The same configured OpenAI multimodal generation model handles text and image turns through Responses API Structured Outputs with a strict canonical JSON Schema; image turns add `input_image` parts without selecting a second model ID. | Separate completed, refusal, and incomplete outcomes before shared validation. The configured model must support the selected Responses API format and image input when images are sent. |
+| Shared Gateway validation | Versioned shared modules own provider-compatible schemas and deterministic domain validation for Chat, Food Draft, Workout Draft, and clarification. | Reject unknown fields and coercion, enforce bounds and real dates, preserve higher-priority Food facts, validate language/semantic/grounding consistency, bind Workout exercises to approved definitions, and check workflow/write policy. |
 | Persistence boundary | Only the validated user-facing message, compatible artifact snapshot, evidence snapshot, and compact metadata may cross into storage. | Never persist raw failed provider output, correction prompts, chain-of-thought, provider secrets, or image/base64 payloads. |
 | Flutter response models | Parse typed Food Draft and Workout Draft payloads and additive output error codes. | Reject snapshots that cannot safely rebuild an editor; accept legacy unversioned Food Drafts only at the history compatibility boundary. |
 | Provider-output correction | A correctable structural failure may receive zero or one correction attempt inside the original total deadline. | Keep failed output in request memory only; do not resend images for syntax correction or retry refusals, incomplete completions, safety, auth, entitlement, or device failures as correction candidates. |
@@ -43,6 +43,8 @@ The following rules apply to every provider and model:
 8. Deterministic FitLog calculations and source-of-truth data override model claims.
 9. Raw provider output, chain-of-thought, provider secrets, auth tokens, image bytes, and base64 payloads are not persisted in request/debug logs.
 10. Every contract change is versioned and covered by fixtures before rollout.
+11. Each provider exposes one server-configured multimodal generation model ID for AI Chat text, AI Chat images, and dedicated Food image analysis. Document RAG embedding remains an independent task with its own model and endpoint; current Qwen generation and embedding reuse the same server-managed Qwen credential.
+12. Adapter support does not imply release availability. The current release configures Qwen and retains the OpenAI adapter and deterministic tests. An unconfigured ChatGPT selection is rejected in Flutter before transport, with preserved input, a transient unavailable error, and automatic restoration of the Qwen UI selection. Restoring the selector triggers no transport and therefore is not provider fallback.
 
 ## Intent Resolution And Output Families
 
@@ -120,13 +122,15 @@ Each Food Draft item requires:
 
 Item nutrition values represent the whole estimated portion, not per-100-g values. When `items` is non-empty, the Gateway deterministically recalculates meal-level weight and macro totals from the item sum. This is domain normalization, not model self-correction.
 
+Food understanding uses a bounded typed fact ledger. Source priority is user-explicit fact, package/OCR fact, image observation, model assumption, then model estimate. A lower-priority source fills only missing information and never overwrites a resolved higher-priority fact. Before Preview, semantic validation checks target-language user-visible text, explicit-fact binding, date and totals, notes/number consistency, and nutrition-energy plausibility with versioned tolerance for labels, fiber, sugar alcohols, alcohol, and rounding. A semantic failure may use the same single correction budget; a second failure cannot reach Preview.
+
 A Food Draft remains editable. Confidence and notes communicate uncertainty but never bypass required fields or user confirmation.
 
 ## Workout Draft Contract
 
 The canonical Workout Draft requires:
 
-- `schema_version = workout_draft.v2`
+- `schema_version = workout_draft.v3`
 - non-empty `record_name`
 - `date` as a required real calendar date in `YYYY-MM-DD`
 - bounded `notes`
@@ -135,13 +139,15 @@ The canonical Workout Draft requires:
 Each exercise requires:
 
 - non-empty `exercise_name`
-- optional known `exercise_key`
-- `exercise_type` as `strength`, `cardio`, or `null`
-- nullable bounded metadata
+- required approved `exercise_key`, `exercise_source`, and `definition_hash`
+- `exercise_type` as `strength` or `cardio`
+- required `body_part`, `load_input_mode`, `reps_input_mode`, and `set_metric_type` copied from the approved definition context
 - finite, non-negative duration values when present
 - a bounded set array
 
 Set weight, reps, and duration are nullable. Values that are present must have the expected numeric type and range; strings are not silently coerced into numbers. A best-effort draft may keep unknown numeric values as `null` and record uncertainty in notes.
+
+The Gateway rejects a built-in or custom key that is absent from the request's approved definition registry, as well as a hash or mode mismatch. Flutter rebinds v3 by stable key and never creates an ad-hoc total-load/total-reps exercise for an unresolved v3 entry. Historical v1/v2 artifacts remain readable through their compatibility path.
 
 Workout clarification is capped at one provider turn. After that, the provider must either return an editable best-effort draft or a stable failure; it must not create an open-ended clarification loop.
 
@@ -156,8 +162,9 @@ Validation runs in this order:
 5. **Output consistency validation** requires `output_type`, draft family, clarification state, and `message.text` to agree and satisfy the fixed or model-selected expected output.
 6. **Workflow validation** enforces the routed workflow's authorized context and safety boundary; the workflow name does not replace output selection.
 7. **Domain validation and normalization** applies FitLog-specific invariants such as food item total recomputation and real-date checks.
-8. **Safety/write validation** rejects unsupported official-write claims and prevents reviewable drafts from being described as saved records.
-9. **Client compatibility validation** rejects responses Flutter cannot reconstruct safely, while reading history artifacts only through versioned compatibility boundaries.
+8. **Grounding validation** compares FitLog claims with the approved evidence registry. Reviewed Chinese/English aliases and internal enum values are compared through the same canonical concept normalization, so equivalent wording is accepted without treating an unrelated concept as evidence.
+9. **Safety/write validation** rejects unsupported official-write claims and prevents reviewable drafts from being described as saved records.
+10. **Client compatibility validation** rejects responses Flutter cannot reconstruct safely, while reading history artifacts only through versioned compatibility boundaries.
 
 Structural validation must not use permissive conversions such as parsing a numeric prefix from an otherwise invalid string. Unknown fields are rejected in strict provider schemas unless a versioned compatibility rule explicitly permits them.
 
@@ -167,13 +174,13 @@ The provider-facing JSON Schema deliberately uses a conservative Structured Outp
 
 ### OpenAI
 
-OpenAI Chat uses the Responses API structured `text.format` JSON Schema with strict adherence for the common Chat envelope. The configured model must support that API capability; an unsupported provider/model configuration fails explicitly rather than falling back to unstructured text.
+OpenAI Chat uses the Responses API structured `text.format` JSON Schema with strict adherence. The provider schema is narrowed to the selected output family rather than advertising every artifact family on every turn. The configured model must support that API capability; an unsupported provider/model configuration fails explicitly rather than falling back to unstructured text.
 
 Provider refusal and incomplete responses are protocol outcomes, not schema-correction prompts. They must be surfaced and classified separately.
 
 ### Qwen
 
-Qwen text Chat, image Chat, and dedicated food analysis use supported non-thinking models with JSON Mode and an explicit JSON instruction. Chat uses the common envelope; Add Food uses its narrower versioned envelope and the same Food Draft validator.
+Qwen text Chat, image Chat, and dedicated food analysis use supported non-thinking models with JSON Mode and an explicit JSON instruction. Chat receives only the selected output-family contract and examples, followed by an exact final family reminder; Add Food uses its narrower versioned envelope and the same Food Draft validator. Current maximum output budgets are 384 tokens for Chat text, 1,600 for Chat draft/auto, and 1,200 for dedicated Food analysis.
 
 Qwen JSON Mode guarantees a JSON-oriented generation mode, not FitLog schema or business correctness. The Gateway validator remains mandatory.
 
@@ -186,15 +193,19 @@ The mock provider must emit the same versioned envelope and deterministic failur
 Prompts remain a semantic aid, not the trust boundary.
 
 - Include the envelope and draft schemas or concise generated schema instructions.
+- Include only the selected output family's instructions and examples; do not advertise unrelated draft families.
 - Keep output-only instructions close to the final user task.
 - Put all user-visible prose inside `message.text`.
 - Do not add XML framing when a native structured-output protocol is available.
 - Add few-shot examples only for demonstrated semantic failures; do not add examples merely to compensate for missing protocol enforcement.
 - Retrieved context is read-only evidence and must not override the output contract or system safety rules.
+- Serialize controlled context compactly and remove duplicate summaries while preserving grounding metadata.
 
 ## Recovery And Correction
 
 Structured paths parse the provider object directly; complete-object extraction from fences or surrounding prose is not a compatibility fallback.
+
+The output budgets bound cost and latency; they never permit a partial artifact. A provider `finish_reason=length` remains `provider_incomplete` and bypasses schema correction because the missing object cannot be made trustworthy by a correction prompt.
 
 Automatic JSON repair is not enabled by default. A future syntax-only repair experiment may be considered only if production evidence justifies it, and only under all of these conditions:
 

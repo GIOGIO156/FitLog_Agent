@@ -2,7 +2,21 @@ import {
   OutputContractError,
   parseFoodAnalysisEnvelope,
   parseProviderGatewayEnvelope,
+  providerGatewayEnvelopeJsonSchemaForExpectedOutput,
 } from "./ai_output_contract.ts";
+
+Deno.test("expected-output schemas exclude unrelated draft families", () => {
+  const text = JSON.stringify(
+    providerGatewayEnvelopeJsonSchemaForExpectedOutput("text"),
+  );
+  assertEquals(text.includes("food_draft.v2"), false);
+  assertEquals(text.includes("workout_draft.v3"), false);
+  const food = JSON.stringify(
+    providerGatewayEnvelopeJsonSchemaForExpectedOutput("food_draft"),
+  );
+  assertEquals(food.includes("food_draft.v2"), true);
+  assertEquals(food.includes("workout_draft.v3"), false);
+});
 
 Deno.test("strict text envelope accepts Markdown only inside message.text", () => {
   const parsed = parseProviderGatewayEnvelope(
@@ -140,7 +154,7 @@ Deno.test("auto output lets the model select a contract-consistent family", () =
     "auto",
   );
   assertEquals(parsed.outputType, "workout_draft");
-  assertEquals(parsed.draft?.schema_version, "workout_draft.v2");
+  assertEquals(parsed.draft?.schema_version, "workout_draft.v3");
 });
 
 Deno.test("text output cannot claim a draft was created without an artifact", () => {
@@ -176,7 +190,7 @@ Deno.test("dedicated food endpoint uses the same strict Food Draft validator", (
 function envelope(draft: unknown): Record<string, unknown> {
   const outputType = draft !== null &&
       typeof draft === "object" &&
-      (draft as Record<string, unknown>).schema_version === "workout_draft.v2"
+      (draft as Record<string, unknown>).schema_version === "workout_draft.v3"
     ? "workout_draft"
     : draft === null
     ? "text"
@@ -216,15 +230,20 @@ function foodDraft() {
 
 function workoutDraft() {
   return {
-    schema_version: "workout_draft.v2",
+    schema_version: "workout_draft.v3",
     record_name: "Squat",
     date: "2026-07-10",
     notes: "",
     exercises: [{
       exercise_name: "Squat",
-      exercise_key: null,
+      exercise_key: "squat",
+      exercise_source: "builtin",
+      definition_hash: "1234abcd",
       exercise_type: "strength",
-      body_part: null,
+      body_part: "Legs",
+      load_input_mode: "total_load",
+      reps_input_mode: "total_reps",
+      set_metric_type: "reps",
       duration_minutes: null,
       active_duration_minutes: null,
       cardio_intensity_basis: null,

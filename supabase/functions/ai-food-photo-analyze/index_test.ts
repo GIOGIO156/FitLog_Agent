@@ -1,5 +1,7 @@
 import {
+  buildOpenAiVisionRequestBody,
   buildQwenVisionRequestBody,
+  extractOpenAiVisionCompletion,
   extractQwenCompletion,
   foodDraftForClient,
   parsePhotoAnalysisRequest,
@@ -38,6 +40,49 @@ Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported image
   assertEquals(parsed.userNote, "米饭吃了一半");
 });
 
+Deno.test("OpenAI and Qwen image adapters preserve capability input and configured model", () => {
+  const request = parsePhotoAnalysisRequest({
+    images: [{
+      mime_type: "image/jpeg",
+      base64_data: "abc123",
+      byte_length: 128,
+    }],
+    language: "zh",
+    model_choice: "chatgpt",
+    device_id: "device-a",
+    selected_date: "2026-07-01",
+    schema_version: "food_draft.v2",
+    user_note: "蛋白质 20g",
+  });
+  const openAi = buildOpenAiVisionRequestBody({
+    request,
+    model: "openai-model",
+  });
+  const qwen = buildQwenVisionRequestBody({
+    request: { ...request, modelChoice: "qwen" },
+    model: "qwen-model",
+  });
+  assertEquals(openAi.model, "openai-model");
+  assertEquals(qwen.model, "qwen-model");
+  assert(JSON.stringify(openAi).includes("abc123"));
+  assert(JSON.stringify(qwen).includes("abc123"));
+  assert(JSON.stringify(openAi).includes("蛋白质 20g"));
+  assert(JSON.stringify(qwen).includes("蛋白质 20g"));
+});
+
+Deno.test("OpenAI vision completion maps completed and refusal states", () => {
+  assertEquals(
+    extractOpenAiVisionCompletion({ output_text: '{"draft":null}' }).status,
+    "completed",
+  );
+  assertEquals(
+    extractOpenAiVisionCompletion({
+      output: [{ content: [{ type: "refusal" }] }],
+    }).status,
+    "refusal",
+  );
+});
+
 Deno.test("parsePhotoAnalysisRequest accepts text-only food descriptions", () => {
   const parsed = parsePhotoAnalysisRequest({
     images: [],
@@ -63,8 +108,10 @@ Deno.test("legacy request version receives a legacy-compatible draft", () => {
     schema_version: "food_draft.v1",
     user_note: "100g 三文鱼",
   });
-  const legacy = foodDraftForClient(validDraft(), request.schemaVersion) as
-    Record<string, unknown>;
+  const legacy = foodDraftForClient(
+    validDraft(),
+    request.schemaVersion,
+  ) as Record<string, unknown>;
 
   assertEquals(legacy.schema_version, "food_draft.v1");
   assertEquals("date" in legacy, false);
@@ -152,6 +199,7 @@ Deno.test("buildQwenVisionRequestBody uses an image_url data URL only in provide
   assert(json.includes("data:image/png;base64,second-image"));
   assertEquals(body.model, "qwen-vl");
   assertEquals(body.enable_thinking, false);
+  assertEquals(body.max_tokens, 1200);
 });
 
 Deno.test("buildQwenVisionRequestBody supports text-only provider requests", () => {

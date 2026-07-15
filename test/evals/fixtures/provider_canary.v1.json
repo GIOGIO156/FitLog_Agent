@@ -1,0 +1,6 @@
+{"schema":"fitlog_eval_suite.v1","suite":"provider_canary","cases":[
+  {"case_id":"openai_text_unavailable","provider":"openai","input_kind":"text","expected":"unavailable_no_request","requires_external":false},
+  {"case_id":"qwen_text","provider":"qwen","input_kind":"text","requires_external":true},
+  {"case_id":"openai_food_image_unavailable","provider":"openai","input_kind":"synthetic_image","expected":"unavailable_no_request","requires_external":false},
+  {"case_id":"qwen_food_image","provider":"qwen","input_kind":"synthetic_image","requires_external":true}
+]}

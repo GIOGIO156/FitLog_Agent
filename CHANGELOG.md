@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-07-15 RAG Foundation Remediation Canary And Stage Diagnostics
+
+### Added
+
+- Added the Qwen `text-embedding-v4` document-embedding pipeline, versioned bilingual corpus manifest, cloud parity checks, controlled hybrid retrieval, owning-document reranking, bounded one-retry retrieval tool, task/context planning, action-history context, deterministic Workout Draft binding, and provider-independent grounding and Food Capability contracts.
+- Added seven additive Supabase migrations for hybrid document retrieval, exercise history context, AI observability, latency breakdown, workflow persistence, indexed candidates, and parallel candidate fusion, then applied them to project `dyacqajcinjwrkbngeif`.
+- Added deterministic and live evaluation runners with sanitized machine-readable and Markdown reports covering ingestion, retrieval, routing, context, grounding, privacy, provider behavior, failure injection, access control, and per-stage latency. Production diagnostics separate planning, query normalization, embedding, hybrid RPC, reranking, retry rewrite/search, generation, validation/correction, persistence, and external round-trip time without retaining prompts, vectors, excerpts, or provider output.
+- Kept OpenAI adapters and contract tests without making OpenAI a release or RAG dependency. When OpenAI is not legally configured, selecting ChatGPT in AI Chat or dedicated food analysis shows the bounded `当前模型不可用` notice, preserves input, sends no request, and automatically slides the UI selection back to Qwen without converting the attempted selection into a hidden Qwen request.
+
+### Changed
+
+- Restored prompt copy as a secondary Add Food action and replaced the Paste AI Result recommendation card with the same reusable external-chat prompt. The standing prompt is sent once per new external chat, keeps every reply in the established complete flat JSON schema, reconciles meal totals from item values, and reserves trailing `estimation_notes` for necessary non-duplicative supplemental information. Copy language follows the app's Chinese or English mode.
+- Removed sign-out from the transient AI account/subscription sheet; Profile remains the explicit account sign-out surface.
+- Changed only the AI Chat keyboard interaction: the composer now keeps a 12 px gap above the keyboard, a bounded blurred gradient veil conceals the lower reading edge, message scrolling is locked while typing, and the first tap outside the composer dismisses the keyboard before page content can be activated. Other input screens retain their existing behavior.
+- Unified ingestion and query normalization around bounded overlapping Chinese 2-4 grams, bilingual canonical terms, language-first ordering, and stable owning-document cues. Indexed term/FTS/trigram candidates now run concurrently with Qwen query embedding, while PostgreSQL v3 preserves global branch ranking and returns only 30 final candidates for Edge reranking. Document embeddings use Qwen `text-embedding-v4` at 1536 dimensions; generation remains on the configured Qwen text/vision model.
+- Unified the AI Chat and Food analysis model pickers around the bottom navigation's 240 ms sliding-indicator motion. The readiness status remains tied to account, subscription, device, network, and Gateway gates rather than the temporarily selected provider.
+- Regenerated and activated 569 chunks from 21 stable sources as corpus build `b209353e25df637256a1825f`, with zero missing, stale, extra, or cloud-mismatched vectors.
+- Kept `rag_foundation_v1` and the bounded Document RAG retry enabled throughout diagnosis and optimization; performance results never triggered an unapproved runtime rollback. Retry now stops on complete/conflicting coverage, unknown exact identifiers, and unchanged rewrites, while retaining one useful missing-evidence retry. Additive migrations persist the bounded stage breakdown and align `record_ai_chat_turn` with the already-supported `workout_logging`, `general_chat`, and `safety_boundary` workflows.
+- Reduced first-pass output ambiguity by giving Qwen only the selected output-family contract and a final family reminder, narrowing OpenAI strict schemas equivalently, compacting controlled prompt context, and setting capability-specific output budgets without accepting truncated artifacts.
+- Promoted the curated RAG reliability/performance report into `docs/reports`, expanded it with measurement provenance, before/after speed and reliability results, causal analysis, rejected alternatives, residual risks, deployment evidence, and a reproducible raw-evidence index; generated snapshots remain under `test/evals/reports` with their own reading guide.
+
+### Fixed
+
+- Prevented stale local embedding records from surviving corpus regeneration, Chinese boundary phrases from being lost by non-overlapping tokenization, vector-only unrelated queries from fabricating document evidence, and canonical Chinese product claims from failing grounding only because internal enum spelling was absent.
+- Prevented model-planner clarification turns from using the invalid pseudo-provider `planner`, and preserved full retrieval/retry metadata on failed requests so error-path latency evidence is not silently lost.
+- Preserved Workout Draft routing for explicit workout-record requests and prevented complete, conflicting, unknown-identifier, or unchanged-query retrievals from paying for a no-gain model rewrite and second search.
+- Preserved strict no-write, account-scope, source-authority, output-validation, and user-confirmation boundaries across normal, degraded, retry, and provider-failure paths.
+
+### Validation
+
+- Added widget and parser coverage for both reusable-prompt entry points, Chinese/English copied prompt content, standing prompt constraints, the unchanged `estimation_notes` JSON schema, and the AI sheet sign-out boundary. `flutter analyze` reported no issues and all 230 Flutter tests passed. Regenerated 577 chunks from 21 bilingual sources as build `99d908c576c844fd3c39d853`, completed 577/577 local embedding parity, uploaded and atomically activated the build, and independently verified 577 cloud rows with zero hash/vector metadata mismatches.
+- Added AI page widget coverage for the keyboard gap, blur veil, scroll lock, outside-tap dismissal, close transition, and existing send-anchor behavior; `flutter analyze` reported no issues and all 224 Flutter tests passed. The required Edge checks passed, the full Edge suite passed all 130 tests, and the Node corpus/document suite passed all 20 tests. Regenerated the pending local Document RAG corpus as 577 chunks from 21 bilingual sources (build `941ac5b833f33e3c693e3443`); the four deterministic corpus tests passed, and no cloud upload or activation was performed.
+- Live Qwen canary passed Chat 3/3 and Food text/image 2/2. Retrieval recall@3 was 100%, reviewed source precision@3 was 97.44%, critical top-1 was 100%, and all cross-account/access probes passed.
+- The unchanged normal-latency and quality Gates now pass. The final release canary completed 28/28 checks with recall@3 100%, reviewed precision@3 97.44%, critical top-1 100%, and normal Edge retrieval p50/p95 1,061/1,250 ms. The repeated text-budget canary kept retrieval p95 at 1,299 ms; Chinese, English, and unknown-identifier paths were each 3/3 first-pass valid with zero correction and zero retrieval retry. An eight-concept stress probe remained first-retrieval complete but measured p95 1,566 ms; because no current canary produced a genuine useful retry, the conditional retry-increment p95 is recorded as unsampled rather than claimed as passed.
+- Built configured split debug APKs for `armeabi-v7a`, `arm64-v8a`, and `x86_64`; recorded their sizes and SHA-256 hashes in the remediation engineering plan.
+- After explicit document-egress authorization, sent only the stable repository-document embedding inputs to Qwen, pruned stale/extra local vectors, and activated the resulting 577-chunk build in Supabase. The first refresh canary passed 25/26 with one transient retrieval-latency miss; the independent recheck passed 26/26, used the new build in every Edge retrieval sample, had zero embedding fallbacks, and measured Edge retrieval p50/p95 at 1,217/1,438 ms.
+
 ## 2026-07-12 Workout Draft Retention Boundary
 
 ### Changed

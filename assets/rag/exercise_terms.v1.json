@@ -1,0 +1,1064 @@
+{
+  "schema_version": "fitlog_exercise_terms.v1",
+  "catalog_version": "exercise_catalog.v1",
+  "exercises": [
+    {
+      "key": "assisted_dip",
+      "name_en": "Assisted Dip",
+      "name_zh": "辅助双杠臂屈伸",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "assistance_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "assisted_pull_up",
+      "name_en": "Assisted Pull-up",
+      "name_zh": "引体向上（辅助）",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "assistance_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_biceps_curl",
+      "name_en": "Barbell Biceps Curl",
+      "name_zh": "杠铃二头弯举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_flat_bench_press",
+      "name_en": "Barbell Flat Bench Press",
+      "name_zh": "杠铃平板卧推",
+      "aliases": {
+        "zh": [
+          "卧推"
+        ],
+        "en": [
+          "Bench Press"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_high_pull",
+      "name_en": "Barbell High Pull",
+      "name_zh": "杠铃上斜提拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_hip_thrust",
+      "name_en": "Barbell Hip Thrust",
+      "name_zh": "杠铃臀冲",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Glutes",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_incline_bench_press",
+      "name_en": "Barbell Incline Bench Press",
+      "name_zh": "杠铃上斜卧推",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_overhead_press",
+      "name_en": "Barbell Overhead Press",
+      "name_zh": "杠铃推举",
+      "aliases": {
+        "zh": [],
+        "en": [
+          "Overhead Press"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_pullover",
+      "name_en": "Barbell Pullover",
+      "name_zh": "杠铃抱拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_straight_leg_deadlift",
+      "name_en": "Barbell Straight-leg Deadlift",
+      "name_zh": "杠铃直腿硬拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "barbell_upright_row",
+      "name_en": "Barbell Upright Row",
+      "name_zh": "杠铃提拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "bent_over_barbell_row",
+      "name_en": "Bent-over Barbell Row",
+      "name_zh": "杠铃俯身划船",
+      "aliases": {
+        "zh": [
+          "杠铃划船"
+        ],
+        "en": [
+          "Barbell Row"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "bulgarian_split_squat",
+      "name_en": "Bulgarian Split Squat",
+      "name_zh": "保加利亚分腿蹲",
+      "aliases": {
+        "zh": [
+          "保加利亚蹲"
+        ],
+        "en": [
+          "Bulgarian Squat"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "per_side_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "burpee",
+      "name_en": "Burpee",
+      "name_zh": "波比跳",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Full Body",
+      "secondary_body_part": null,
+      "strength_structure": "full_body_auto",
+      "strength_profile": "full_body_power_or_high_density",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "cable_fly",
+      "name_en": "Cable Fly",
+      "name_zh": "钢线飞鸟",
+      "aliases": {
+        "zh": [
+          "飞鸟"
+        ],
+        "en": [
+          "Chest Fly"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "chest_supported_t_bar_row",
+      "name_en": "Chest-supported T-Bar Row",
+      "name_zh": "俯卧 T-bar 划船",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "close_grip_bench_press",
+      "name_en": "Close-grip Bench Press",
+      "name_zh": "杠铃窄距平板卧推",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "crunch",
+      "name_en": "Crunch",
+      "name_zh": "卷腹",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Core",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "cycling",
+      "name_en": "Cycling",
+      "name_zh": "骑行",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "deadlift",
+      "name_en": "Deadlift",
+      "name_zh": "硬拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "dip",
+      "name_en": "Dip",
+      "name_zh": "双杠臂屈伸",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "dumbbell_biceps_curl",
+      "name_en": "Dumbbell Biceps Curl",
+      "name_zh": "哑铃二头弯举",
+      "aliases": {
+        "zh": [
+          "二头弯举"
+        ],
+        "en": [
+          "Biceps Curl"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "dumbbell_flat_bench_press",
+      "name_en": "Dumbbell Flat Bench Press",
+      "name_zh": "哑铃平板卧推",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "dumbbell_fly",
+      "name_en": "Dumbbell Fly",
+      "name_zh": "哑铃平板飞鸟",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "dumbbell_rear_delt_fly",
+      "name_en": "Dumbbell Rear Delt Fly",
+      "name_zh": "哑铃反向飞鸟",
+      "aliases": {
+        "zh": [],
+        "en": [
+          "Rear Delt Fly"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "hammer_curl",
+      "name_en": "Hammer Curl",
+      "name_zh": "锤式弯举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "hanging_leg_raise",
+      "name_en": "Hanging Leg Raise",
+      "name_zh": "悬垂举腿",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Core",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "incline_dumbbell_press",
+      "name_en": "Incline Dumbbell Press",
+      "name_zh": "哑铃上斜卧推",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "iso_lateral_high_row",
+      "name_en": "Iso-lateral High Row",
+      "name_zh": "分动式高位划船",
+      "aliases": {
+        "zh": [],
+        "en": [
+          "Hammer Strength High Row"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "jumping_jack",
+      "name_en": "Jumping Jack",
+      "name_zh": "开合跳",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Full Body",
+      "secondary_body_part": null,
+      "strength_structure": "full_body_auto",
+      "strength_profile": "full_body_power_or_high_density",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "kettlebell_swing",
+      "name_en": "Kettlebell Swing",
+      "name_zh": "壶铃摆动",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Full Body",
+      "secondary_body_part": null,
+      "strength_structure": "full_body_auto",
+      "strength_profile": "full_body_power_or_high_density",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "kneeling_push_up",
+      "name_en": "Kneeling Push-up",
+      "name_zh": "跪姿俯卧撑",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "lat_pulldown",
+      "name_en": "Lat Pulldown",
+      "name_zh": "高位下拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "lateral_raise",
+      "name_en": "Lateral Raise",
+      "name_zh": "侧平举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "leg_curl",
+      "name_en": "Leg Curl",
+      "name_zh": "腿弯举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "leg_extension",
+      "name_en": "Leg Extension",
+      "name_zh": "腿屈伸",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "leg_press",
+      "name_en": "Leg Press",
+      "name_zh": "腿举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "machine_chest_press",
+      "name_en": "Machine Chest Press",
+      "name_zh": "坐姿器械推胸",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "machine_pec_fly",
+      "name_en": "Machine Pec Fly",
+      "name_zh": "坐姿器械夹胸",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "plank",
+      "name_en": "Plank",
+      "name_zh": "平板支撑",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Core",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "duration_seconds",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "pull_up",
+      "name_en": "Pull-up",
+      "name_zh": "引体向上",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "push_up",
+      "name_en": "Push-up",
+      "name_zh": "俯卧撑",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Chest",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "bodyweight_added",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "romanian_deadlift",
+      "name_en": "Romanian Deadlift",
+      "name_zh": "罗马尼亚硬拉",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "rowing_machine",
+      "name_en": "Rowing Machine",
+      "name_zh": "划船机",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "vigorous_10_to_30"
+    },
+    {
+      "key": "running",
+      "name_en": "Running",
+      "name_zh": "跑步",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "vigorous_10_to_30"
+    },
+    {
+      "key": "seal_barbell_row",
+      "name_en": "Seal Barbell Row",
+      "name_zh": "杠铃海豹划船",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "seated_barbell_shoulder_press",
+      "name_en": "Seated Barbell Shoulder Press",
+      "name_zh": "杠铃坐姿推肩",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "seated_row",
+      "name_en": "Seated Row",
+      "name_zh": "坐姿划船",
+      "aliases": {
+        "zh": [],
+        "en": [
+          "Seated Cable Row"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "single_arm_dumbbell_row",
+      "name_en": "Single-arm Dumbbell Row",
+      "name_zh": "哑铃俯身单臂提拉",
+      "aliases": {
+        "zh": [
+          "单臂哑铃划船"
+        ],
+        "en": [
+          "One-arm Dumbbell Row"
+        ]
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "per_side_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "squat",
+      "name_en": "Squat",
+      "name_zh": "深蹲",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "stair_climber",
+      "name_en": "Stair Climber",
+      "name_zh": "登阶机",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "vigorous_10_to_30"
+    },
+    {
+      "key": "standing_barbell_front_raise",
+      "name_en": "Standing Barbell Front Raise",
+      "name_zh": "杠铃站姿前平举",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "standing_barbell_shoulder_press",
+      "name_en": "Standing Barbell Shoulder Press",
+      "name_zh": "杠铃站姿推肩",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "standing_dumbbell_shoulder_press",
+      "name_en": "Standing Dumbbell Shoulder Press",
+      "name_zh": "哑铃站姿推肩",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Shoulders",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "per_side_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "triceps_pushdown",
+      "name_en": "Triceps Pushdown",
+      "name_zh": "三头下压",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Arms",
+      "secondary_body_part": null,
+      "strength_structure": "isolation",
+      "strength_profile": "isolation",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "underhand_barbell_row",
+      "name_en": "Underhand Barbell Row",
+      "name_zh": "杠铃反手划船",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "strength",
+      "body_part": "Back",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "moderate_30_to_60"
+    },
+    {
+      "key": "walking",
+      "name_en": "Walking",
+      "name_zh": "步行",
+      "aliases": {
+        "zh": [],
+        "en": []
+      },
+      "exercise_type": "cardio",
+      "body_part": "Cardio",
+      "secondary_body_part": null,
+      "strength_structure": "compound",
+      "strength_profile": "upper_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "total_reps",
+      "set_metric_type": "reps",
+      "default_cardio_intensity": "low_60_plus"
+    }
+  ]
+}

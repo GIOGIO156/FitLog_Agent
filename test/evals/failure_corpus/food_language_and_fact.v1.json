@@ -1,0 +1,5 @@
+{"schema":"fitlog_failure_corpus.v1","cases":[
+  {"case_id":"regression_wrong_language","input":"中文食物描述","failure":"ordinary food fields returned in English","expected_gate":"response_language_mismatch"},
+  {"case_id":"regression_explicit_protein","input":"用户明确蛋白质 20g","failure":"notes mentioned 20g while protein_g was 8.5","expected_gate":"user_explicit_fact_mismatch"},
+  {"case_id":"regression_dedicated_chat_loop","surface":"food_photo","failure":"clarification rendered like chat","expected_terminal":"input_revision_required"}
+]}

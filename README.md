@@ -24,7 +24,7 @@ AI 只生成草稿、建议、复盘和解释。
 - 饮食记录：手动录入、AI 食物分析、Food Draft 预览编辑、复制到日期和删除。
 - 训练记录：训练草稿、正式训练记录、自定义动作、力量和有氧热量估算。
 - Profile 与目标：Cloud Profile、饮食阶段、`energy_ratio`、`gram_per_kg`、carb cycling、carb tapering 和身体指标记录。
-- AI Chat：底部导航正中间的 AI 页面，支持文本、最多三张图片、ChatGPT/OpenAI 和千问/Qwen 服务端 provider。
+- AI Chat：底部导航正中间的 AI 页面；当前发布通过千问/Qwen 支持文本和最多三张图片，并保留 ChatGPT/OpenAI adapter 供未来合法配置。
 - 用餐决策：用户主动询问“今天还能吃什么”“这个外卖能点吗”等问题时，AI 使用必要的 Profile、summary 和上下文给建议。
 - 周复盘：AI 可以总结近期饮食、训练、体重趋势和数据缺口，但不能自动修改目标或策略。
 - App 规则问答：Document RAG 用于解释 FitLog 的算法、字段、隐私和 Agent 边界。
@@ -33,7 +33,8 @@ AI 只生成草稿、建议、复盘和解释。
 ### AI 与数据边界
 
 - 模型 API key 由服务端管理，用户不需要也不应该填写自己的模型 key。
-- OpenAI 与千问输出由服务端统一约束和严格校验；未通过最终校验的结果不会生成可审查/保存的 artifact。
+- OpenAI 与千问 adapter 共用服务端约束和严格校验；当前发布只配置千问。AI Chat 或图片分析选择未配置 ChatGPT 时显示“当前模型不可用”，选择器以与底部导航一致的滑动动画自动回到千问，并保留输入且不发送请求；这只是 UI 选中态恢复，不会把该次点击转换成千问请求。AI 状态灯仍只表达订阅、设备和 Gateway readiness。
+- Document RAG 使用新加坡区 Qwen `text-embedding-v4`、1536 维向量；它与 Markdown heading/context chunking 和中文 lexical 分词是相互独立、共同参与检索的阶段。
 - AI 输出在确认前只是草稿、建议、复盘或解释。
 - AI 不会静默写入正式饮食、训练、Profile 或目标数据。
 - AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
@@ -84,7 +85,7 @@ diet_plan_strategy:
 - `image_picker` 用于相机/相册图片选择
 - `excel`、`csv`、`archive` 用于导出
 - Supabase Auth、Postgres、Storage、Edge Functions
-- OpenAI / ChatGPT 与千问 / Qwen 服务端 provider
+- 当前发布的千问 / Qwen 生成与 Document RAG embedding；保留的 OpenAI / ChatGPT adapter
 
 ### 快速开始
 
@@ -118,7 +119,7 @@ flutter run --dart-define-from-file=config/supabase.local.json
 flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json
 ```
 
-### 设计文档
+### 设计与工程文档
 
 | 文件 | 用途 |
 | --- | --- |
@@ -136,7 +137,10 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | 当前 Flutter-to-service wire contract、字段约束、稳定错误和兼容边界；文件名保留历史 `DRAFT`。 |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 架构决策、实施背景和仍有维护价值的历史上下文。 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 工程阶段计划、执行步骤、验证方式和人工审查清单。 |
-| [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 工程计划、部署和验收说明。 |
+| [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | RAG 可靠性与性能优化的专业工程报告：基线、根因、修改、被拒方案、速度/质量结果、限制和原始证据索引。 |
+| [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | 当前 RAG 基础工程整改的已确认范围、架构边界和完成定义。 |
+| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | 当前 RAG 基础工程整改的详细实施、测试、部署、回滚和验收计划。 |
+| [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | 原始 Phase 5 controlled RAG 工程计划、部署和验收历史。 |
 | [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | AI Output Contract 的分阶段实施、验证、灰度和回滚计划。 |
 
 Local 版本基线保留在 `docs/local/`。
@@ -174,7 +178,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - Food logging: manual entry, AI Food Analysis, Food Draft preview/edit, copy-to-date, and delete.
 - Workout logging: workout drafts, official workout records, custom exercises, and strength/cardio calorie estimates.
 - Profile and targets: Cloud Profile, diet phase, `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, and body metrics.
-- AI Chat: centered AI page with text, up to three images, and server-side ChatGPT/OpenAI plus Qwen providers.
+- AI Chat: centered AI page; the current release uses Qwen for text and up to three images while retaining the ChatGPT/OpenAI adapter for a future legally configured release.
 - Meal decisions: when users ask what to eat next, AI uses the minimum needed Profile, summary, and context.
 - Weekly review: AI can summarize recent food, training, weight trends, and data gaps, but cannot automatically change goals or strategies.
 - App logic Q&A: Document RAG explains FitLog algorithms, fields, privacy, and Agent boundaries.
@@ -183,7 +187,8 @@ Require user confirmation for official writes, deletes, and goal changes.
 ### AI And Data Boundaries
 
 - Model API keys are server-managed; users do not provide model keys.
-- OpenAI and Qwen outputs use one server-owned strict contract; results that fail final validation never create a review/save artifact.
+- OpenAI and Qwen adapters share one server-owned strict contract; only Qwen is configured in the current release. Selecting unconfigured ChatGPT in AI Chat or image analysis shows `The current model is unavailable.`, slides the selector back to Qwen with the same motion language as the bottom navigation, preserves input, and sends no request. This is UI selection recovery rather than provider fallback: the attempted ChatGPT selection never becomes a Qwen request. The AI status indicator continues to represent subscription, device, and Gateway readiness only.
+- Document RAG uses Singapore Qwen `text-embedding-v4` at 1536 dimensions. It is a retrieval stage separate from Markdown heading/context chunking and Chinese lexical tokenization.
 - AI outputs are drafts, suggestions, reviews, or explanations until confirmed.
 - AI does not silently write official food, workout, Profile, or goal data.
 - AI does not automatically apply carb tapering, delete records, or change diet goals.
@@ -234,7 +239,7 @@ The full cloud/local authority, cache-first reads, warm cache, write-success rul
 - `image_picker` for camera/gallery image selection
 - `excel`, `csv`, and `archive` for export
 - Supabase Auth, Postgres, Storage, and Edge Functions
-- OpenAI / ChatGPT and Qwen server-side providers
+- Current-release Qwen generation and Document RAG embeddings, with a retained OpenAI / ChatGPT adapter
 
 ### Quick Start
 
@@ -268,7 +273,7 @@ flutter run --dart-define-from-file=config/supabase.local.json
 flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json
 ```
 
-### Design Documents
+### Design And Engineering Documents
 
 | File | Purpose |
 | --- | --- |
@@ -286,7 +291,10 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Current Flutter-to-service wire contract, field constraints, stable errors, and compatibility boundaries; the legacy filename retains `DRAFT`. |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 architecture decisions, implementation background, and historical context that remains useful to maintainers. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Engineering phase plan, execution steps, validation, and manual review checklist. |
-| [PHASE5_ENGINEERING_PLAN.md](PHASE5_ENGINEERING_PLAN.md) | Phase 5 engineering plan, deployment, and acceptance notes. |
+| [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | Professional RAG reliability/performance report covering baseline, root cause, changes, rejected alternatives, speed/quality outcomes, limitations, and raw evidence. |
+| [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | Confirmed scope, architecture boundaries, and completion definition for the active RAG foundation remediation. |
+| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | Detailed implementation, testing, deployment, rollback, and acceptance plan for the active RAG foundation remediation. |
+| [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | Historical original Phase 5 controlled-RAG engineering, deployment, and acceptance plan. |
 | [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | Staged AI Output Contract implementation, validation, canary, and rollback plan. |
 
 The Local version baseline remains under `docs/local/`.

@@ -12,16 +12,17 @@ export function phase5PromptContext(request: GatewayRequest): string {
     return "";
   }
 
+  const contextObjects = context.context_objects.filter((object) =>
+    object.type !== "document_context"
+  );
   const sources = context.document_sources.map((source) => ({
     doc_path: source.doc_path,
     heading: source.heading,
     heading_path: source.heading_path,
     section_id: source.section_id,
-    chunk_index: source.chunk_index,
-    chunk_count: source.chunk_count,
     status: source.status,
+    authority: source.authority,
     context_prefix: source.context_prefix,
-    context_note: source.context_note,
     excerpt: source.excerpt,
   }));
 
@@ -30,7 +31,9 @@ export function phase5PromptContext(request: GatewayRequest): string {
     answerLanguageInstruction(request.language),
     `Routed workflow: ${context.route.workflow}`,
     `Routing reasons: ${context.route.reasons.join(", ") || "none"}`,
-    "Allowed actions: explain, summarize, suggest user-confirmed UI steps, ask a clarification, and create an editable draft when the output contract requests one.",
+    request.expectedOutput === "text"
+      ? "Allowed actions for this request: explain, summarize, suggest user-confirmed UI steps, or ask a clarification. Do not create a Food or Workout draft."
+      : "Allowed actions for this request: create only the editable draft selected by the output contract, or ask one clarification. Do not switch output families.",
     "Forbidden actions: save official records, delete records, modify Profile, change goals, apply carb tapering, change carb cycling, request full raw history, expose debug traces.",
     "If status is planned or non_goal, say that clearly and do not present it as implemented.",
     "Document source context_prefix and heading_path define the chunk location and meaning; use them before interpreting the excerpt.",
@@ -38,10 +41,10 @@ export function phase5PromptContext(request: GatewayRequest): string {
     "For meal_decision, inspect selected_day_summary.data.diet_calculation_mode before answering. If it is gram_per_kg, lead with macro gram gaps as the decision basis and treat kcal remaining only as an auxiliary monitoring value; do not frame kcal remaining as the gating limit. If it is energy_ratio, lead with kcal remaining as the decision basis and use macros only as secondary structure.",
     "For app_logic_answer, ground FitLog rule or algorithm explanations in Document sources when available. If document_context is missing for app_logic_answer, say no matching FitLog documentation was found instead of inventing a source.",
     "If a required context dimension is missing, say what is missing instead of inventing it.",
-    `Context objects JSON:\n${JSON.stringify(context.context_objects, null, 2)}`,
+    `Context objects JSON:\n${JSON.stringify(contextObjects)}`,
     sources.length === 0
       ? "Document sources JSON: []"
-      : `Document sources JSON:\n${JSON.stringify(sources, null, 2)}`,
+      : `Document sources JSON:\n${JSON.stringify(sources)}`,
     `Missing dimensions: ${context.missing_dimensions.join(", ") || "none"}`,
     `Safety flags: ${context.safety_flags.join(", ") || "none"}`,
   ].join("\n");
@@ -58,9 +61,10 @@ export function prependMealDecisionImageTip(
     return messageText;
   }
   const alreadyIncluded = request.language === "zh"
-    ? /上传.{0,16}(?:食材|照片|图片|外卖).{0,20}(?:截图|推荐)|外卖.{0,12}截图/i.test(
-      messageText,
-    )
+    ? /上传.{0,16}(?:食材|照片|图片|外卖).{0,20}(?:截图|推荐)|外卖.{0,12}截图/i
+      .test(
+        messageText,
+      )
     : /upload.{0,20}(?:ingredient|food|delivery).{0,24}(?:photo|screenshot)/i
       .test(messageText);
   if (alreadyIncluded) return messageText;

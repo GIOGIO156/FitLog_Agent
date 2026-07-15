@@ -1,0 +1,72 @@
+{
+  "schema_version": "rag_foundation_baseline.v1",
+  "captured_commit": "209c556a032f163339b2df93ac11bf9d41e28ed1",
+  "captured_date": "2026-07-14",
+  "cases": [
+    {
+      "case_id": "baseline_document_per_side_reps",
+      "layer": "retrieval",
+      "observed_gap": "The current single lexical search has no reviewed per_side_reps normalization or guaranteed stable Algorithm source hit."
+    },
+    {
+      "case_id": "baseline_corpus_cloud_local_missing",
+      "layer": "ingestion",
+      "observed_gap": "The generator sourcePaths omits both CloudLocalDataBoundary.md files."
+    },
+    {
+      "case_id": "baseline_chunk_markdown_corruption",
+      "layer": "ingestion",
+      "observed_gap": "The generated 510-chunk seed contains spaced extensions and hostnames, including . dart, . sql, and developers. openai. com."
+    },
+    {
+      "case_id": "baseline_context_before_output_selection",
+      "layer": "planning",
+      "observed_gap": "index.ts runs routeGatewayWorkflow and buildPhase5Context before resolveOutputSelection."
+    },
+    {
+      "case_id": "baseline_builtin_exercise_definition_missing",
+      "layer": "context",
+      "observed_gap": "Server context types contain no exercise_definition_context."
+    },
+    {
+      "case_id": "baseline_custom_exercise_reference_missing",
+      "layer": "context",
+      "observed_gap": "The public request contract has no bounded exercise_references field."
+    },
+    {
+      "case_id": "baseline_fitlog_claim_without_registry",
+      "layer": "output",
+      "observed_gap": "The response contract has no answer-segment evidence registry guard."
+    },
+    {
+      "case_id": "baseline_workout_ad_hoc_fallback",
+      "layer": "client",
+      "observed_gap": "Unknown workout draft exercises use _adHocKey with total_load and total_reps defaults."
+    },
+    {
+      "case_id": "baseline_food_wrong_language_escape",
+      "layer": "output",
+      "observed_gap": "The dedicated Food prompt is mostly English and the validator has no response-language gate."
+    },
+    {
+      "case_id": "baseline_food_user_fact_mismatch_escape",
+      "layer": "output",
+      "observed_gap": "A note that says protein is 20g can coexist with protein_g=8.5 without a semantic issue."
+    },
+    {
+      "case_id": "baseline_dedicated_food_clarification_mismatch",
+      "layer": "surface",
+      "observed_gap": "Dedicated Food clarification is surfaced as an error notification instead of an input-revision terminal state."
+    },
+    {
+      "case_id": "baseline_food_provider_fixed_qwen",
+      "layer": "provider",
+      "observed_gap": "The dedicated page and endpoint hard-code Qwen, while the Chat OpenAI path rejects image attachments."
+    },
+    {
+      "case_id": "baseline_food_policy_duplication",
+      "layer": "capability",
+      "observed_gap": "AI Chat and the dedicated Food endpoint maintain separate provider prompts and Food rules."
+    }
+  ]
+}

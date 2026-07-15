@@ -5,7 +5,8 @@ import '../../core/constants/exercise_definition.dart';
 import '../../core/utils/number_utils.dart';
 import 'workout_record_draft.dart';
 
-const String aiWorkoutDraftSchemaVersion = 'workout_draft.v2';
+const String aiWorkoutDraftSchemaVersion = 'workout_draft.v3';
+const String aiLegacyWorkoutDraftV2SchemaVersion = 'workout_draft.v2';
 const String aiLegacyWorkoutDraftSchemaVersion = 'workout_draft.v1';
 
 class AiWorkoutDraft {
@@ -14,12 +15,14 @@ class AiWorkoutDraft {
     required this.date,
     required this.notes,
     required this.exercises,
+    this.schemaVersion = aiLegacyWorkoutDraftV2SchemaVersion,
   });
 
   final String recordName;
   final String date;
   final String notes;
   final List<AiWorkoutDraftExercise> exercises;
+  final String schemaVersion;
 
   factory AiWorkoutDraft.fromJson(
     Map<String, dynamic> json, {
@@ -28,12 +31,18 @@ class AiWorkoutDraft {
     final schemaVersion = json['schema_version']?.toString();
     if (schemaVersion != null &&
         schemaVersion != aiWorkoutDraftSchemaVersion &&
+        schemaVersion != aiLegacyWorkoutDraftV2SchemaVersion &&
         schemaVersion != aiLegacyWorkoutDraftSchemaVersion) {
       throw FormatException('Unsupported workout draft schema: $schemaVersion');
     }
     final exercises = _exerciseList(json['exercises']);
     if (exercises.isEmpty) {
       throw const FormatException('Workout draft requires exercises.');
+    }
+    if (schemaVersion == aiWorkoutDraftSchemaVersion) {
+      for (final exercise in exercises) {
+        exercise._validateApprovedBinding(exercise._resolveDefinition());
+      }
     }
     final date = _validDateOrNull(json['date']) ?? _validDateOrNull(legacyDate);
     if (date == null) {
@@ -47,16 +56,23 @@ class AiWorkoutDraft {
       date: date,
       notes: _stringOrNull(json['notes']) ?? '',
       exercises: exercises,
+      schemaVersion: schemaVersion ?? aiLegacyWorkoutDraftSchemaVersion,
     );
   }
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
-      'schema_version': aiWorkoutDraftSchemaVersion,
+      'schema_version': schemaVersion,
       'record_name': recordName,
       'date': date,
       'notes': notes,
-      'exercises': exercises.map((exercise) => exercise.toJson()).toList(),
+      'exercises': exercises
+          .map(
+            (exercise) => exercise.toJson(
+              includeBinding: schemaVersion == aiWorkoutDraftSchemaVersion,
+            ),
+          )
+          .toList(),
     };
   }
 
@@ -72,7 +88,11 @@ class AiWorkoutDraft {
       'record_name': recordName,
       'notes': notes,
       'exercises': exercises
-          .map((exercise) => exercise.toWorkoutPayload())
+          .map(
+            (exercise) => exercise.toWorkoutPayload(
+              requireApprovedBinding: schemaVersion == aiWorkoutDraftSchemaVersion,
+            ),
+          )
           .toList(),
     };
     return WorkoutRecordDraft(
@@ -92,8 +112,13 @@ class AiWorkoutDraftExercise {
   const AiWorkoutDraftExercise({
     required this.exerciseName,
     this.exerciseKey,
+    this.exerciseSource,
+    this.definitionHash,
     this.exerciseType,
     this.bodyPart,
+    this.loadInputMode,
+    this.repsInputMode,
+    this.setMetricType,
     this.durationMinutes,
     this.activeDurationMinutes,
     this.cardioIntensityBasis,
@@ -102,8 +127,13 @@ class AiWorkoutDraftExercise {
 
   final String exerciseName;
   final String? exerciseKey;
+  final String? exerciseSource;
+  final String? definitionHash;
   final String? exerciseType;
   final String? bodyPart;
+  final String? loadInputMode;
+  final String? repsInputMode;
+  final String? setMetricType;
   final double? durationMinutes;
   final double? activeDurationMinutes;
   final String? cardioIntensityBasis;
@@ -117,8 +147,13 @@ class AiWorkoutDraftExercise {
     return AiWorkoutDraftExercise(
       exerciseName: exerciseName,
       exerciseKey: _stringOrNull(json['exercise_key']),
+      exerciseSource: _stringOrNull(json['exercise_source']),
+      definitionHash: _stringOrNull(json['definition_hash']),
       exerciseType: _stringOrNull(json['exercise_type']),
       bodyPart: _stringOrNull(json['body_part']),
+      loadInputMode: _stringOrNull(json['load_input_mode']),
+      repsInputMode: _stringOrNull(json['reps_input_mode']),
+      setMetricType: _stringOrNull(json['set_metric_type']),
       durationMinutes: _positiveDoubleOrNull(json['duration_minutes']),
       activeDurationMinutes: _positiveDoubleOrNull(
         json['active_duration_minutes'],
@@ -128,12 +163,17 @@ class AiWorkoutDraftExercise {
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toJson({bool includeBinding = false}) {
     return <String, dynamic>{
       'exercise_name': exerciseName,
       'exercise_key': exerciseKey,
+      if (includeBinding) 'exercise_source': exerciseSource,
+      if (includeBinding) 'definition_hash': definitionHash,
       'exercise_type': exerciseType,
       'body_part': bodyPart,
+      if (includeBinding) 'load_input_mode': loadInputMode,
+      if (includeBinding) 'reps_input_mode': repsInputMode,
+      if (includeBinding) 'set_metric_type': setMetricType,
       'duration_minutes': durationMinutes,
       'active_duration_minutes': activeDurationMinutes,
       'cardio_intensity_basis': cardioIntensityBasis,
@@ -141,8 +181,11 @@ class AiWorkoutDraftExercise {
     };
   }
 
-  Map<String, dynamic> toWorkoutPayload() {
+  Map<String, dynamic> toWorkoutPayload({bool requireApprovedBinding = false}) {
     final definition = _resolveDefinition();
+    if (requireApprovedBinding) {
+      _validateApprovedBinding(definition);
+    }
     final resolvedType =
         definition?.exerciseType ??
         _normalizeExerciseType(exerciseType, durationMinutes, sets);
@@ -152,10 +195,11 @@ class AiWorkoutDraftExercise {
     final durationText = _formatMinutes(durationMinutes);
     final activeDurationText = _formatMinutes(activeDurationMinutes);
     final source = definition == null
-        ? ExerciseSource.adHoc
+        ? (exerciseSource ?? ExerciseSource.adHoc)
         : ExerciseSource.builtin;
     return <String, dynamic>{
-      'exercise_key': definition?.key ?? _adHocKey(exerciseName),
+      'exercise_key': definition?.key ??
+          (requireApprovedBinding ? exerciseKey! : _adHocKey(exerciseName)),
       'exercise_source': source,
       'body_part': resolvedBodyPart,
       'secondary_body_part': definition?.secondaryBodyPart,
@@ -165,11 +209,17 @@ class AiWorkoutDraftExercise {
           definition?.strengthProfile ??
           _strengthProfileFor(resolvedBodyPart, resolvedType),
       'load_input_mode':
-          definition?.loadInputMode ?? ExerciseLoadInputMode.totalLoad,
+          definition?.loadInputMode ??
+          loadInputMode ??
+          ExerciseLoadInputMode.totalLoad,
       'reps_input_mode':
-          definition?.repsInputMode ?? ExerciseRepsInputMode.totalReps,
+          definition?.repsInputMode ??
+          repsInputMode ??
+          ExerciseRepsInputMode.totalReps,
       'set_metric_type':
-          definition?.setMetricType ?? ExerciseSetMetricType.reps,
+          definition?.setMetricType ??
+          setMetricType ??
+          ExerciseSetMetricType.reps,
       'cardio_intensity_basis':
           _normalizeCardioIntensity(cardioIntensityBasis) ??
           definition?.defaultCardioIntensity ??
@@ -186,6 +236,34 @@ class AiWorkoutDraftExercise {
     return ExerciseCatalog.byKey(exerciseKey) ??
         ExerciseCatalog.byName(exerciseName) ??
         ExerciseCatalog.byName(_exerciseNameAliases[exerciseName.trim()]);
+  }
+
+  void _validateApprovedBinding(ExerciseDefinition? definition) {
+    if ((exerciseKey ?? '').isEmpty ||
+        (definitionHash ?? '').isEmpty ||
+        !<String>[ExerciseSource.builtin, ExerciseSource.custom].contains(
+          exerciseSource,
+        ) ||
+        (loadInputMode ?? '').isEmpty ||
+        (repsInputMode ?? '').isEmpty ||
+        (setMetricType ?? '').isEmpty) {
+      throw const FormatException(
+        'Workout draft v3 requires an approved exercise definition.',
+      );
+    }
+    if (exerciseSource == ExerciseSource.builtin) {
+      if (definition == null ||
+          definition.key != exerciseKey ||
+          definition.exerciseType != exerciseType ||
+          definition.bodyPart != bodyPart ||
+          definition.loadInputMode != loadInputMode ||
+          definition.repsInputMode != repsInputMode ||
+          definition.setMetricType != setMetricType) {
+        throw const FormatException(
+          'Workout draft v3 does not match the built-in definition.',
+        );
+      }
+    }
   }
 }
 

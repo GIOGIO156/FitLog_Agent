@@ -121,6 +121,7 @@ function routeFromHint(hint: WorkflowType): Phase5WorkflowRoute | null {
         read_only: true,
       };
     case "food_logging":
+    case "workout_logging":
       return {
         workflow: hint,
         confidence: 0.92,
@@ -128,6 +129,24 @@ function routeFromHint(hint: WorkflowType): Phase5WorkflowRoute | null {
         required_context: [],
         safety_flags: [],
         read_only: false,
+      };
+    case "general_chat":
+      return {
+        workflow: hint,
+        confidence: 1,
+        reasons: ["server_planned_workflow"],
+        required_context: [],
+        safety_flags: [],
+        read_only: true,
+      };
+    case "safety_boundary":
+      return {
+        workflow: hint,
+        confidence: 1,
+        reasons: ["server_planned_workflow"],
+        required_context: ["document_context"],
+        safety_flags: ["safety_boundary"],
+        read_only: true,
       };
     case "auto":
       return null;

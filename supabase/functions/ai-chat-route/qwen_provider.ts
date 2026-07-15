@@ -11,6 +11,7 @@ import type {
   ProviderGenerationOptions,
 } from "./providers.ts";
 import { ProviderError } from "./providers.ts";
+import { buildFoodCapabilityRequest } from "../_shared/food_capability.ts";
 
 interface QwenProviderParams {
   apiKey: string;
@@ -142,7 +143,7 @@ export function extractQwenCompletion(body: unknown): ProviderCompletion {
   return { status: "completed", content: text, finishReason };
 }
 
-function buildQwenRequestBody(
+export function buildQwenRequestBody(
   request: GatewayRequest,
   model: string,
   options?: ProviderGenerationOptions,
@@ -152,6 +153,7 @@ function buildQwenRequestBody(
   return {
     model,
     enable_thinking: false,
+    max_tokens: outputTokenBudget(request),
     response_format: { type: "json_object" },
     messages: [
       {
@@ -166,6 +168,10 @@ function buildQwenRequestBody(
       },
     ],
   };
+}
+
+function outputTokenBudget(request: GatewayRequest): number {
+  return request.expectedOutput === "text" ? 384 : 1600;
 }
 
 function multimodalUserContent(
@@ -190,10 +196,12 @@ function systemMessage(request: GatewayRequest): string {
     base,
     `只返回一个 ${providerGatewayEnvelopeSchemaVersion} JSON 对象，JSON 外禁止任何文字或 Markdown 围栏。`,
     `Expected output: ${request.expectedOutput}. Markdown is allowed only in message.text.`,
-    "If Expected output is auto, infer the user's natural intent from the message, images, and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",
-    "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return the exact draft type or one clarification with draft null. Never claim the result was saved.",
-    `Resolved record date: ${request.targetDate ?? "unresolved"}. Date source: ${request.dateResolutionSource}. For any draft, copy this exact resolved date into draft.date. If it is unresolved, return clarification instead of guessing.`,
-  ].join("\n");
+    outputFamilySystemInstruction(request),
+    request.workflowType === "app_logic_answer" &&
+      request.expectedOutput === "text"
+      ? "For every FitLog-specific fact, use only an explicit matching statement from Document sources. Answer only the asked rule, do not add adjacent FitLog rules or concepts, and say no matching documentation was found when the excerpts do not contain the answer."
+      : "",
+  ].filter((line) => line.trim() !== "").join("\n");
 }
 
 function textUserPrompt(
@@ -204,20 +212,12 @@ function textUserPrompt(
     phase5PromptContext(request),
     conversationContextPrompt(request),
     answerLanguageInstruction(request.language),
-    "Return exactly one JSON object using this envelope; no fence or outside prose:",
-    '{"schema_version":"provider_gateway_envelope.v2","output_type":"text","message":{"text":"Friendly user-facing Markdown."},"needs_clarification":false,"clarification_questions":[],"draft":null}',
-    "Put all user-facing explanation, uncertainty, and review instructions inside message.text. The app displays message.text and renders draft as a native review card; never print the draft JSON as visible prose.",
-    "Food Draft shape:",
-    '{"schema_version":"food_draft.v2","date":"2026-07-10","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}',
-    "When Food Draft items is non-empty, item values are totals for that item portion, not per-100g values; meal-level total_weight_g, calories_kcal, protein_g, carbs_g, and fat_g must equal the sum of items.",
-    "Workout Draft shape:",
-    '{"schema_version":"workout_draft.v2","record_name":"...","date":"2026-07-10","notes":"...","exercises":[{"exercise_name":"Bench Press","exercise_key":null,"exercise_type":"strength","body_part":null,"duration_minutes":null,"active_duration_minutes":null,"cardio_intensity_basis":null,"sets":[{"weight_kg":20,"reps":10,"duration_seconds":null}]}]}',
-    "Workout Draft policy: ask at most one clarification. If you ask, include every missing field in that one question and keep draft null. If the conversation already includes a workout clarification or the user replies without full data, return a best-effort workout_draft.v2 with missing numeric fields as null and uncertainty in notes. For cardio with duration but no distance, heart rate, or calories, still create a draft from duration and type.",
-    "Never claim a draft or official record has been saved. Say the user must review and confirm.",
+    ...outputFamilyUserLines(request),
     `Workflow hint: ${request.workflowType}`,
     `Default date: ${request.selectedDate ?? "not provided"}`,
     `Resolved record date: ${request.targetDate ?? "unresolved"}`,
     `User message: ${request.messageText}`,
+    finalOutputReminder(request),
     correctionPrompt(options),
   ].filter((line) => line.trim() !== "").join("\n");
 }
@@ -231,24 +231,89 @@ function multimodalUserPrompt(request: GatewayRequest): string {
     phase5PromptContext(request),
     conversationContextPrompt(request),
     answerLanguageInstruction(request.language),
-    "Return strict JSON only:",
-    '{"schema_version":"provider_gateway_envelope.v2","output_type":"text","message":{"text":"..."},"needs_clarification":false,"clarification_questions":[],"draft":null}',
-    "Infer the user's natural intent from the message, images, and conversation context. Set output_type to text, food_draft, workout_draft, or clarification and keep it consistent with the payload.",
-    "If the image is a food photo and the user wants food recognition/logging, set output_type to food_draft and return draft as food_draft.v2 with this shape:",
-    '{"schema_version":"food_draft.v2","date":"2026-07-10","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}',
-    "When Food Draft items is non-empty, item values are totals for that item portion, not per-100g values; meal-level total_weight_g, calories_kcal, protein_g, carbs_g, and fat_g must equal the sum of items.",
+    ...outputFamilyUserLines(request),
+    "Use the image only as evidence for the selected output family; do not change output_type because an image is attached.",
     "If the user asks for meal decision support from a screenshot/photo, set output_type to text, keep draft null, and put the recommendation in message.text.",
-    "If the user asks for a workout record draft, set output_type to workout_draft, use workout_draft.v2, and keep it editable; do not save it.",
-    "Workout Draft shape:",
-    '{"schema_version":"workout_draft.v2","record_name":"...","date":"2026-07-10","notes":"...","exercises":[{"exercise_name":"Bench Press","exercise_key":null,"exercise_type":"strength","body_part":null,"duration_minutes":null,"active_duration_minutes":null,"cardio_intensity_basis":null,"sets":[{"weight_kg":20,"reps":10,"duration_seconds":null}]}]}',
-    "Workout Draft policy: ask at most one clarification. If the user reply is incomplete, return a best-effort workout_draft.v2 with uncertainty in notes.",
     "If the image is unclear, set output_type to clarification, needs_clarification true, draft null, and include short clarification_questions.",
     "Use finite non-negative numbers in drafts. Do not claim the draft was saved.",
     `Workflow hint: ${request.workflowType}`,
     `Default date: ${selectedDate}`,
-    `Resolved record date: ${request.targetDate ?? "unresolved"}. Copy it exactly into draft.date; if unresolved, clarify instead of guessing.`,
+    `Resolved record date: ${
+      request.targetDate ?? "unresolved"
+    }. Copy it exactly into draft.date; if unresolved, clarify instead of guessing.`,
     `User message: ${userText}`,
+    finalOutputReminder(request),
   ].join("\n");
+}
+
+function finalOutputReminder(request: GatewayRequest): string {
+  if (request.expectedOutput === "text") {
+    return "FINAL JSON REQUIREMENT: output_type must be text, draft must be null, needs_clarification must be false. If you cannot answer, use clarification with draft null. Never return food_draft or workout_draft.";
+  }
+  if (request.expectedOutput === "food_draft") {
+    return `FINAL JSON REQUIREMENT: output_type must be food_draft with food_draft.v2 dated ${
+      request.targetDate ?? "unresolved"
+    }, or clarification with draft null. Never return text or workout_draft and never claim it was saved.`;
+  }
+  if (request.expectedOutput === "workout_draft") {
+    return `FINAL JSON REQUIREMENT: output_type must be workout_draft with workout_draft.v3 dated ${
+      request.targetDate ?? "unresolved"
+    }, or clarification with draft null. Never return text or food_draft and never claim it was saved.`;
+  }
+  return "FINAL JSON REQUIREMENT: choose one output_type and make every envelope field consistent with it.";
+}
+
+function outputFamilySystemInstruction(request: GatewayRequest): string {
+  if (request.expectedOutput === "text") {
+    return "Return output_type=text with draft=null. If essential information is missing, return output_type=clarification with draft=null. Never return a food or workout draft.";
+  }
+  if (request.expectedOutput === "food_draft") {
+    return `Return output_type=food_draft with exactly one food_draft.v2, or clarification with draft=null. Food capability request: ${
+      JSON.stringify(
+        buildFoodCapabilityRequest(request.messageText, request.language),
+      )
+    }. Copy resolved date ${
+      request.targetDate ?? "unresolved"
+    }; if unresolved, clarify. Never claim the draft was saved.`;
+  }
+  if (request.expectedOutput === "workout_draft") {
+    return `Return output_type=workout_draft with exactly one workout_draft.v3, or clarification with draft=null. Copy resolved date ${
+      request.targetDate ?? "unresolved"
+    }; if unresolved, clarify. Use only one Approved Context exercise_definition and copy all identity/semantic fields exactly. Never claim the draft was saved.`;
+  }
+  return "Infer exactly one output family from the request. Keep output_type, clarification state, and draft payload consistent; never claim the result was saved.";
+}
+
+function outputFamilyUserLines(request: GatewayRequest): string[] {
+  const envelopePrefix = '{"schema_version":"provider_gateway_envelope.v2"';
+  if (request.expectedOutput === "text") {
+    return [
+      "Return this exact text envelope shape; no draft keys beyond draft:null:",
+      `${envelopePrefix},"output_type":"text","message":{"text":"Concise grounded answer."},"needs_clarification":false,"clarification_questions":[],"draft":null}`,
+      "Keep every user-facing statement inside message.text and do not claim a draft or record was created.",
+    ];
+  }
+  if (request.expectedOutput === "food_draft") {
+    return [
+      "Return this food envelope shape, or one clarification with draft:null:",
+      `${envelopePrefix},"output_type":"food_draft","message":{"text":"请审核并确认草稿。"},"needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"food_draft.v2","date":"${
+        request.targetDate ?? "unresolved"
+      }","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}`,
+      "Item nutrition values are portion totals. Meal weight, kcal and macros must equal item sums. Preserve explicit user facts; estimate only missing values.",
+    ];
+  }
+  if (request.expectedOutput === "workout_draft") {
+    return [
+      "Return this workout envelope shape, or one clarification with draft:null:",
+      `${envelopePrefix},"output_type":"workout_draft","message":{"text":"请审核并确认草稿。"},"needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"workout_draft.v3","record_name":"...","date":"${
+        request.targetDate ?? "unresolved"
+      }","notes":"...","exercises":[{"exercise_name":"copy from context","exercise_key":"copy from context","exercise_source":"builtin","definition_hash":"copy from context","exercise_type":"strength","body_part":"copy from context","load_input_mode":"copy from context","reps_input_mode":"copy from context","set_metric_type":"copy from context","duration_minutes":null,"active_duration_minutes":null,"cardio_intensity_basis":null,"sets":[{"weight_kg":20,"reps":10,"duration_seconds":null}]}]}}`,
+      "Copy exercise identity and semantic fields exactly from the single approved definition. Missing numeric set values may be null.",
+    ];
+  }
+  return [
+    "Return one provider_gateway_envelope.v2 JSON object. Infer exactly one output_type and keep draft plus clarification fields consistent.",
+  ];
 }
 
 function correctionPrompt(options?: ProviderGenerationOptions): string {

@@ -1,4 +1,4 @@
-﻿# 应用指南
+# 应用指南
 
 ## 目的
 
@@ -15,9 +15,9 @@
 
 延伸阅读：
 
-- 产品范围：[Product](Product.md)
-- 方法原因：[Methodology](Methodology.md)
-- AI 边界：[AgentDesign](AgentDesign.md)
+- 产品范围：[Product](Product.local.md)
+- 方法原因：[Methodology](Methodology.local.md)
+- AI 边界：[AgentDesign](AgentDesign.local.md)
 
 ## 首页
 
@@ -53,10 +53,10 @@ Home 是选中日期的每日入口页。
 
 延伸阅读：
 
-- 每日看板行为：[Product](Product.md#每日看板行为)
-- 计算原因：[Methodology](Methodology.md)
-- 公式：[Algorithm](Algorithm.md)
-- 运行时聚合字段：[Database](Database.md#运行时聚合)
+- 每日看板行为：[Product](Product.local.md#每日看板行为)
+- 计算原因：[Methodology](Methodology.local.md)
+- 公式：[Algorithm](Algorithm.local.md)
+- 运行时聚合字段：[Database](Database.local.md#运行时聚合)
 
 ## 饮食记录
 
@@ -81,9 +81,9 @@ Food Log 是选中日期的饮食记录列表。
 
 延伸阅读：
 
-- 饮食流程：[Product](Product.md#饮食流程)
-- 数据表：[Database](Database.md#food_records)、[Database](Database.md#food_items)
-- AI 相邻边界：[AgentDesign](AgentDesign.md)
+- 饮食流程：[Product](Product.local.md#饮食流程)
+- 数据表：[Database](Database.local.md#food_records)、[Database](Database.local.md#food_items)
+- AI 相邻边界：[AgentDesign](AgentDesign.local.md)
 
 ## 添加饮食
 
@@ -107,9 +107,9 @@ Add Food 是饮食录入入口页。
 
 延伸阅读：
 
-- 产品行为：[Product](Product.md#饮食流程)
-- AI 边界：[AgentDesign](AgentDesign.md)
-- 解析与汇总公式：[Algorithm](Algorithm.md#food-intake-summary)
+- 产品行为：[Product](Product.local.md#饮食流程)
+- AI 边界：[AgentDesign](AgentDesign.local.md)
+- 解析与汇总公式：[Algorithm](Algorithm.local.md#food-intake-summary)
 
 ## 训练记录
 
@@ -137,8 +137,8 @@ Workout Log 是选中日期的训练记录列表。
 
 延伸阅读：
 
-- 训练流程：[Product](Product.md#训练流程)
-- 训练表：[Database](Database.md#workout_sessions)、[Database](Database.md#workout_sets)
+- 训练流程：[Product](Product.local.md#训练流程)
+- 训练表：[Database](Database.local.md#workout_sessions)、[Database](Database.local.md#workout_sets)
 
 ## 添加/编辑训练记录
 
@@ -179,10 +179,10 @@ Add/Edit Workout Record 是创建或修改训练记录的页面。
 
 延伸阅读：
 
-- 产品流程：[Product](Product.md#训练流程)
-- 运动消耗原因：[Methodology](Methodology.md#为什么运动消耗使用净消耗)、[Methodology](Methodology.md#为什么力量训练不按分钟线性算)
-- 公式：[Algorithm](Algorithm.md#workout-calories)
-- 存储模型：[Database](Database.md#workout_sessions)
+- 产品流程：[Product](Product.local.md#训练流程)
+- 运动消耗原因：[Methodology](Methodology.local.md#为什么运动消耗使用净消耗)、[Methodology](Methodology.local.md#为什么力量训练不按分钟线性算)
+- 公式：[Algorithm](Algorithm.local.md#workout-calories)
+- 存储模型：[Database](Database.local.md#workout_sessions)
 
 ## 训练记录详情
 
@@ -211,8 +211,8 @@ Workout Record Detail 用来解释一条已保存训练记录。
 
 延伸阅读：
 
-- 产品行为：[Product](Product.md#训练流程)
-- 数据模型：[Database](Database.md#workout_sessions)、[Database](Database.md#workout_sets)
+- 产品行为：[Product](Product.local.md#训练流程)
+- 数据模型：[Database](Database.local.md#workout_sessions)、[Database](Database.local.md#workout_sets)
 
 ## 我的资料
 
@@ -252,10 +252,10 @@ Profile 是一个“摘要优先”的控制台，用于配置本地身份、身
 
 延伸阅读：
 
-- 产品行为：[Product](Product.md#饮食设置交互)
-- 面向用户的方法解释：[Methodology](Methodology.md)
-- 算法细节：[Algorithm](Algorithm.md)
-- Profile 表：[Database](Database.md#user_profile)
+- 产品行为：[Product](Product.local.md#饮食设置交互)
+- 面向用户的方法解释：[Methodology](Methodology.local.md)
+- 算法细节：[Algorithm](Algorithm.local.md)
+- Profile 表：[Database](Database.local.md#user_profile)
 
 ## 导出
 
@@ -280,8 +280,8 @@ Export 为用户记录生成本地文件。
 
 延伸阅读：
 
-- 导出覆盖：[Database](Database.md#导出覆盖)
-- 产品边界：[Product](Product.md#已实现边界)
+- 导出覆盖：[Database](Database.local.md#导出覆盖)
+- 产品边界：[Product](Product.local.md#已实现边界)
 
 ## 语言
 
@@ -305,7 +305,7 @@ Language 负责切换中英文 UI。
 
 延伸阅读：
 
-- 数据库存储：[Database](Database.md)
-- AI 边界：[AgentDesign](AgentDesign.md)
-- 证据和安全边界：[References](References.md)
+- 数据库存储：[Database](Database.local.md)
+- AI 边界：[AgentDesign](AgentDesign.local.md)
+- 证据和安全边界：[References](References.local.md)
 

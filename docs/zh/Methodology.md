@@ -69,7 +69,7 @@ FitLog_Agent 使用两种受控检索：
 - Structured RAG：已知 function 从云端正式记录、daily summaries 或受控 summary builder 构建紧凑摘要。
 - Document RAG：检索相关 FitLog 文档片段。
 
-当前 Document RAG 使用关键词、全文、trigram 和 term-overlap 检索。未来可以只对 App 文档评估 vector/semantic retrieval，但这不授权用户 food/workout/weight 数据向量库。基于业务记录的长期 semantic memory 不在 V1 范围内。工程细节见 `RAGDesign.md`。
+Document RAG 对稳定 App 文档执行受控 hybrid retrieval：合并 exact/phrase、版本化中文和双语术语、全文、trigram 与兼容的文档 embedding，再经 rerank 后暴露 evidence。这条仅限文档的 embedding 路径不授权用户 food/workout/weight 数据向量库；基于业务记录的长期 semantic memory 仍不在 V1 范围内。工程细节见 `RAGDesign.md`。
 
 ## 为什么 AI 要追问
 
@@ -232,6 +232,8 @@ netMet = max(0, MET - 1)
 这是基于 MET 惯例的本地产品选择 [REF-ALG-08](References.md), [REF-ALG-09](References.md)。它让 logged exercise 成为无运动基线之外的额外消耗，而不是重复计算静息能量。
 
 力量训练使用项目启发式：标准化容量、动作 profile、体重参与程度和有边界的 recovery modifiers。它是估算，不是实验室测量。
+
+力量动作并不共用一种录入口径。一对哑铃可能按每侧重量填写，单侧动作可能按每侧次数填写，自重动作可能记录额外加重，辅助动作记录的则是辅助重量。因此 FitLog 保留用户原始输入用于展示，同时保存独立的标准化计算值，避免把一只哑铃当成总重量，或把单侧次数当成整组总次数。自定义力量动作也使用这些明确口径，不要求用户直接选择内部热量 profile。
 
 ## 为什么使用 Cloud Profile
 

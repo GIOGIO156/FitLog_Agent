@@ -22,21 +22,23 @@ FitLog does not execute a model on-device. Remote calls pass through Supabase Ed
 ```text
 User request
   -> authentication, subscription, and active-device checks
-  -> deterministic workflow routing
-  -> fixed output for explicit entries or two-layer AI Chat output selection
-  -> allowed same-chat / Structured RAG / Document RAG context
-  -> OpenAI or Qwen provider call
+  -> fixed-entry and deterministic safety rules
+  -> approved Task Plan and server Context Policy
+  -> allowed same-chat / exercise / Structured RAG / Document RAG context
+  -> configured provider call (Qwen in the current release)
   -> shared output validation and normalization
   -> accepted answer, optional typed draft, and evidence
   -> user review before any official write
 ```
 
+Each AI path separates four responsibilities. Surface orchestration owns entry, target language, local provider preference, approved terminal states, and UI confirmation. A versioned Capability Core owns task, Food/Workout semantics, fact priority, and context needs. OpenAI/Qwen adapters encode that capability into provider-specific text, image, schema, and tool protocols without redefining product rules. Shared validation enforces structure, domain semantics, language, grounding, safety, and confirmation. A provider change cannot broaden context, alter fact priority, bypass validation, or write official data.
+
 The operating layer includes:
 
 - cloud account, subscription state, Cloud Profile, Cloud Records, and daily summaries;
 - a centered full-screen AI Chat entry;
-- server-side OpenAI/ChatGPT and Qwen routing without user-supplied API keys;
-- Qwen multimodal requests with up to three images;
+- current-release Qwen text/image routing without user-supplied API keys, plus retained OpenAI adapters for a future legally configured release;
+- Qwen AI Chat multimodal requests and dedicated Add Food Qwen image requests with up to three images;
 - cloud chat history and bounded same-chat continuity;
 - Structured RAG over minimum-necessary summaries;
 - Document RAG over stable bilingual FitLog documents;
@@ -60,11 +62,11 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 
 | Capability | Behavior | Classification |
 | --- | --- | --- |
-| Prompt template copy | Keeps external-model guidance for compatibility. | User-mediated external AI, not app-internal AI. |
-| External AI JSON paste | User pastes externally generated food JSON and FitLog parses it locally. | User-mediated external AI, not app-internal AI. |
+| Prompt template copy | Establishes a reusable external food-estimation chat contract: send once per new external chat, then submit photos, descriptions, and corrections. Replies retain the existing complete flat JSON schema; trailing `estimation_notes` is normally empty and is limited to necessary non-duplicative supplemental information. The copied language follows the app language. | User-mediated external AI, not app-internal AI or an Edge prompt. |
+| External AI JSON paste | User pastes externally generated food JSON and FitLog parses it locally using the established food-estimate schema. | User-mediated external AI, not app-internal AI. |
 | `source = ai_paste` | Marks the origin of a confirmed compatibility-flow food record. | Provenance only, not proof of an internal model call. |
 | Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze`; the entry fixes the Food Draft family, validates it, and opens Food Preview. | Deterministic server-mediated draft workflow, without Chat intent inference. |
-| AI Chat | Sends text through OpenAI/Qwen and images through Qwen after all gates pass; the Gateway handles high-confidence intent first and otherwise lets the model select from bounded output types. | Server-mediated answer or draft generation. |
+| AI Chat | Sends text and up to three images through Qwen after all gates pass. Selecting unconfigured ChatGPT produces a transient unavailable error and no request; the Gateway handles high-confidence intent first and otherwise lets the configured model select from bounded output types. | Server-mediated answer or draft generation. |
 | Structured RAG | Builds typed, minimum-necessary server-side context for routed read-only workflows. | Server-mediated read-only context. |
 | Document RAG | Searches the stable bilingual design corpus for app-logic questions. | Server-mediated read-only evidence. |
 | User-record-summary permission | Controls whether protected record summaries may enter routed AI context. | Permission control, not AI output. |
@@ -92,8 +94,8 @@ The AI page is a full-screen conversation, not a quick-chip workbench. Apart fro
 The AI page must make capability and authority visible without exposing provider internals:
 
 - The composer remains editable while sending is unavailable, but the send action stays disabled until every runtime gate passes.
-- The ChatGPT/Qwen preference is device-local. Exact models and provider credentials remain server-side.
-- Up to three JPEG, PNG, or WebP attachments are supported; image requests route through Qwen.
+- The usable Qwen selection is device-local. Exact models and provider credentials remain server-side. An unavailable ChatGPT selection enters the current UI only for brief tap feedback, then the selector automatically slides back to Qwen; it is not persisted as an active provider.
+- Up to three JPEG, PNG, or WebP attachments are supported. Current requests route through Qwen. Selecting unconfigured ChatGPT in AI Chat or Add Food AI analysis shows the normal transient `current model unavailable` error, preserves input, sends no provider request, and restores the Qwen selection through the shared sliding control. This UI recovery is not provider fallback and never converts the original tap into a Qwen request; the status pill continues to reflect subscription, device, and Gateway readiness only.
 - Small local picker-recovery markers may restore composer text, selected provider, attachments, or Add Food analysis after Android activity recreation. Recovery never queues or sends content and never bypasses real account/Gateway readiness.
 - Unsent composer text survives tab switches and temporary disabled states during the current runtime. Send start clears it into a pending turn; failure restores it. Logout or account switch clears it.
 - Cloud history supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a recovery UI.
@@ -164,6 +166,8 @@ FitLog uses three distinct context categories:
 - Document RAG sources retrieved from the stable bilingual design corpus.
 
 Context is built on the server only after auth, subscription, and active-device checks. The client cannot submit server-owned context objects, arbitrary SQL, tool calls, official-write payloads, or provider credentials. Complete raw histories, historical images, unrestricted notes, export archives, and local workout drafts are excluded by default.
+
+Before any Context Builder runs, a versioned `task_plan.v1` separates workflow/context planning from output-family selection. Fixed entries and high-confidence deterministic rules plan first; only an ambiguous request reaches a bounded model planner. The plan carries the server-planned workflow, allowed output family, bounded entities, requested Context, retrieval needs, clarification state, confidence, and source. Server policy then approves or rejects each Context type according to workflow, record-summary permission, and data minimization. Public workflow values may therefore include `workout_logging`, `general_chat`, and `safety_boundary`, while the client can only hint approved entry workflows.
 
 Detailed object schemas, permissions, retrieval, ingestion, evidence, injection handling, evaluation, and update lifecycle are defined in [RAGDesign.md](RAGDesign.md).
 

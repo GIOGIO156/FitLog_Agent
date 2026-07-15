@@ -1,9 +1,12 @@
 import {
+  buildOpenAiVisionRequestBody,
   buildQwenVisionRequestBody,
   errorMessageForCode,
+  extractOpenAiVisionCompletion,
   extractQwenCompletion,
-  foodDraftForClient,
   type FoodDraft,
+  foodDraftForClient,
+  type FoodProviderCompletion,
   logStatusForCode,
   parsePhotoAnalysisRequest,
   parseProviderFoodDraftBody,
@@ -12,19 +15,23 @@ import {
   PhotoGatewayRequestError,
   photoGatewayResponse,
   type PhotoGatewayStatus,
-  type QwenFoodCompletion,
   stripImageDataForDebug,
 } from "./contracts.ts";
 import {
   OutputContractError,
   outputValidatorVersion,
 } from "../_shared/ai_output_contract.ts";
+import {
+  explicitFoodFactsFromText,
+  validateFoodSemantics,
+} from "../_shared/food_capability.ts";
 
 const minimumCorrectionBudgetMs = 1500;
 
 interface PhotoOutputTelemetry {
   firstPassValidationStatus: "not_attempted" | "passed" | "failed";
   correctionAttemptCount: 0 | 1;
+  correctionLatencyMs: number;
   finalValidationStatus: "not_attempted" | "passed" | "failed";
   providerCompletionStatus:
     | "not_called"
@@ -70,14 +77,13 @@ Deno.serve(async (request) => {
 
   const startedAt = Date.now();
   let env: PhotoGatewayEnv | null = null;
-  let providerConfig: QwenVisionConfig | null = null;
+  let providerConfig: PhotoProviderConfig | null = null;
   let accountId: string | null = null;
   let parsedRequest: PhotoAnalysisRequest | null = null;
   let outputTelemetry = defaultPhotoOutputTelemetry();
 
   try {
     env = readPhotoGatewayEnv();
-    providerConfig = readQwenVisionConfig();
     const token = extractBearerToken(request.headers.get("authorization"));
     if (token === null) {
       throw new PhotoGatewayHttpError("auth_required", 401);
@@ -96,12 +102,13 @@ Deno.serve(async (request) => {
       throw new PhotoGatewayRequestError("request_schema_mismatch");
     }
     parsedRequest = parsePhotoAnalysisRequest(body);
+    providerConfig = readPhotoProviderConfig(parsedRequest.modelChoice);
 
     await checkSubscription(env, accountId);
     await assertActiveDevice(env, token, parsedRequest.deviceId, sessionId);
 
     const deadlineAt = startedAt + providerConfig.timeoutMs;
-    let completion = await callQwenVisionProvider(
+    let completion = await callVisionProvider(
       providerConfig,
       parsedRequest,
       { timeoutMs: remainingDeadline(deadlineAt) },
@@ -113,10 +120,7 @@ Deno.serve(async (request) => {
     assertCompleted(completion);
     let parsedProvider;
     try {
-      parsedProvider = parseProviderFoodDraftBody(
-        completion.content,
-        parsedRequest.selectedDate,
-      );
+      parsedProvider = parseAndValidateFood(completion.content, parsedRequest);
       outputTelemetry = {
         ...outputTelemetry,
         firstPassValidationStatus: "passed",
@@ -137,7 +141,8 @@ Deno.serve(async (request) => {
         throw error;
       }
       outputTelemetry = { ...outputTelemetry, correctionAttemptCount: 1 };
-      completion = await callQwenVisionProvider(providerConfig, parsedRequest, {
+      const correctionStartedAt = Date.now();
+      completion = await callVisionProvider(providerConfig, parsedRequest, {
         timeoutMs: remaining,
         correction: {
           previousOutput: completion.content,
@@ -146,13 +151,17 @@ Deno.serve(async (request) => {
       });
       outputTelemetry = {
         ...outputTelemetry,
+        correctionLatencyMs: Date.now() - correctionStartedAt,
+      };
+      outputTelemetry = {
+        ...outputTelemetry,
         providerCompletionStatus: completion.status,
       };
       assertCompleted(completion);
       try {
-        parsedProvider = parseProviderFoodDraftBody(
+        parsedProvider = parseAndValidateFood(
           completion.content,
-          parsedRequest.selectedDate,
+          parsedRequest,
         );
         outputTelemetry = {
           ...outputTelemetry,
@@ -181,7 +190,8 @@ Deno.serve(async (request) => {
 
     return jsonResponse(
       photoGatewayResponse({
-        modelProvider: "qwen",
+        modelChoice: parsedRequest.modelChoice,
+        modelProvider: providerConfig.provider,
         draft: foodDraftForClient(
           parsedProvider.draft,
           parsedRequest.schemaVersion,
@@ -216,7 +226,9 @@ Deno.serve(async (request) => {
 
     return jsonResponse(
       photoGatewayResponse({
-        modelProvider: "qwen",
+        modelChoice: parsedRequest?.modelChoice ?? "qwen",
+        modelProvider: providerConfig?.provider ?? parsedRequest?.modelChoice ??
+          "qwen",
         error: {
           code: gatewayError.code,
           message: errorMessageForCode(gatewayError.code),
@@ -233,7 +245,21 @@ interface PhotoGatewayEnv {
   supabaseServiceRoleKey: string;
 }
 
-interface QwenVisionConfig {
+function parseAndValidateFood(content: string, request: PhotoAnalysisRequest) {
+  const parsed = parseProviderFoodDraftBody(content, request.selectedDate);
+  if (parsed.draft !== null) {
+    const issues = validateFoodSemantics({
+      draft: parsed.draft,
+      responseLanguage: request.language,
+      understanding: explicitFoodFactsFromText(request.userNote ?? ""),
+    });
+    if (issues.length > 0) throw new OutputContractError(issues);
+  }
+  return parsed;
+}
+
+interface PhotoProviderConfig {
+  provider: "openai" | "qwen";
   apiKey: string;
   model: string;
   baseUrl: string;
@@ -259,17 +285,25 @@ function readPhotoGatewayEnv(): PhotoGatewayEnv {
   };
 }
 
-function readQwenVisionConfig(): QwenVisionConfig {
-  const apiKey = Deno.env.get("FITLOG_QWEN_API_KEY") ?? "";
-  const model = Deno.env.get("FITLOG_QWEN_VISION_MODEL") ??
-    Deno.env.get("FITLOG_QWEN_MODEL") ??
-    "";
-  const baseUrl = Deno.env.get("FITLOG_QWEN_BASE_URL") ??
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+function readPhotoProviderConfig(
+  choice: "chatgpt" | "qwen",
+): PhotoProviderConfig {
+  const isOpenAi = choice === "chatgpt";
+  const apiKey =
+    Deno.env.get(isOpenAi ? "FITLOG_OPENAI_API_KEY" : "FITLOG_QWEN_API_KEY") ??
+      "";
+  const model = Deno.env.get(
+    isOpenAi ? "FITLOG_OPENAI_MODEL" : "FITLOG_QWEN_MODEL",
+  ) ?? "";
+  const baseUrl = isOpenAi
+    ? "https://api.openai.com/v1/responses"
+    : Deno.env.get("FITLOG_QWEN_BASE_URL") ??
+      "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
   if (apiKey.trim() === "" || model.trim() === "" || baseUrl.trim() === "") {
     throw new PhotoGatewayHttpError("provider_failure", 502);
   }
   return {
+    provider: isOpenAi ? "openai" : "qwen",
     apiKey: apiKey.trim(),
     model: model.trim(),
     baseUrl: baseUrl.trim(),
@@ -351,8 +385,8 @@ async function assertActiveDevice(
   }
 }
 
-async function callQwenVisionProvider(
-  config: QwenVisionConfig,
+async function callVisionProvider(
+  config: PhotoProviderConfig,
   request: PhotoAnalysisRequest,
   options: {
     timeoutMs: number;
@@ -361,7 +395,7 @@ async function callQwenVisionProvider(
       issues: OutputContractError["issues"];
     };
   },
-): Promise<QwenFoodCompletion> {
+): Promise<FoodProviderCompletion> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
   try {
@@ -373,17 +407,22 @@ async function callQwenVisionProvider(
       },
       signal: controller.signal,
       body: JSON.stringify(
-        buildQwenVisionRequestBody({
-          request,
-          model: config.model,
-          correction: options.correction,
-        }),
+        (config.provider === "openai"
+          ? buildOpenAiVisionRequestBody
+          : buildQwenVisionRequestBody)({
+            request,
+            model: config.model,
+            correction: options.correction,
+          }),
       ),
     });
     if (!response.ok) {
       throw new PhotoGatewayHttpError("provider_failure", 502);
     }
-    return extractQwenCompletion(await response.json());
+    const body = await response.json();
+    return config.provider === "openai"
+      ? extractOpenAiVisionCompletion(body)
+      : extractQwenCompletion(body);
   } catch (error) {
     if (error instanceof PhotoGatewayHttpError) {
       throw error;
@@ -414,6 +453,7 @@ async function writePhotoLog(
 ): Promise<{ debugSummaryId: string | null }> {
   const requestId = crypto.randomUUID();
   const request = params.request;
+  const foodUnderstanding = explicitFoodFactsFromText(request?.userNote ?? "");
   const logResponse = await fetch(
     `${env.supabaseUrl}/rest/v1/ai_request_logs`,
     {
@@ -427,8 +467,8 @@ async function writePhotoLog(
         account_id: params.accountId,
         session_id: null,
         workflow_type: "food_logging",
-        model_choice: "qwen",
-        model_provider: "qwen",
+        model_choice: request?.modelChoice ?? "qwen",
+        model_provider: request?.modelChoice === "chatgpt" ? "openai" : "qwen",
         model: params.model,
         prompt_version: "phase4_food_photo_v1",
         schema_version: "food_draft.v2",
@@ -445,6 +485,18 @@ async function writePhotoLog(
         correction_attempt_count: params.telemetry.correctionAttemptCount,
         final_validation_status: params.telemetry.finalValidationStatus,
         provider_completion_status: params.telemetry.providerCompletionStatus,
+        surface: "add_food_analysis",
+        capability: "food_draft",
+        provider_adapter_version: "food_vision_adapters.v2",
+        policy_version: "food_capability.v1",
+        target_response_language: request?.language ?? null,
+        language_validation_status: params.telemetry.finalValidationStatus,
+        food_fact_count: foodUnderstanding.facts.length,
+        food_conflict_count: foodUnderstanding.conflict_count,
+        semantic_validation_status: params.telemetry.finalValidationStatus,
+        semantic_issue_codes_json: params.safetyFlags,
+        correction_latency_ms: params.telemetry.correctionLatencyMs,
+        final_action: params.status === "ok" ? "artifact_returned" : "none",
       }),
     },
   );
@@ -466,7 +518,9 @@ async function writePhotoLog(
       session_id: null,
       intent: "food_photo_analysis",
       intent_confidence: null,
-      called_tools_json: ["qwen_vision"],
+      called_tools_json: [
+        request?.modelChoice === "chatgpt" ? "openai_vision" : "qwen_vision",
+      ],
       retrieved_dimensions_json: stripImageDataForDebug(request),
       missing_dimensions_json: params.draft === null ? ["food_draft"] : [],
       safety_flags_json: params.safetyFlags,
@@ -507,6 +561,7 @@ function defaultPhotoOutputTelemetry(): PhotoOutputTelemetry {
   return {
     firstPassValidationStatus: "not_attempted",
     correctionAttemptCount: 0,
+    correctionLatencyMs: 0,
     finalValidationStatus: "not_attempted",
     providerCompletionStatus: "not_called",
   };
@@ -520,7 +575,7 @@ function remainingDeadline(deadlineAt: number): number {
   return remaining;
 }
 
-function assertCompleted(completion: QwenFoodCompletion): void {
+function assertCompleted(completion: FoodProviderCompletion): void {
   switch (completion.status) {
     case "completed":
       return;

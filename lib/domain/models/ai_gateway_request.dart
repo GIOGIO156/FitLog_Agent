@@ -1,3 +1,10 @@
+import 'ai_exercise_reference.dart';
+
+const bool fitLogOpenAiProviderEnabled = bool.fromEnvironment(
+  'FITLOG_OPENAI_ENABLED',
+  defaultValue: false,
+);
+
 enum AiGatewayModelChoice { chatgpt, qwen }
 
 extension AiGatewayModelChoiceValue on AiGatewayModelChoice {
@@ -25,6 +32,7 @@ AiGatewayModelChoice aiGatewayModelChoiceFromValue(String value) {
 enum AiGatewayWorkflowHint {
   auto,
   foodLogging,
+  workoutLogging,
   mealDecision,
   weeklyReview,
   appLogicAnswer,
@@ -37,6 +45,8 @@ extension AiGatewayWorkflowHintValue on AiGatewayWorkflowHint {
         return 'auto';
       case AiGatewayWorkflowHint.foodLogging:
         return 'food_logging';
+      case AiGatewayWorkflowHint.workoutLogging:
+        return 'workout_logging';
       case AiGatewayWorkflowHint.mealDecision:
         return 'meal_decision';
       case AiGatewayWorkflowHint.weeklyReview:
@@ -61,6 +71,7 @@ class AiGatewayRequest {
     this.allowRecordSummaryContext = false,
     this.client = const <String, dynamic>{},
     this.conversationContext,
+    this.exerciseReferences = const <AiExerciseReference>[],
   });
 
   final String? sessionId;
@@ -75,6 +86,7 @@ class AiGatewayRequest {
   final bool allowRecordSummaryContext;
   final Map<String, dynamic> client;
   final AiGatewayConversationContext? conversationContext;
+  final List<AiExerciseReference> exerciseReferences;
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -94,6 +106,10 @@ class AiGatewayRequest {
       if (client.isNotEmpty) 'client': Map<String, dynamic>.from(client),
       if (conversationContext?.isNotEmpty == true)
         'conversation_context': conversationContext!.toJson(),
+      if (exerciseReferences.isNotEmpty)
+        'exercise_references': exerciseReferences
+            .map((reference) => reference.toJson())
+            .toList(growable: false),
     };
   }
 }

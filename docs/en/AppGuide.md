@@ -72,7 +72,9 @@ Food contains official records for the selected date. Users can view, create, co
 
 ### AI-Assisted Food Flow
 
-Add Food presents AI Food Analysis as its first entry. The user may provide a text-only description or a description with up to three camera/gallery images. A small local picker-recovery marker allows Android activity recreation to restore the in-progress analysis instead of returning to an empty screen.
+Add Food presents AI Food Analysis as its first entry. The user may provide a text-only description or a description with up to three camera/gallery images and uses a ChatGPT/Qwen selector independent of AI Chat. Qwen is configured in the current release. Selecting ChatGPT shows a transient `The current model is unavailable.` error, slides the selector back to Qwen, keeps the text and images, sends no request, and never changes the AI Chat selection. A small local picker-recovery marker allows Android activity recreation to restore the in-progress analysis instead of returning to an empty screen.
+
+The compatibility flow also exposes **Copy reusable AI prompt** on Add Food and at the top of Paste AI Result. The user sends that prompt once at the start of a new external ChatGPT, Gemini, or equivalent web chat, then reuses the same chat by sending only food photos, descriptions, and food-data corrections. Every external reply remains one complete flat JSON object using the existing schema. Its final `estimation_notes` field is normally empty and may contain only necessary supplemental information that is not already represented by the meal fields or an item note; it must not repeat the meal summary. The copied prompt follows the app's current Chinese or English language.
 
 A successful analysis creates an editable Food Draft:
 
@@ -82,6 +84,7 @@ A successful analysis creates an editable Food Draft:
 - Uncertainty remains visible and may produce a clarification question.
 - Only the user's confirmed Save action creates an official record.
 - A successful terminal result contains a Food Draft and opens Preview; ordinary explanation text cannot impersonate analysis success.
+- Structurally valid output still passes target-language, explicit-user-fact, nutrition-consistency, and shared Food-policy checks. Invalid output retains the current text/images and asks for input revision on the same form; the dedicated page does not start a chat clarification loop.
 
 AI Chat image picking has its own small recovery marker for composer text, selected provider, recovered attachments, and landing-background continuity. Recovery never bypasses account, subscription, active-device, network, or Gateway readiness checks.
 
@@ -95,9 +98,9 @@ AI is the main Agent surface: a full-screen conversation, not a shortcut grid.
 
 - A continuous programmatic pink/mint/blue liquid-gradient field extends behind the page and the glass navigation pill. The empty landing state has visible whole-field motion; sent, historical, waiting, and reading states use quieter low-amplitude motion so chat content owns attention. The background never becomes a translated static image or a set of obvious moving blobs.
 - The landing status uses the saved Cloud Profile nickname when available. The page also provides a bottom composer, compact ChatGPT/Qwen selector, left chat-history entry, top-right account/subscription entry, and compact privacy/readiness hint. It does not use quick chips.
-- The composer accepts text and up to three JPEG, PNG, or WebP images. Gallery selection may fill the remaining image limit in one operation. Text routes through the selected server provider; image turns require Qwen multimodal routing. Exact model names and provider keys remain server-side.
+- The composer accepts text and up to three JPEG, PNG, or WebP images. Gallery selection may fill the remaining image limit in one operation. Current text and image turns route through Qwen. Selecting unconfigured ChatGPT shows the same transient error and slides the selector back to Qwen with the bottom navigation's motion while preserving the composer and attachments and sending no request. The status indicator continues to show subscription, device, and Gateway readiness; the automatic return is UI recovery and does not send a hidden Qwen request. Exact model names and provider keys remain server-side.
 - Sending clears the composer immediately and adds a pending user turn. The real pending bubble anchors below the top controls without overshoot or bounce; the assistant loading bubble remains until the accepted response is persisted and reloaded. A failed send restores the attempted draft. The final response does not force a second scroll.
-- The message viewport hard-clips older content below the top controls and keeps only a short bottom fade above the composer. Shared measured geometry protects the last message from the composer, navigation, keyboard, and system safe area. The floating composer attaches to the keyboard without acquiring a full-width footer background and never dips below its normal closed position during keyboard transitions.
+- The message viewport hard-clips older content below the top controls and keeps only a short bottom fade above the composer. Shared measured geometry protects the last message from the composer, navigation, keyboard, and system safe area. When the keyboard is open, the floating composer keeps a 12 px breathing gap above it, and a local blurred gradient veil prevents chat content from showing through the composer-to-keyboard region. Message scrolling is locked until the keyboard closes; tapping anywhere outside the composer dismisses the keyboard first, then restores the full reading space and normal scrolling. Other app input screens keep their existing keyboard behavior.
 - Assistant text uses app-styled GitHub-flavored Markdown and selectable text. User messages remain selectable plain text. Remote Markdown images and link actions are disabled. A mixed image-and-text turn displays rounded media above a separate text bubble while remaining one request, retry lifecycle, and history turn.
 - Provider choice is device-local and survives restart. Unsent composer text survives tab changes and temporary disabled states during the current runtime; send start, explicit deletion, logout, or account switch clears it, while failure restores it.
 - Send errors use the shared passive notice without a close icon and expire after a bounded interval. Editing, retrying, switching sessions, leaving the AI tab, or backgrounding the app clears stale feedback without deleting restored text or images. A normal short background transition does not cancel the request itself; a real timeout, network interruption, or Gateway error is shown after the app is foregrounded.
@@ -117,7 +120,7 @@ The status pill communicates readiness only. Request activity belongs to the sen
 | Subscription or Cloud Profile unavailable | Gated state with an account/Profile explanation. |
 | Gateway, provider, or active-device check incomplete | Preparing or unavailable state; sending remains disabled. |
 
-The account sheet exposes account/subscription state, sign-out, backend configuration warnings, and the user-record-summary permission. The chat-history sidebar supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a corresponding recovery experience.
+The account sheet exposes account/subscription state, backend configuration warnings, and the user-record-summary permission. It does not duplicate Profile's formal sign-out action. The chat-history sidebar supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a corresponding recovery experience.
 
 ### Responses, Drafts, And Evidence
 
@@ -154,6 +157,8 @@ Read more: [AgentDesign.md](AgentDesign.md), [AIOutputContract.md](AIOutputContr
 ## Workout
 
 Workout contains official workout records and at most one retained new-record draft. Users can create a named record, add built-in or custom exercises, record cardio or strength details, mark supported sets complete, review deterministic calorie estimates, and edit or delete saved records.
+
+Strength definitions decide how each set is entered. Total or machine weight is already the complete external load; per-side weight is doubled only for the calculation snapshot; bodyweight-plus-load adds the entered external load to the movement's bounded bodyweight share; assistance weight is subtracted from bodyweight. Repetitions are likewise either total reps or per-side reps, while duration-based movements use a single-set duration. The editor keeps the original value and label visible, while saved `calculation_load_kg` and `calculation_reps` drive volume and calorie heuristics. For example, entering 12 for Bulgarian Split Squat means 12 per side and a calculation count of 24, not a displayed value of 24.
 
 The resume bar and Android workout-in-progress notification apply only to a manually created or AI-generated new workout. Editing saved history is page-local: saving commits the update, while leaving without saving discards the pending changes and does not create a retained draft.
 
@@ -211,7 +216,7 @@ Privacy messages should be visible but compact:
 
 Documentation and UI copy must distinguish:
 
-- **Available behavior:** logging, Profile, export, configured account/cloud flows, AI Chat, chat history, up to three Qwen images, Food/Workout Draft review, and read-only evidence-backed RAG.
+- **Available behavior:** logging, Profile, export, configured account/cloud flows, Qwen AI Chat, chat history, up to three Qwen images, Food/Workout Draft review, unconfigured-ChatGPT feedback, and read-only evidence-backed RAG.
 - **Conditional behavior:** account, Cloud Records, subscription, Gateway, providers, and Document RAG require the corresponding Supabase configuration, migrations, deployed functions, secrets, and seed data.
 - **Boundary behavior:** AI drafts, retrieves, recommends, reviews, and explains; it does not silently write official records, delete data, change goals or strategies, retain original images, or run autonomous tools.
 - **Separately approved future scope:** larger image limits, long-term image storage, user-data vector memory, automatic official writes, autonomous actions, production payment management, and account-deletion UI.

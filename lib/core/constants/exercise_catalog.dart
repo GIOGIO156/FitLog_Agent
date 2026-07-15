@@ -3,6 +3,95 @@ import 'exercise_definition.dart';
 class ExerciseCatalog {
   ExerciseCatalog._();
 
+  static const Map<String, String> localizedNamesZh = <String, String>{
+    'Barbell Flat Bench Press': '杠铃平板卧推',
+    'Barbell Incline Bench Press': '杠铃上斜卧推',
+    'Dumbbell Flat Bench Press': '哑铃平板卧推',
+    'Dumbbell Fly': '哑铃平板飞鸟',
+    'Cable Fly': '钢线飞鸟',
+    'Machine Chest Press': '坐姿器械推胸',
+    'Machine Pec Fly': '坐姿器械夹胸',
+    'Kneeling Push-up': '跪姿俯卧撑',
+    'Bench Press': '卧推',
+    'Incline Dumbbell Press': '哑铃上斜卧推',
+    'Push-up': '俯卧撑',
+    'Chest Fly': '飞鸟',
+    'Pull-up': '引体向上',
+    'Assisted Pull-up': '引体向上（辅助）',
+    'Lat Pulldown': '高位下拉',
+    'Barbell Row': '杠铃划船',
+    'Seated Cable Row': '坐姿划船',
+    'Seated Row': '坐姿划船',
+    'Bent-over Barbell Row': '杠铃俯身划船',
+    'Underhand Barbell Row': '杠铃反手划船',
+    'Seal Barbell Row': '杠铃海豹划船',
+    'Chest-supported T-Bar Row': '俯卧 T-bar 划船',
+    'Iso-lateral High Row': '分动式高位划船',
+    'Hammer Strength High Row': '分动式高位划船',
+    'Barbell High Pull': '杠铃上斜提拉',
+    'Barbell Pullover': '杠铃抱拉',
+    'Barbell Straight-leg Deadlift': '杠铃直腿硬拉',
+    'Single-arm Dumbbell Row': '哑铃俯身单臂提拉',
+    'Squat': '深蹲',
+    'Bulgarian Split Squat': '保加利亚分腿蹲',
+    'Deadlift': '硬拉',
+    'Leg Press': '腿举',
+    'Romanian Deadlift': '罗马尼亚硬拉',
+    'Leg Extension': '腿屈伸',
+    'Leg Curl': '腿弯举',
+    'Barbell Hip Thrust': '杠铃臀冲',
+    'Barbell Overhead Press': '杠铃推举',
+    'Overhead Press': '杠铃推举',
+    'Lateral Raise': '侧平举',
+    'Dumbbell Rear Delt Fly': '哑铃反向飞鸟',
+    'Rear Delt Fly': '哑铃反向飞鸟',
+    'Standing Dumbbell Shoulder Press': '哑铃站姿推肩',
+    'Standing Barbell Shoulder Press': '杠铃站姿推肩',
+    'Seated Barbell Shoulder Press': '杠铃坐姿推肩',
+    'Standing Barbell Front Raise': '杠铃站姿前平举',
+    'Barbell Upright Row': '杠铃提拉',
+    'Barbell Biceps Curl': '杠铃二头弯举',
+    'Dumbbell Biceps Curl': '哑铃二头弯举',
+    'Biceps Curl': '二头弯举',
+    'Triceps Pushdown': '三头下压',
+    'Hammer Curl': '锤式弯举',
+    'Close-grip Bench Press': '杠铃窄距平板卧推',
+    'Dip': '双杠臂屈伸',
+    'Assisted Dip': '辅助双杠臂屈伸',
+    'Plank': '平板支撑',
+    'Crunch': '卷腹',
+    'Hanging Leg Raise': '悬垂举腿',
+    'Running': '跑步',
+    'Walking': '步行',
+    'Cycling': '骑行',
+    'Rowing Machine': '划船机',
+    'Stair Climber': '登阶机',
+    'Kettlebell Swing': '壶铃摆动',
+    'Burpee': '波比跳',
+    'Jumping Jack': '开合跳',
+  };
+
+  static const Map<String, List<String>> reviewedAliasesByKey =
+      <String, List<String>>{
+        'barbell_flat_bench_press': <String>['Bench Press', '卧推'],
+        'cable_fly': <String>['Chest Fly', '飞鸟'],
+        'bent_over_barbell_row': <String>['Barbell Row', '杠铃划船'],
+        'seated_row': <String>['Seated Cable Row'],
+        'iso_lateral_high_row': <String>['Hammer Strength High Row'],
+        'single_arm_dumbbell_row': <String>['One-arm Dumbbell Row', '单臂哑铃划船'],
+        'bulgarian_split_squat': <String>['Bulgarian Squat', '保加利亚蹲'],
+        'barbell_overhead_press': <String>['Overhead Press'],
+        'dumbbell_rear_delt_fly': <String>['Rear Delt Fly'],
+        'dumbbell_biceps_curl': <String>['Biceps Curl', '二头弯举'],
+      };
+
+  static String displayName(String exerciseName, {required bool isChinese}) {
+    if (!isChinese) {
+      return exerciseName;
+    }
+    return localizedNamesZh[exerciseName] ?? exerciseName;
+  }
+
   static const Map<String, double> genericCardioMetByIntensity =
       <String, double>{
         CardioIntensityBasis.low60Plus: 3.5,

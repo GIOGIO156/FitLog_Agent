@@ -1,0 +1,20 @@
+{
+  "schema": "fitlog_eval_suite.v1",
+  "suite": "document_retrieval",
+  "cases": [
+    {"case_id":"product_zh","language":"zh","query":"FitLog 的产品承诺是什么","expected_sources":["docs/zh/Product.md"]},
+    {"case_id":"product_en","language":"en","query":"What does FitLog promise?","expected_sources":["docs/en/Product.md"]},
+    {"case_id":"app_guide_mixed","language":"mixed","query":"AI Chat 从哪个 tab 进入","expected_sources":["docs/zh/AppGuide.md","docs/en/AppGuide.md"]},
+    {"case_id":"method_energy","language":"zh","query":"热量比例模式为什么以 kcal 为主","expected_sources":["docs/zh/Methodology.md"]},
+    {"case_id":"algorithm_per_side","language":"zh","query":"保加利亚分腿蹲每侧次数怎么算训练量","expected_sources":["docs/zh/Algorithm.md"],"relevant_sources":["docs/zh/Algorithm.md","docs/zh/AppGuide.md"]},
+    {"case_id":"algorithm_total_negative","language":"zh","query":"总次数是不是每侧次数","expected_sources":["docs/zh/Algorithm.md"],"relevant_sources":["docs/zh/Algorithm.md","docs/zh/Database.md","docs/zh/Methodology.md"],"forbidden_concepts":["merge_total_reps_per_side_reps"]},
+    {"case_id":"database_snapshot","language":"en","query":"Where is the workout exercise snapshot persisted?","expected_sources":["docs/en/Database.md"],"relevant_sources":["docs/en/Database.md","docs/en/AppGuide.md"]},
+    {"case_id":"cloud_local_zh","language":"zh","query":"云端权威和 SQLite cache 冲突怎么办","expected_sources":["docs/zh/CloudLocalDataBoundary.md"]},
+    {"case_id":"cloud_local_en","language":"en","query":"cloud source of truth versus local cache repair","expected_sources":["docs/en/CloudLocalDataBoundary.md"]},
+    {"case_id":"agent_permission","language":"zh","query":"AI 能直接修改饮食目标吗","expected_sources":["docs/zh/AgentDesign.md"]},
+    {"case_id":"output_contract","language":"en","query":"How is invalid provider JSON corrected?","expected_sources":["docs/en/AIOutputContract.md"]},
+    {"case_id":"rag_boundary","language":"zh","query":"Document RAG 会给用户记录做 embedding 吗","expected_sources":["docs/zh/RAGDesign.md"]},
+    {"case_id":"references_boundary","language":"en","query":"Which evidence may support the BMR method claim?","expected_sources":["docs/en/References.md"],"relevant_sources":["docs/en/References.md","docs/en/Methodology.md"]},
+    {"case_id":"no_answer_weather","language":"zh","query":"明天上海会不会下雨","expected_sources":[],"expect_no_answer":true}
+  ]
+}

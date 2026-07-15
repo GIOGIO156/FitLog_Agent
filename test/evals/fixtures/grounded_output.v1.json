@@ -1,0 +1,6 @@
+{"schema":"fitlog_eval_suite.v1","suite":"grounded_output","cases":[
+  {"case_id":"fitlog_claim_valid","claim":"FitLog 的每侧次数使用动作定义。","evidence":["doc:algorithm"]},
+  {"case_id":"fitlog_claim_empty","claim":"FitLog 的规则一定如此。","evidence":[],"expected_issue":"fitlog_claim_without_approved_evidence"},
+  {"case_id":"planned_current","status":"planned","claim_type":"current","expected_issue":"authority_mismatch"},
+  {"case_id":"general_limit","claim":"一般营养知识","evidence":[],"terminal":"general_knowledge_with_limitation"}
+]}

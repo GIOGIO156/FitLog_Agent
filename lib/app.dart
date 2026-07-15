@@ -346,6 +346,7 @@ class _FitLogAppState extends State<FitLogApp> {
         ChangeNotifierProvider<AiChatController>(
           create: (_) => AiChatController(
             repository: _aiChatRepository,
+            customExerciseRepository: _services.customExerciseRepository,
             onDeviceReplaced: _cloudRuntimeContext.markDeviceReplaced,
           ),
         ),

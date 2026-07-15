@@ -93,19 +93,28 @@ function mockEnvelope(request: GatewayRequest): Record<string, unknown> {
     };
   }
   if (request.expectedOutput === "workout_draft") {
+    const definition = request.phase5Context?.context_objects.find((item) => item.type === "exercise_definition")?.data;
+    if (definition === undefined) {
+      return { ...common, output_type: "clarification", needs_clarification: true, clarification_questions: ["Which exercise should the workout draft use?"], draft: null };
+    }
     return {
       ...common,
       output_type: "workout_draft",
       draft: {
-        schema_version: "workout_draft.v2",
+        schema_version: "workout_draft.v3",
         record_name: "Mock workout",
         date: request.targetDate ?? request.selectedDate ?? "2026-01-01",
         notes: "Mock provider draft.",
         exercises: [{
-          exercise_name: "Squat",
-          exercise_key: null,
-          exercise_type: "strength",
-          body_part: null,
+          exercise_name: definition.name,
+          exercise_key: definition.key,
+          exercise_source: definition.source,
+          definition_hash: definition.definition_hash,
+          exercise_type: definition.exercise_type,
+          body_part: definition.body_part,
+          load_input_mode: definition.load_input_mode,
+          reps_input_mode: definition.reps_input_mode,
+          set_metric_type: definition.set_metric_type,
           duration_minutes: null,
           active_duration_minutes: null,
           cardio_intensity_basis: null,

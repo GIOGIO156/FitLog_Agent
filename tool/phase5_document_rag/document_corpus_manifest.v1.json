@@ -1,0 +1,59 @@
+{
+  "schema": "fitlog_document_corpus_manifest.v1",
+  "corpus_id": "fitlog_user_stable_docs",
+  "generator_version": "rag_foundation_chunks.v4",
+  "term_versions": [
+    "fitlog_domain_terms.v1",
+    "fitlog_exercise_terms.v1"
+  ],
+  "sources": [
+    "README.md",
+    "docs/en/Product.md",
+    "docs/en/AppGuide.md",
+    "docs/en/Methodology.md",
+    "docs/en/Algorithm.md",
+    "docs/en/Database.md",
+    "docs/en/CloudLocalDataBoundary.md",
+    "docs/en/AgentDesign.md",
+    "docs/en/AIOutputContract.md",
+    "docs/en/RAGDesign.md",
+    "docs/en/References.md",
+    "docs/zh/Product.md",
+    "docs/zh/AppGuide.md",
+    "docs/zh/Methodology.md",
+    "docs/zh/Algorithm.md",
+    "docs/zh/Database.md",
+    "docs/zh/CloudLocalDataBoundary.md",
+    "docs/zh/AgentDesign.md",
+    "docs/zh/AIOutputContract.md",
+    "docs/zh/RAGDesign.md",
+    "docs/zh/References.md"
+  ],
+  "bilingual_basenames": [
+    "Product.md",
+    "AppGuide.md",
+    "Methodology.md",
+    "Algorithm.md",
+    "Database.md",
+    "CloudLocalDataBoundary.md",
+    "AgentDesign.md",
+    "AIOutputContract.md",
+    "RAGDesign.md",
+    "References.md"
+  ],
+  "excluded_prefixes": [
+    "docs/local/",
+    "docs/history/",
+    "supabase/",
+    "lib/",
+    "test/",
+    "tool/"
+  ],
+  "excluded_exact": [
+    "CHANGELOG.md",
+    "AGENTS.md",
+    "docs/ROADMAP.md",
+    "RAG_FOUNDATION_REMEDIATION_SCOPE.md",
+    "RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md"
+  ]
+}

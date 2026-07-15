@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/glass_panel.dart';
@@ -23,6 +25,16 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
   void dispose() {
     _jsonController.dispose();
     super.dispose();
+  }
+
+  Future<void> _copyPrompt() async {
+    final language = context.languageController.language;
+    await Clipboard.setData(
+      ClipboardData(text: PromptTemplates.promptForLanguage(language)),
+    );
+    if (mounted) {
+      FitLogNotifications.success(context, context.stringsRead.promptCopied);
+    }
   }
 
   Future<void> _parseAndPreview() async {
@@ -80,35 +92,36 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             GlassPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
-                  Text(
-                    strings.pasteInstruction,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.45),
-                    ),
+                  const Icon(Icons.content_copy_rounded),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          strings.recommendedGpt,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          strings.copyAiFoodPrompt,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                         const SizedBox(height: 4),
-                        Text(strings.recommendedGptHint),
+                        Text(
+                          strings.copyPromptSubtitle,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton.filledTonal(
+                    key: const ValueKey<String>(
+                      'paste_copy_food_prompt_action',
+                    ),
+                    onPressed: _copyPrompt,
+                    tooltip: strings.copyAiFoodPrompt,
+                    icon: const Icon(Icons.copy_all_rounded),
                   ),
                 ],
               ),

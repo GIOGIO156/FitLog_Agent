@@ -1,0 +1,8 @@
+{"schema":"fitlog_eval_suite.v1","suite":"failure_retry","cases":[
+  {"case_id":"embedding","failure":"embedding_unavailable","downgrade":"lexical_only"},
+  {"case_id":"reranker","failure":"reranker_degraded","downgrade":"fused_order"},
+  {"case_id":"first_complete","coverage":"complete","searches":1,"retry":0},
+  {"case_id":"retry_success","coverage":"insufficient_then_complete","searches":2,"retry":1},
+  {"case_id":"retry_stop","coverage":"insufficient_twice","searches":2,"terminal":"limitation"},
+  {"case_id":"permission_same","retry":1,"permission_expansion":false}
+]}

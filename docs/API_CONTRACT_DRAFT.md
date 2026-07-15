@@ -13,10 +13,10 @@ Stable model-output governance lives in `docs/en/AIOutputContract.md` / `docs/zh
 - Supabase provides Auth, Postgres, and Edge Function boundaries; the App never receives service-role or model-provider secrets.
 - Email/password sign-in and registration email code are the V1 account transport.
 - Subscription entitlement is server-owned. Internal redemption is a development contract, not a production payment provider.
-- OpenAI/ChatGPT and Qwen are called through the AI Gateway; exact model aliases remain server configuration.
+- The current release calls Qwen through the AI Gateway. OpenAI/ChatGPT transport adapters remain implemented and tested but are not called unless a future release has legal server configuration and explicitly enables the client surface.
 - Signed-in Cloud Profile and body/food/workout records are cloud-authoritative. Local SQLite is partial cache, draft storage, and runtime acceleration.
 - AI requests use only workflow-required context. Complete raw history is not a default request payload.
-- Add Food sends text plus zero to three compressed JPEG/PNG/WebP images inline. AI Chat sends up to three such images through Qwen. Neither path retains original images by default.
+- Add Food and AI Chat send text plus zero to three compressed JPEG/PNG/WebP images inline through Qwen in the current release. Selecting unconfigured ChatGPT is blocked before transport with a transient unavailable error, preserved input, and an automatic animated return to the Qwen UI selection. Neither path retains original images by default.
 - Food Draft and Workout Draft cross the boundary as typed, versioned data and remain drafts until normal editor confirmation.
 - AI cannot silently write official records, change Profile/targets/strategies, apply carb tapering, or delete data.
 - Document RAG accepts no client-supplied chunks or context objects. User business data does not enter long-term vector memory, semantic memory, or GraphRAG.
@@ -65,9 +65,9 @@ Locked backend mapping:
 | Daily summaries | `daily_summaries` table or equivalent service-maintained summary view |
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
-| Model secrets | Supabase Edge Function secrets for OpenAI and Qwen |
+| Model secrets | Supabase Edge Function Qwen secret for the current release; optional OpenAI secret only when that provider is legally configured and enabled |
 | Food analysis transport | Current Add Food workflow sends a text description and zero to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; no default Storage persistence |
-| Document RAG index | Supabase Postgres document chunks; vector search optional only for docs |
+| Document RAG index | Supabase Postgres document chunks with active-build hybrid lexical/vector retrieval; Qwen `text-embedding-v4`, 1536 dimensions, and no user-data vectors |
 
 ## Common API Rules
 
@@ -159,7 +159,7 @@ POST /ai/weekly-review
 POST /ai/app-docs-answer
 ```
 
-`/ai/chat/route` is the product-level chat entry for text and Qwen multimodal requests with up to three images. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows. The current Add Food AI food analysis workflow is implemented by the Supabase Edge Function `ai-food-photo-analyze`; it accepts text-only requests or text plus up to three optional images. Chat image requests use the same draft-confirmation boundary and do not store original image bytes.
+`/ai/chat/route` is the product-level chat entry for text and explicitly selected OpenAI/Qwen multimodal requests with up to three images. Dedicated workflow endpoints are implementation surfaces used by the router or by narrowly scoped UI flows. The current Add Food AI food analysis workflow is implemented by the Supabase Edge Function `ai-food-photo-analyze`; it accepts text-only requests or text plus up to three optional images. Chat image requests use the same draft-confirmation boundary and do not store original image bytes.
 
 ## Subscription Contract
 
@@ -254,6 +254,21 @@ POST /account/active-device/release
 ```json
 {
   "device_id": "dev_...",
+  "allow_record_summary_context": false,
+  "exercise_references": [
+    {
+      "key": "custom_split_squat",
+      "name": "我的单侧蹲",
+      "definition_hash": "8f31a220",
+      "exercise_type": "strength",
+      "body_part": "Legs",
+      "strength_structure": "compound",
+      "strength_profile": "lower_body_compound",
+      "load_input_mode": "total_load",
+      "reps_input_mode": "per_side_reps",
+      "set_metric_type": "reps"
+    }
+  ],
   "session_id": "sess_...",
   "platform": "android",
   "app_version": "1.0.0"
@@ -382,7 +397,7 @@ Local cache contract:
     "app_version": "1.0.0",
     "platform": "android",
     "timezone": "Asia/Shanghai",
-    "draft_schema_version": "v2"
+    "draft_schema_version": "v3"
   }
 }
 ```
@@ -390,20 +405,24 @@ Local cache contract:
 Rules:
 
 - `model_choice` can be `chatgpt` or `qwen`. UI labels can be `ChatGPT` and `千问`; backend provider ids should remain stable as `openai` and `qwen`.
-- `workflow_hint` can be `auto`, `food_logging`, `meal_decision`, `weekly_review`, or `app_logic_answer`.
-- `attachments` is optional. The current Chat route accepts up to three image attachments, only when `model_choice = qwen`.
+- Wire compatibility retains both enum values, but the current client sends only `qwen`. Selecting unconfigured ChatGPT produces no HTTP request; the selector automatically returns to Qwen, but that UI recovery does not submit or transform the attempted ChatGPT request.
+- `workflow_hint` can be `auto`, `food_logging`, `workout_logging`, `meal_decision`, `weekly_review`, or `app_logic_answer`. `general_chat` and `safety_boundary` are server-planned response workflows, not accepted client hints.
+- `attachments` is optional. The current Chat route accepts up to three image attachments for either explicitly selected image-capable `chatgpt` or `qwen` routing and never silently changes the provider.
 - Supported attachment MIME types are `image/jpeg`, `image/png`, and `image/webp`; compressed payloads above 4 MB are rejected.
 - `conversation_context` is optional and limited to compact same-chat text turns plus Food Draft / Workout Draft artifact summaries. It must not contain raw SQL rows, raw images, base64 payloads, provider secrets, or full business history.
+- `allow_record_summary_context` defaults to `false`. When false, selected-day, recent-record, body-trend, and exercise-history builders are rejected with named missing dimensions; it does not disable safe stable-document or exact exercise-definition context.
+- `exercise_references` is optional and contains at most four active local custom definitions whose exact name matched this request. Each entry uses the strict fields shown above. It is request-scoped, is never a full custom library upload, and does not authorize history or writes. Duplicate names remain candidates and require clarification.
 - For Chinese questions, Document RAG targets Chinese docs. For English questions, it targets English docs.
 - AI Gateway must reject unsupported writes unless user confirmation and schema validation have already happened.
-- The AI Gateway calls the selected provider through server-side adapters. Text, vision and structured-output model names must be environment-configured, not hard-coded in Flutter.
+- The AI Gateway calls the selected configured provider through server-side adapters. Each provider has one server-configured multimodal generation model ID used for text, image and structured-output requests; Flutter never supplies or hard-codes it. Document RAG uses the separate `FITLOG_DOCUMENT_EMBEDDING_MODEL=text-embedding-v4` and a Qwen embedding endpoint derived from `FITLOG_QWEN_BASE_URL`, while reusing `FITLOG_QWEN_API_KEY`.
 - Chat may return a schema-validated Food Draft or Workout Draft. The app should show a readable assistant summary plus a native artifact-review button; tapping the button rebuilds the corresponding draft/editor surface from the stored snapshot before any official write.
 - Every Chat provider reply uses the internal versioned machine-readable envelope; user-facing Markdown remains inside `message.text`, and Flutter still receives the public response shape below. Exact schemas, provider mapping, validation, correction, and failure rules are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
 - The public `output_type` is `text`, `food_draft`, `workout_draft`, or `clarification`. It is selected by a fixed product workflow, the high-confidence Chat resolver, or bounded model selection after resolver abstention, then validated against the payload before exposure.
-- `client.draft_schema_version` is `v2` for the current client. Omission means legacy v1 response compatibility; it does not weaken provider validation or new persisted artifact snapshots.
+- The public `workflow` can additionally expose server-planned `workout_logging`, `general_chat`, or `safety_boundary`; persistence constraints accept these values additively while legacy workflow values remain readable.
+- `client.draft_schema_version` is `v3` for the current client. The Gateway can downgrade a validated Workout Draft for v1/v2 clients; omission means legacy v1 response compatibility and never weakens provider validation.
 - Draft output resolves a supported explicit date in `message.text` against `selected_date`; otherwise `selected_date` is the default. Ambiguous date language returns clarification. The accepted draft date must equal the server-resolved target date.
 - The dedicated Add Food AI food-analysis workflow uses a narrower internal `food_analysis_envelope.v1` without chat-style explanation text while sharing the canonical `food_draft.v2` validator.
-- Client requests must not include `draft`, `official_record_write`, tool calls, RAG context, `context_objects`, or user-supplied provider API keys.
+- Task plans, normalized retrieval requests/results, tool calls, approved Context objects, evidence registries, corpus/build selection, account IDs used by internal RPCs, SQL, and provider API keys are server-owned. Client requests containing `draft`, `official_record_write`, tool calls, RAG context, or `context_objects` are rejected.
 
 ## AI Gateway Response
 
@@ -483,7 +502,7 @@ Request:
     }
   ],
   "language": "zh",
-  "model_choice": "qwen",
+  "model_choice": "chatgpt",
   "device_id": "dev_...",
   "selected_date": "2026-06-17",
   "schema_version": "food_draft.v2",
@@ -495,8 +514,8 @@ Response:
 
 ```json
 {
-  "model_choice": "qwen",
-  "model_provider": "qwen",
+  "model_choice": "chatgpt",
+  "model_provider": "openai",
   "draft": {
     "schema_version": "food_draft.v2",
     "date": "2026-06-17",
@@ -531,8 +550,10 @@ Rules:
 - Only authenticated, subscribed, active-device users may call the function.
 - The current implementation accepts a non-empty text description with zero to three optional JPEG/PNG/WebP images and rejects any compressed payload above 4 MB.
 - The server rejects an empty request that has neither images nor a text description, and it does not accept user-supplied provider API keys.
-- The Edge Function forwards the request-scoped text and optional images to Qwen through server-managed secrets.
-- The function may return either a schema-validated Food Draft or clarification questions.
+- `model_choice` is `chatgpt` or `qwen`. The page stores this preference under its own device-local key; it neither reads nor overwrites the AI Chat preference.
+- In the current release, an unconfigured `chatgpt` selection is a UI-only unavailable state and is not transported or persisted as the active provider; Qwen remains the configured request path.
+- The Edge Function forwards request-scoped text and optional images only to a configured, explicitly selected image-capable adapter through server-managed secrets. The current client transports Qwen only; unconfigured ChatGPT stops in Flutter, shows unavailable, and restores the Qwen selector without sending. A later user-initiated send while Qwen is visibly selected follows the normal Qwen path.
+- A successful terminal result is a structurally and semantically validated Food Draft. A clarification-compatible response is mapped by the dedicated page to inline input-revision feedback while retaining the current text/images; it does not create a chat session or hidden conversation loop.
 - `selected_date` is the exact required draft date for this explicit workflow. Current clients request `food_draft.v2`; the endpoint may downgrade a validated v2 draft to the legacy v1 response shape only when a legacy request explicitly asks for v1.
 - A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
 - Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, expected output, validator version, first-pass/final validation result, correction count, provider completion category, provider/model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
@@ -557,7 +578,7 @@ Existing `ai_paste` remains the external JSON paste compatibility source.
 
 ## Workout Draft Payload
 
-Workout Drafts are transportable, editable proposals, not official records. The current public payload carries `workout_draft.v2`, required resolved date, record name/notes, exercises, optional cardio metadata, and nullable set values. It rebuilds the existing workout editor only after the user taps the Chat artifact review action.
+Workout Drafts are transportable, editable proposals, not official records. The current public payload carries `workout_draft.v3`, a required resolved date, record name/notes, exercises, optional cardio metadata, and nullable set values. Every exercise also carries an approved stable `exercise_key`, `exercise_source`, `definition_hash`, and exact load/reps/set modes copied from server-approved definition Context. An unresolved or mismatched definition cannot create an enabled review action. Historical v1/v2 artifacts remain readable through their compatibility path.
 
 The exact schema, best-effort null behavior, one-turn clarification cap, type/range checks, provider mapping, and invalid-output handling are owned by `docs/en/AIOutputContract.md` / `docs/zh/AIOutputContract.md`.
 
@@ -721,7 +742,7 @@ Current Add Food and AI Chat policy:
 Limits for the current image paths:
 
 - `ai-food-photo-analyze`: text description plus 0 to 3 optional images per request
-- `ai-chat-route`: 1 to 3 images per Qwen multimodal request
+- `ai-chat-route`: 1 to 3 images per explicitly selected OpenAI or Qwen multimodal request
 - hard reject any compressed image > 4 MB
 - supported MIME types: `image/jpeg`, `image/png`, `image/webp`
 - recommended longest edge: 1600 px

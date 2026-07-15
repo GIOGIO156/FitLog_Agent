@@ -69,6 +69,7 @@ References 不用于：
 | REF-AI-07 | Contextual retrieval | Anthropic engineering note on Contextual Retrieval. | 支持在检索前为 chunks 增加文档级上下文。 | 供应商工程建议，不保证正确性；FitLog 的上下文必须保持确定性或经过审查。 |
 | REF-AI-08 | OpenAI Structured Outputs | [OpenAI Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs)。 | 支持 OpenAI Responses adapter 使用严格 provider-side JSON Schema generation。 | Structured output 不能替代 FitLog workflow、semantic、safety 和 write validation；实现时仍需核验配置模型支持。 |
 | REF-AI-09 | Qwen JSON Mode | [阿里云百炼 Structured output](https://help.aliyun.com/en/model-studio/qwen-structured-output)。 | 支持 Qwen JSON Mode 要求以及下游 schema validation/retry 指南。 | JSON Mode 只提供 JSON-oriented output，不证明 FitLog schema 或业务正确；支持模型和 thinking-mode 限制需要重新核验。 |
+| REF-AI-10 | Qwen text embeddings | [Alibaba Cloud Model Studio Embedding](https://www.alibabacloud.com/help/en/model-studio/embedding) 与 [Singapore synchronous Embedding API](https://www.alibabacloud.com/help/en/model-studio/text-embedding-synchronous-api)。 | 定义 Document RAG 使用的 `text-embedding-v4` compatible endpoint、dimensions 和 request batching。 | Provider compatibility 不决定 FitLog chunking、ranking、evidence quality 或 privacy boundary；这些仍是经过本地测试的设计决策。 |
 
 FitLog-specific AI 产品边界：
 

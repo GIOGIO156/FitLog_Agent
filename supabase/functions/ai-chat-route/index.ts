@@ -23,7 +23,10 @@ import {
   stringField,
 } from "./contracts.ts";
 import type { Phase5Evidence } from "./phase5_types.ts";
-import { prependMealDecisionImageTip } from "./prompt_builder.ts";
+import {
+  phase5PromptContext,
+  prependMealDecisionImageTip,
+} from "./prompt_builder.ts";
 import {
   type ProviderCompletion,
   ProviderError,
@@ -37,10 +40,28 @@ import {
 import { routeGatewayWorkflow } from "./workflow_router.ts";
 import { resolveRecordDate } from "./record_date_resolver.ts";
 import { draftConfirmationMessage } from "./draft_response_builder.ts";
+import {
+  type PipelineRuntimeConfig,
+  readPipelineRuntimeConfig,
+} from "./pipeline_config.ts";
+import {
+  buildApprovedTaskPlan,
+  planToLegacyRoute,
+} from "./planning/task_planner.ts";
+import {
+  type QueryEmbeddingConfig,
+  qwenEmbeddingEndpoint,
+} from "./rag/query_embedding.ts";
+import {
+  createModelTaskPlanner,
+  createRetrievalRewritePlanner,
+} from "./planning/model_planners.ts";
+import { explicitFoodFactsFromText } from "../_shared/food_capability.ts";
 
 const phase5PromptVersion = "phase5_rag_readonly_v1";
 const phase5SchemaVersion = "ai_chat_response.v2";
 const minimumCorrectionBudgetMs = 1500;
+const edgeRuntimeStartedAt = Date.now();
 
 interface OutputContractTelemetry {
   expectedOutput: "auto" | "text" | "food_draft" | "workout_draft";
@@ -55,6 +76,21 @@ interface OutputContractTelemetry {
     | "completed"
     | "refusal"
     | "incomplete";
+}
+
+interface RuntimeStageTelemetry {
+  edgeRuntimeUptimeMsAtStart: number;
+  environmentLatencyMs: number;
+  authLatencyMs: number;
+  requestParseLatencyMs: number;
+  subscriptionDeviceLatencyMs: number;
+  plannerLatencyMs: number;
+  retrievalLatencyMs: number;
+  providerFirstPassLatencyMs: number;
+  firstValidationLatencyMs: number;
+  correctionLatencyMs: number;
+  correctionValidationLatencyMs: number;
+  persistenceLatencyMs: number;
 }
 
 const corsHeaders = {
@@ -97,20 +133,39 @@ Deno.serve(async (request) => {
   let accountId: string | null = null;
   let parsedRequest: GatewayRequest | null = null;
   let outputTelemetry: OutputContractTelemetry = defaultOutputTelemetry();
+  const stageTelemetry: RuntimeStageTelemetry = {
+    edgeRuntimeUptimeMsAtStart: startedAt - edgeRuntimeStartedAt,
+    environmentLatencyMs: 0,
+    authLatencyMs: 0,
+    requestParseLatencyMs: 0,
+    subscriptionDeviceLatencyMs: 0,
+    plannerLatencyMs: 0,
+    retrievalLatencyMs: 0,
+    providerFirstPassLatencyMs: 0,
+    firstValidationLatencyMs: 0,
+    correctionLatencyMs: 0,
+    correctionValidationLatencyMs: 0,
+    persistenceLatencyMs: 0,
+  };
 
   try {
+    const environmentStartedAt = Date.now();
     env = readGatewayEnv();
+    stageTelemetry.environmentLatencyMs = Date.now() - environmentStartedAt;
     const token = extractBearerToken(request.headers.get("authorization"));
     if (token === null) {
       throw new GatewayHttpError("auth_required", 401);
     }
 
+    const authStartedAt = Date.now();
     accountId = await verifyAccount(env, token);
+    stageTelemetry.authLatencyMs = Date.now() - authStartedAt;
     const sessionId = extractSessionIdFromAccessToken(token);
     if (sessionId === null) {
       throw new GatewayHttpError("device_replaced", 409);
     }
 
+    const requestParseStartedAt = Date.now();
     let body: unknown;
     try {
       body = await request.json();
@@ -118,25 +173,60 @@ Deno.serve(async (request) => {
       throw new GatewayRequestError("request_schema_mismatch");
     }
     parsedRequest = parseGatewayRequest(body);
+    stageTelemetry.requestParseLatencyMs = Date.now() - requestParseStartedAt;
 
-    await checkSubscription(env, accountId);
-    await assertActiveDevice(env, token, parsedRequest.deviceId, sessionId);
+    const subscriptionDeviceStartedAt = Date.now();
+    await Promise.all([
+      checkSubscription(env, accountId),
+      assertActiveDevice(env, token, parsedRequest.deviceId, sessionId),
+    ]);
+    stageTelemetry.subscriptionDeviceLatencyMs = Date.now() -
+      subscriptionDeviceStartedAt;
 
-    const route = routeGatewayWorkflow(parsedRequest);
+    const providerConfig = readProviderRuntimeConfig();
+    const modelTaskPlanner = createModelTaskPlanner(
+      parsedRequest.modelChoice,
+      providerConfig,
+    );
+    const plannerStartedAt = Date.now();
+    const taskPlan = env.pipeline.contextPipelineVersion === "rag_foundation_v1"
+      ? await buildApprovedTaskPlan(parsedRequest, modelTaskPlanner)
+      : null;
+    stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
+    const route = taskPlan === null
+      ? routeGatewayWorkflow(parsedRequest)
+      : planToLegacyRoute(taskPlan);
+    const retrievalStartedAt = Date.now();
     parsedRequest = {
       ...parsedRequest,
       workflowType: route.workflow,
+      taskPlan,
     };
     parsedRequest = {
       ...parsedRequest,
       phase5Context: await buildPhase5Context(
-        env,
+        {
+          ...env,
+          retrievalRewritePlanner: createRetrievalRewritePlanner(
+            parsedRequest,
+            providerConfig,
+          ),
+        },
         accountId,
         parsedRequest,
         route,
       ),
     };
-    const outputSelection = resolveOutputSelection(parsedRequest);
+    stageTelemetry.retrievalLatencyMs = Date.now() - retrievalStartedAt;
+    const outputSelection = taskPlan === null
+      ? resolveOutputSelection(parsedRequest)
+      : {
+        expectedOutput: taskPlan.expected_output,
+        source: taskPlan.source === "model"
+          ? "model" as const
+          : "deterministic" as const,
+        reason: taskPlan.reasons[0] ?? "task_plan",
+      };
     const dateResolution = resolveRecordDate(
       parsedRequest.messageText,
       parsedRequest.selectedDate,
@@ -153,6 +243,63 @@ Deno.serve(async (request) => {
       intentResolutionSource: outputSelection.source,
     };
 
+    if (taskPlan?.requires_clarification === true) {
+      outputTelemetry = {
+        ...outputTelemetry,
+        selectedOutputType: "clarification",
+        firstPassValidationStatus: "passed",
+        finalValidationStatus: "passed",
+      };
+      const assistantText = plannerClarificationMessage(parsedRequest.language);
+      const evidence = evidenceFromRequest(parsedRequest, "read_only");
+      const persistenceStartedAt = Date.now();
+      const persisted = await recordChatTurn(
+        env,
+        accountId,
+        parsedRequest,
+        providerIdForChoice(parsedRequest.modelChoice) ?? "qwen",
+        "task_plan.v1",
+        assistantText,
+        finalAnswerSnapshot(null, parsedRequest, evidence),
+        Date.now() - startedAt,
+      );
+      stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
+      await updateDebugSummary(
+        env,
+        persisted.debugSummaryId,
+        persisted.requestId,
+        parsedRequest,
+        evidence,
+        providerIdForChoice(parsedRequest.modelChoice) ?? "qwen",
+        stageTelemetry,
+        outputTelemetry,
+      );
+      await updateOutputContractTelemetry(
+        env,
+        persisted.requestId,
+        outputTelemetry,
+      );
+      return jsonResponse(
+        gatewayResponse({
+          sessionId: persisted.sessionId,
+          assistantMessageId: persisted.assistantMessageId,
+          modelChoice: parsedRequest.modelChoice,
+          modelProvider: null,
+          messageText: assistantText,
+          language: parsedRequest.language,
+          workflow: parsedRequest.workflowType,
+          outputType: "clarification",
+          draft: null,
+          needsClarification: true,
+          clarificationQuestions: [assistantText],
+          debugSummaryId: persisted.debugSummaryId,
+          evidence,
+          error: null,
+        }),
+        200,
+      );
+    }
+
     if (route.safety_flags.length > 0) {
       outputTelemetry = {
         ...outputTelemetry,
@@ -161,6 +308,7 @@ Deno.serve(async (request) => {
       };
       const assistantText = readOnlyBoundaryMessage(parsedRequest.language);
       const evidence = evidenceFromRequest(parsedRequest, "blocked");
+      const persistenceStartedAt = Date.now();
       const persisted = await recordChatTurn(
         env,
         accountId,
@@ -171,12 +319,16 @@ Deno.serve(async (request) => {
         finalAnswerSnapshot(null, parsedRequest, evidence),
         Date.now() - startedAt,
       );
+      stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
       await updateDebugSummary(
         env,
         persisted.debugSummaryId,
+        persisted.requestId,
         parsedRequest,
         evidence,
         providerIdForChoice(parsedRequest.modelChoice) ?? "openai",
+        stageTelemetry,
+        outputTelemetry,
       );
       await updateOutputContractTelemetry(
         env,
@@ -205,15 +357,21 @@ Deno.serve(async (request) => {
       );
     }
 
-    const providerConfig = readProviderRuntimeConfig();
     const provider = providerForChoice(
       parsedRequest.modelChoice,
       providerConfig,
     );
     const deadlineAt = startedAt + providerConfig.timeoutMs;
-    let completion = await provider.generateText(parsedRequest, {
-      timeoutMs: remainingDeadline(deadlineAt),
-    });
+    const providerFirstPassStartedAt = Date.now();
+    let completion: ProviderCompletion;
+    try {
+      completion = await provider.generateText(parsedRequest, {
+        timeoutMs: remainingDeadline(deadlineAt),
+      });
+    } finally {
+      stageTelemetry.providerFirstPassLatencyMs = Date.now() -
+        providerFirstPassStartedAt;
+    }
     outputTelemetry = {
       ...outputTelemetry,
       providerCompletionStatus: completion.status,
@@ -221,6 +379,7 @@ Deno.serve(async (request) => {
     assertCompleted(completion);
 
     let parsedProvider;
+    const firstValidationStartedAt = Date.now();
     try {
       parsedProvider = parseProviderGatewayBody(
         completion.content,
@@ -233,6 +392,8 @@ Deno.serve(async (request) => {
         finalValidationStatus: "passed",
       };
     } catch (error) {
+      stageTelemetry.firstValidationLatencyMs = Date.now() -
+        firstValidationStartedAt;
       if (!(error instanceof OutputContractError)) throw error;
       outputTelemetry = {
         ...outputTelemetry,
@@ -248,18 +409,24 @@ Deno.serve(async (request) => {
         throw error;
       }
       outputTelemetry = { ...outputTelemetry, correctionAttemptCount: 1 };
-      completion = await provider.generateText(parsedRequest, {
-        timeoutMs: remaining,
-        correction: {
-          previousOutput: completion.content,
-          issues: error.issues,
-        },
-      });
+      const correctionStartedAt = Date.now();
+      try {
+        completion = await provider.generateText(parsedRequest, {
+          timeoutMs: remaining,
+          correction: {
+            previousOutput: completion.content,
+            issues: error.issues,
+          },
+        });
+      } finally {
+        stageTelemetry.correctionLatencyMs = Date.now() - correctionStartedAt;
+      }
       outputTelemetry = {
         ...outputTelemetry,
         providerCompletionStatus: completion.status,
       };
       assertCompleted(completion);
+      const correctionValidationStartedAt = Date.now();
       try {
         parsedProvider = parseProviderGatewayBody(
           completion.content,
@@ -270,7 +437,11 @@ Deno.serve(async (request) => {
           selectedOutputType: parsedProvider.outputType,
           finalValidationStatus: "passed",
         };
+        stageTelemetry.correctionValidationLatencyMs = Date.now() -
+          correctionValidationStartedAt;
       } catch (correctionError) {
+        stageTelemetry.correctionValidationLatencyMs = Date.now() -
+          correctionValidationStartedAt;
         outputTelemetry = {
           ...outputTelemetry,
           finalValidationStatus: "failed",
@@ -280,6 +451,10 @@ Deno.serve(async (request) => {
         };
         throw correctionError;
       }
+    }
+    if (stageTelemetry.firstValidationLatencyMs === 0) {
+      stageTelemetry.firstValidationLatencyMs = Date.now() -
+        firstValidationStartedAt;
     }
     const providerGuard = guardProviderOutput(
       parsedProvider.messageText,
@@ -296,6 +471,7 @@ Deno.serve(async (request) => {
       draft === null ? "read_only" : "artifact_returned",
       providerGuard.safetyFlag,
     );
+    const persistenceStartedAt = Date.now();
     const persisted = await recordChatTurn(
       env,
       accountId,
@@ -306,12 +482,16 @@ Deno.serve(async (request) => {
       finalAnswerSnapshot(draft, parsedRequest, evidence),
       Date.now() - startedAt,
     );
+    stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
     await updateDebugSummary(
       env,
       persisted.debugSummaryId,
+      persisted.requestId,
       parsedRequest,
       evidence,
       provider.providerId,
+      stageTelemetry,
+      outputTelemetry,
     );
     await updateOutputContractTelemetry(
       env,
@@ -356,6 +536,7 @@ Deno.serve(async (request) => {
         status: logStatusForCode(gatewayError.code),
         latencyMs: Date.now() - startedAt,
         telemetry: outputTelemetry,
+        stageTelemetry,
       });
     }
 
@@ -380,13 +561,15 @@ interface GatewayEnv {
   supabaseUrl: string;
   supabaseAnonKey: string;
   supabaseServiceRoleKey: string;
+  pipeline: PipelineRuntimeConfig;
+  documentEmbedding: QueryEmbeddingConfig | null;
 }
 
 function draftForClient(
   draft: GatewayDraft | null,
   request: GatewayRequest,
 ): GatewayDraft | Record<string, unknown> | null {
-  if (draft === null || request.clientDraftSchemaVersion === "v2") {
+  if (draft === null || request.clientDraftSchemaVersion === "v3") {
     return draft;
   }
   const legacy = { ...draft } as Record<string, unknown>;
@@ -394,7 +577,18 @@ function draftForClient(
     legacy.schema_version = "food_draft.v1";
     delete legacy.date;
   } else {
-    legacy.schema_version = "workout_draft.v1";
+    legacy.schema_version = request.clientDraftSchemaVersion === "v2"
+      ? "workout_draft.v2"
+      : "workout_draft.v1";
+    legacy.exercises = draft.exercises.map((exercise) => {
+      const value = { ...exercise } as Record<string, unknown>;
+      delete value.exercise_source;
+      delete value.definition_hash;
+      delete value.load_input_mode;
+      delete value.reps_input_mode;
+      delete value.set_metric_type;
+      return value;
+    });
   }
   return legacy;
 }
@@ -415,7 +609,26 @@ function readGatewayEnv(): GatewayEnv {
     supabaseUrl: supabaseUrl.replace(/\/+$/, ""),
     supabaseAnonKey,
     supabaseServiceRoleKey,
+    pipeline: readPipelineRuntimeConfig(),
+    documentEmbedding: documentEmbeddingConfig(),
   };
+}
+
+function documentEmbeddingConfig(): QueryEmbeddingConfig | null {
+  const apiKey = Deno.env.get("FITLOG_QWEN_API_KEY")?.trim() ?? "";
+  const baseUrl = Deno.env.get("FITLOG_QWEN_BASE_URL")?.trim() ?? "";
+  const model = Deno.env.get("FITLOG_DOCUMENT_EMBEDDING_MODEL")?.trim() ?? "";
+  if (apiKey === "" || baseUrl === "" || model === "") return null;
+  try {
+    return {
+      endpoint: qwenEmbeddingEndpoint(baseUrl),
+      apiKey,
+      model,
+      timeoutMs: 5000,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function verifyAccount(env: GatewayEnv, token: string): Promise<string> {
@@ -561,14 +774,14 @@ function finalAnswerSnapshot(
       }
       : null;
   }
-  const isWorkoutDraft = draft.schema_version === "workout_draft.v2";
+  const isWorkoutDraft = draft.schema_version === "workout_draft.v3";
   return {
     schema_version: "ai_chat_artifacts.v2",
     artifacts: [
       isWorkoutDraft
         ? {
           type: "workout_draft",
-          schema_version: "workout_draft.v2",
+          schema_version: "workout_draft.v3",
           record_name: draft.record_name,
           exercise_count: draft.exercises.length,
           draft,
@@ -645,6 +858,14 @@ function providerClaimedWrite(value: string): boolean {
 
 function validationIssueCodes(issues: OutputValidationIssue[]): string[] {
   return unique(issues.map((item) => {
+    if (
+      /approved_evidence|matching_evidence|missing_dimension/i.test(item.reason)
+    ) {
+      return `grounding_${item.reason}`;
+    }
+    if (/response_language|explicit_fact|macro_energy/i.test(item.reason)) {
+      return `semantic_${item.reason}`;
+    }
     if (item.path === "$" && /json|object/i.test(item.reason)) {
       return "json_syntax_or_root";
     }
@@ -670,12 +891,21 @@ function readOnlyBoundaryMessage(language: "zh" | "en"): string {
     : "I cannot directly write records, delete records, change goals, or apply strategies. Use the normal confirmed UI for those actions; I can explain what to check and what to do next.";
 }
 
+function plannerClarificationMessage(language: "zh" | "en"): string {
+  return language === "zh"
+    ? "请说明你希望我回答问题、估算并生成食物草稿，还是生成训练草稿。"
+    : "Please say whether you want an answer, a food estimate and draft, or a workout draft.";
+}
+
 async function updateDebugSummary(
   env: GatewayEnv,
   debugSummaryId: string,
+  requestId: string,
   request: GatewayRequest,
   evidence: Phase5Evidence,
   providerId: string,
+  stageTelemetry: RuntimeStageTelemetry,
+  outputTelemetry: OutputContractTelemetry,
 ): Promise<void> {
   const context = request.phase5Context;
   try {
@@ -715,6 +945,76 @@ async function updateDebugSummary(
       });
       return;
     }
+    const retrieval = context?.retrieval_debug;
+    const taskPlan = request.taskPlan;
+    const foodUnderstanding = explicitFoodFactsFromText(request.messageText);
+    const logResponse = await fetch(
+      `${env.supabaseUrl}/rest/v1/ai_request_logs?request_id=eq.${requestId}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...serviceHeaders(env),
+          prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          surface: "ai_chat",
+          capability: request.expectedOutput,
+          provider_adapter_version: "provider_adapters.v2",
+          policy_version: "rag_context_policy.v1",
+          target_response_language: request.language,
+          language_validation_status: outputTelemetry.finalValidationStatus,
+          task_plan_version: taskPlan?.schema_version ?? null,
+          task_plan_source: taskPlan?.source ?? null,
+          task_plan_confidence: taskPlan?.confidence ?? null,
+          planned_workflow: taskPlan?.planned_workflow ?? request.workflowType,
+          requested_context_types_json: taskPlan?.requested_context ?? [],
+          approved_context_types_json: taskPlan?.approved_context ?? [],
+          rejected_context_types_json: taskPlan?.rejected_context ?? [],
+          query_language_profile: retrieval?.query_language_profile ?? null,
+          canonical_concept_ids_json: retrieval?.canonical_concept_ids ?? [],
+          corpus_id: retrieval?.corpus_id ?? null,
+          corpus_build_id: retrieval?.corpus_build_id ?? null,
+          embedding_model: retrieval?.embedding_model ?? null,
+          reranker_version: retrieval?.reranker_version ?? null,
+          retrieval_branch_counts_json: retrieval?.branch_hits ?? {},
+          retrieval_final_hit_count: retrieval?.final_hit_count ?? 0,
+          retrieval_coverage_status: retrieval?.coverage_status ?? null,
+          retrieval_missing_dimensions_json: retrieval?.missing_dimensions ??
+            [],
+          retrieval_retry_reason: retrieval?.retry_reason ?? null,
+          retrieval_retry_count: retrieval?.retry_count ?? 0,
+          retrieval_retry_gain: retrieval?.retry_gain ?? false,
+          retrieval_issue_codes_json: retrieval?.issue_codes ?? [],
+          planner_latency_ms: stageTelemetry.plannerLatencyMs,
+          retrieval_latency_ms: stageTelemetry.retrievalLatencyMs,
+          correction_latency_ms: stageTelemetry.correctionLatencyMs,
+          latency_breakdown_json: latencyBreakdownJson(stageTelemetry, request),
+          prompt_context_bytes: new TextEncoder().encode(
+            phase5PromptContext(request),
+          ).length,
+          grounding_validation_status: taskPlan !== null &&
+              taskPlan !== undefined && request.expectedOutput === "text"
+            ? outputTelemetry.finalValidationStatus
+            : "not_applicable",
+          grounding_issue_codes_json: outputTelemetry.validationIssueCodes
+            .filter((code) =>
+              code.includes("ground") || code.includes("evidence")
+            ),
+          food_fact_count: foodUnderstanding.facts.length,
+          food_conflict_count: foodUnderstanding.conflict_count,
+          semantic_validation_status: request.expectedOutput === "food_draft"
+            ? outputTelemetry.finalValidationStatus
+            : "not_applicable",
+          semantic_issue_codes_json: outputTelemetry.validationIssueCodes,
+          final_action: evidence.user_final_action,
+        }),
+      },
+    );
+    if (!logResponse.ok) {
+      console.warn("rag_request_log_patch_failed", {
+        status: logResponse.status,
+      });
+    }
   } catch (error) {
     console.warn("phase5_debug_summary_patch_error", {
       message: error instanceof Error ? error.message : String(error),
@@ -732,10 +1032,13 @@ async function writeGatewayFailureLog(
     status: AiGatewayStatus;
     latencyMs: number;
     telemetry: OutputContractTelemetry;
+    stageTelemetry: RuntimeStageTelemetry;
   },
 ): Promise<void> {
   const requestId = crypto.randomUUID();
   const request = params.request;
+  const retrieval = request?.phase5Context?.retrieval_debug;
+  const failurePersistenceStartedAt = Date.now();
   const logResponse = await fetch(
     `${env.supabaseUrl}/rest/v1/ai_request_logs`,
     {
@@ -772,6 +1075,46 @@ async function writeGatewayFailureLog(
         correction_attempt_count: params.telemetry.correctionAttemptCount,
         final_validation_status: params.telemetry.finalValidationStatus,
         provider_completion_status: params.telemetry.providerCompletionStatus,
+        surface: "ai_chat",
+        capability: request?.expectedOutput ?? "unknown",
+        provider_adapter_version: "provider_adapters.v2",
+        policy_version: "rag_context_policy.v1",
+        target_response_language: request?.language ?? null,
+        task_plan_version: request?.taskPlan?.schema_version ?? null,
+        task_plan_source: request?.taskPlan?.source ?? null,
+        task_plan_confidence: request?.taskPlan?.confidence ?? null,
+        planned_workflow: request?.taskPlan?.planned_workflow ??
+          request?.workflowType ?? null,
+        requested_context_types_json: request?.taskPlan?.requested_context ??
+          [],
+        approved_context_types_json: request?.taskPlan?.approved_context ?? [],
+        rejected_context_types_json: request?.taskPlan?.rejected_context ?? [],
+        query_language_profile: retrieval?.query_language_profile ?? null,
+        canonical_concept_ids_json: retrieval?.canonical_concept_ids ?? [],
+        corpus_id: retrieval?.corpus_id ?? null,
+        corpus_build_id: retrieval?.corpus_build_id ?? null,
+        embedding_model: retrieval?.embedding_model ?? null,
+        reranker_version: retrieval?.reranker_version ?? null,
+        retrieval_branch_counts_json: retrieval?.branch_hits ?? {},
+        retrieval_final_hit_count: retrieval?.final_hit_count ?? 0,
+        retrieval_coverage_status: retrieval?.coverage_status ?? null,
+        retrieval_missing_dimensions_json: retrieval?.missing_dimensions ?? [],
+        retrieval_retry_reason: retrieval?.retry_reason ?? null,
+        retrieval_retry_count: retrieval?.retry_count ?? 0,
+        retrieval_retry_gain: retrieval?.retry_gain ?? false,
+        retrieval_issue_codes_json: retrieval?.issue_codes ?? [],
+        semantic_validation_status: request?.expectedOutput === "food_draft"
+          ? params.telemetry.finalValidationStatus
+          : "not_applicable",
+        semantic_issue_codes_json: params.telemetry.validationIssueCodes,
+        final_action: "none",
+        planner_latency_ms: params.stageTelemetry.plannerLatencyMs,
+        retrieval_latency_ms: params.stageTelemetry.retrievalLatencyMs,
+        correction_latency_ms: params.stageTelemetry.correctionLatencyMs,
+        latency_breakdown_json: latencyBreakdownJson(
+          params.stageTelemetry,
+          request,
+        ),
       }),
     },
   );
@@ -779,6 +1122,25 @@ async function writeGatewayFailureLog(
   if (!logResponse.ok) {
     return;
   }
+
+  params.stageTelemetry.persistenceLatencyMs = Date.now() -
+    failurePersistenceStartedAt;
+  await fetch(
+    `${env.supabaseUrl}/rest/v1/ai_request_logs?request_id=eq.${requestId}`,
+    {
+      method: "PATCH",
+      headers: {
+        ...serviceHeaders(env),
+        prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        latency_breakdown_json: latencyBreakdownJson(
+          params.stageTelemetry,
+          request,
+        ),
+      }),
+    },
+  );
 
   await fetch(`${env.supabaseUrl}/rest/v1/ai_debug_summaries`, {
     method: "POST",
@@ -802,6 +1164,55 @@ async function writeGatewayFailureLog(
       user_final_action: params.status === "blocked" ? "blocked" : "none",
     }),
   });
+}
+
+function latencyBreakdownJson(
+  telemetry: RuntimeStageTelemetry,
+  request: GatewayRequest | null,
+): Record<string, unknown> {
+  const retrieval = request?.phase5Context?.retrieval_debug?.latency_breakdown;
+  const retrievalDebug = request?.phase5Context?.retrieval_debug;
+  const initial = retrieval?.attempts[0];
+  const retry = retrieval?.attempts[1];
+  return {
+    schema_version: "ai_latency_breakdown.v1",
+    edge_runtime_uptime_ms_at_start: telemetry.edgeRuntimeUptimeMsAtStart,
+    environment_ms: telemetry.environmentLatencyMs,
+    auth_ms: telemetry.authLatencyMs,
+    request_parse_ms: telemetry.requestParseLatencyMs,
+    subscription_device_ms: telemetry.subscriptionDeviceLatencyMs,
+    planner_ms: telemetry.plannerLatencyMs,
+    context_build_ms: telemetry.retrievalLatencyMs,
+    first_retrieval_coverage_status: retrievalDebug?.first_coverage_status ??
+      "not_requested",
+    first_missing_dimension_count:
+      retrievalDebug?.first_missing_dimensions.length ?? 0,
+    retrieval_attempt_count: retrieval?.attempts.length ?? 0,
+    retry_action: retrievalDebug?.retry_action ?? "not_requested",
+    retry_query_changed: retrievalDebug?.retry_query_changed ?? false,
+    final_retrieval_coverage_status: retrievalDebug?.coverage_status ??
+      "not_requested",
+    initial_query_normalization_ms: initial?.normalization_ms ?? null,
+    initial_embedding_ms: initial?.embedding_ms ?? null,
+    initial_embedding_status: initial?.embedding_status ?? "not_requested",
+    initial_embedding_input_chars: initial?.embedding_input_chars ?? 0,
+    initial_query_variant_count: initial?.query_variant_count ?? 0,
+    initial_lexical_candidate_rpc_ms: initial?.lexical_candidate_rpc_ms ?? null,
+    initial_hybrid_rpc_ms: initial?.hybrid_rpc_ms ?? null,
+    initial_reranker_ms: initial?.reranker_ms ?? null,
+    rewrite_planner_ms: retrieval?.rewrite_planner_ms ?? null,
+    retry_query_normalization_ms: retry?.normalization_ms ?? null,
+    retry_embedding_ms: retry?.embedding_ms ?? null,
+    retry_embedding_status: retry?.embedding_status ?? "not_requested",
+    retry_lexical_candidate_rpc_ms: retry?.lexical_candidate_rpc_ms ?? null,
+    retry_hybrid_rpc_ms: retry?.hybrid_rpc_ms ?? null,
+    retry_reranker_ms: retry?.reranker_ms ?? null,
+    provider_first_pass_ms: telemetry.providerFirstPassLatencyMs,
+    provider_first_validation_ms: telemetry.firstValidationLatencyMs,
+    provider_correction_ms: telemetry.correctionLatencyMs,
+    provider_correction_validation_ms: telemetry.correctionValidationLatencyMs,
+    persistence_ms: telemetry.persistenceLatencyMs,
+  };
 }
 
 function toGatewayHttpError(error: unknown): GatewayHttpError {

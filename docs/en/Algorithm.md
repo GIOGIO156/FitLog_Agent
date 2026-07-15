@@ -308,6 +308,19 @@ Strength uses volume-driven net calories:
 10. Select internal movement profile coefficients from the saved snapshot or definition.
 11. Use duration only in a capped recovery-density modifier, not as linear calorie accumulation.
 
+Worked input-normalization example:
+
+```text
+exercise_key = bulgarian_split_squat
+input_reps = 12
+reps_input_mode = per_side_reps
+display value = 12 per side
+calculation_reps = 12 * 2 = 24
+setVolumeKg = effectiveCalculationLoadKg * 24
+```
+
+Load and repetition modes are normalized independently. If an exercise uses both `per_side_load` and `per_side_reps`, each dimension follows its own rule; FitLog does not double every unilateral movement's load and reps by assumption.
+
 ```text
 activeLiftingKcal =
   totalVolumeKg * strengthCoefficient * bodyFactor * intensityFactor
@@ -409,7 +422,7 @@ Algorithmic flow:
 - AI cannot silently modify official profile, target, strategy, food, workout, or weight records.
 - AI food estimation is a draft workflow until user confirmation.
 - User-data RAG uses cloud structured summaries, not open-ended raw database access or complete raw history as default context.
-- Current Document RAG uses keyword, full-text, trigram, and term-overlap retrieval over app documents; any future vector/semantic retrieval remains a separately evaluated document-only enhancement.
+- Document RAG combines exact/phrase, versioned bilingual term, full-text, trigram, and compatible stable-document embedding branches, then applies bounded fusion and reranking.
 - User business-data vector databases are out of scope for V1.
 
 ## Code References

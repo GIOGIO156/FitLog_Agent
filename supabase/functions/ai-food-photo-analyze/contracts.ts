@@ -1,8 +1,13 @@
 import {
+  foodAnalysisEnvelopeJsonSchema,
   type FoodDraft,
   type OutputValidationIssue,
   parseFoodAnalysisEnvelope,
 } from "../_shared/ai_output_contract.ts";
+import {
+  buildFoodCapabilityRequest,
+  explicitFoodFactsFromText,
+} from "../_shared/food_capability.ts";
 
 export type {
   FoodDraft,
@@ -33,7 +38,7 @@ export interface PhotoAnalysisImage {
 export interface PhotoAnalysisRequest {
   images: PhotoAnalysisImage[];
   language: PhotoLanguage;
-  modelChoice: "qwen";
+  modelChoice: "chatgpt" | "qwen";
   deviceId: string;
   selectedDate: string;
   schemaVersion: "food_draft.v1" | "food_draft.v2";
@@ -87,7 +92,8 @@ export function parsePhotoAnalysisRequest(
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
-  if (stringOrEmpty(body.model_choice).trim() !== "qwen") {
+  const modelChoice = stringOrEmpty(body.model_choice).trim();
+  if (modelChoice !== "qwen" && modelChoice !== "chatgpt") {
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
 
@@ -108,7 +114,7 @@ export function parsePhotoAnalysisRequest(
   return {
     images,
     language,
-    modelChoice: "qwen",
+    modelChoice,
     deviceId,
     selectedDate,
     schemaVersion: requestedSchemaVersion,
@@ -129,6 +135,7 @@ export function buildQwenVisionRequestBody(params: {
   return {
     model: params.model,
     enable_thinking: false,
+    max_tokens: 1200,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -147,7 +154,7 @@ export function buildQwenVisionRequestBody(params: {
               },
             })),
           ]
-          : correctionPrompt(correction),
+          : correctionPrompt(correction, request),
       },
     ],
   };
@@ -157,6 +164,82 @@ export interface QwenFoodCompletion {
   status: "completed" | "refusal" | "incomplete";
   content: string;
   finishReason: string | null;
+}
+
+export type FoodProviderCompletion = QwenFoodCompletion;
+
+export function buildOpenAiVisionRequestBody(params: {
+  request: PhotoAnalysisRequest;
+  model: string;
+  correction?: { previousOutput: string; issues: OutputValidationIssue[] };
+}): Record<string, unknown> {
+  const content = params.correction === undefined
+    ? [
+      { type: "input_text", text: userPrompt(params.request) },
+      ...params.request.images.map((image) => ({
+        type: "input_image",
+        image_url: `data:${image.mimeType};base64,${image.base64Data}`,
+      })),
+    ]
+    : [{
+      type: "input_text",
+      text: correctionPrompt(params.correction, params.request),
+    }];
+  return {
+    model: params.model,
+    instructions: systemPrompt(params.request.language),
+    input: [{ role: "user", content }],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "fitlog_food_analysis_envelope",
+        strict: true,
+        schema: foodAnalysisEnvelopeJsonSchema,
+      },
+    },
+  };
+}
+
+export function extractOpenAiVisionCompletion(
+  body: unknown,
+): FoodProviderCompletion {
+  const map = recordOrThrow(body);
+  if (map.status === "incomplete") {
+    return {
+      status: "incomplete",
+      content: typeof map.output_text === "string" ? map.output_text : "",
+      finishReason: "incomplete",
+    };
+  }
+  if (typeof map.output_text === "string" && map.output_text.trim() !== "") {
+    return {
+      status: "completed",
+      content: map.output_text.trim(),
+      finishReason: "stop",
+    };
+  }
+  const output = map.output;
+  if (Array.isArray(output)) {
+    for (const item of output) {
+      const record = recordOrThrow(item);
+      const content = record.content;
+      if (!Array.isArray(content)) continue;
+      for (const part of content) {
+        const value = recordOrThrow(part);
+        if (value.type === "refusal") {
+          return { status: "refusal", content: "", finishReason: "refusal" };
+        }
+        if (typeof value.text === "string" && value.text.trim() !== "") {
+          return {
+            status: "completed",
+            content: value.text.trim(),
+            finishReason: "stop",
+          };
+        }
+      }
+    }
+  }
+  throw new Error("provider_failure");
 }
 
 export function extractQwenCompletion(body: unknown): QwenFoodCompletion {
@@ -209,6 +292,7 @@ export function parseProviderFoodDraftBody(
 }
 
 export function photoGatewayResponse(params: {
+  modelChoice?: "chatgpt" | "qwen" | null;
   modelProvider?: string | null;
   draft?: FoodDraft | Record<string, unknown> | null;
   needsClarification?: boolean;
@@ -217,8 +301,8 @@ export function photoGatewayResponse(params: {
   error?: { code: PhotoGatewayErrorCode; message: string } | null;
 }): Record<string, unknown> {
   return {
-    model_choice: "qwen",
-    model_provider: params.modelProvider ?? "qwen",
+    model_choice: params.modelChoice ?? "qwen",
+    model_provider: params.modelProvider ?? params.modelChoice ?? "qwen",
     draft: params.draft ?? null,
     needs_clarification: params.needsClarification ?? false,
     clarification_questions: params.clarificationQuestions ?? [],
@@ -318,6 +402,11 @@ function userPrompt(request: PhotoAnalysisRequest): string {
     "When items is non-empty, item values are totals for that item portion, not per-100g values; draft meal totals must equal the sum of items.",
     clarificationInstruction,
     "Use finite non-negative numbers. Estimate honestly and keep notes brief.",
+    `Food capability request: ${
+      JSON.stringify(
+        buildFoodCapabilityRequest(request.userNote ?? "", request.language),
+      )
+    }. Preserve higher-priority facts and use image/model estimates only for missing fields.`,
     `Image count: ${request.images.length}`,
     `Selected date: ${request.selectedDate}`,
     "Copy the selected date exactly into draft.date.",
@@ -337,7 +426,7 @@ function isValidDateKey(value: string): boolean {
 function correctionPrompt(params: {
   previousOutput: string;
   issues: OutputValidationIssue[];
-}): string {
+}, request: PhotoAnalysisRequest): string {
   const issues = params.issues
     .slice(0, 12)
     .map((item) => `${item.path}: ${item.reason}`)
@@ -346,6 +435,10 @@ function correctionPrompt(params: {
     "Correct the previous food analysis response.",
     "Return exactly one food_analysis_envelope.v1 JSON object and no outside prose.",
     `Validation errors: ${issues}`,
+    `Target language: ${request.language}. Selected date: ${request.selectedDate}.`,
+    `Original normalized user facts: ${
+      JSON.stringify(explicitFoodFactsFromText(request.userNote ?? ""))
+    }`,
     `Previous response: ${params.previousOutput.slice(0, 12000)}`,
   ].join("\n");
 }

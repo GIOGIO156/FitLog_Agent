@@ -1,0 +1,1317 @@
+{
+  "schema": "fitlog_cloud_rag_canary.v1",
+  "label": "p4_first_pass_final",
+  "target_project": "dyacqajcinjwrkbngeif",
+  "expected_pipeline": "rag_foundation_v1",
+  "active_build": {
+    "corpus_id": "fitlog_user_stable_docs",
+    "build_id": "b209353e25df637256a1825f",
+    "state": "active",
+    "manifest_hash": "e6f00671fa6a2f8b667b5f7171dc46c2c5a9f10e73a913cd4a55062c5c99e087",
+    "generator_version": "rag_foundation_chunks.v4",
+    "term_version": "fitlog_domain_terms.v1+fitlog_exercise_terms.v1",
+    "embedding_model": "text-embedding-v4",
+    "embedding_dimension": 1536,
+    "expected_source_count": 21,
+    "expected_chunk_count": 569,
+    "activated_at": "2026-07-14T18:14:54.689106+00:00"
+  },
+  "authority_counts": {
+    "current_product": 537,
+    "evidence": 24,
+    "non_goal": 8
+  },
+  "provider_checks": [
+    {
+      "check": "qwen_chat_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7912,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_permission",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7437,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_rag_boundary",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 5871,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7004,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_image",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7199,
+      "gateway_error": null
+    }
+  ],
+  "retrieval_summary": {
+    "answerable_cases": 13,
+    "source_recall_at_3": 1,
+    "source_hit_at_3": "13/13",
+    "source_precision_at_3": 0.9487,
+    "source_precision_count": "37/39",
+    "critical_top1": 1,
+    "critical_top1_count": "5/5",
+    "embedding_fallbacks": 0,
+    "p50_ms": 1346,
+    "p95_ms": 2059,
+    "stage_latency_ms": {
+      "normalization": {
+        "sample_count": 14,
+        "p50": 0,
+        "p95": 5,
+        "max": 5
+      },
+      "embedding": {
+        "sample_count": 14,
+        "p50": 355,
+        "p95": 908,
+        "max": 908
+      },
+      "hybrid_rpc": {
+        "sample_count": 14,
+        "p50": 939,
+        "p95": 1266,
+        "max": 1266
+      },
+      "reranker": {
+        "sample_count": 14,
+        "p50": 0,
+        "p95": 5,
+        "max": 5
+      }
+    }
+  },
+  "edge_runtime_latency": {
+    "sample_count": 18,
+    "p50_ms": 147,
+    "p95_ms": 2126,
+    "max_ms": 2126,
+    "corpus_build_ids": [
+      "b209353e25df637256a1825f"
+    ],
+    "embedding_models": [
+      "text-embedding-v4"
+    ],
+    "reranker_versions": [
+      "fitlog_document_reranker.v2"
+    ],
+    "issue_codes": []
+  },
+  "latency_diagnostic": {
+    "schema_version": "rag_latency_diagnostic.v2",
+    "repetitions": 3,
+    "request_count": 15,
+    "matched_log_count": 15,
+    "unmatched_log_count": 0,
+    "scenario_stats": {
+      "food_logging_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 3,
+        "http_statuses": {
+          "200": 3
+        },
+        "gateway_errors": {
+          "none": 3
+        },
+        "validation_issue_codes": {},
+        "expected_outputs": {
+          "food_draft": 3
+        },
+        "selected_output_types": {
+          "food_draft": 3
+        },
+        "correction_attempt_count": 0,
+        "first_pass_reliability": {
+          "logged_count": 3,
+          "first_pass_validation_pass_count": 3,
+          "first_pass_validation_pass_rate": 1,
+          "correction_trigger_count": 0,
+          "correction_trigger_rate": 0,
+          "correction_recovery_count": 0,
+          "correction_recovery_rate": 0,
+          "final_validation_failure_count": 0,
+          "final_validation_failure_rate": 0,
+          "document_request_count": 0,
+          "first_retrieval_complete_count": 0,
+          "first_retrieval_complete_rate": 0,
+          "retry_trigger_count": 0,
+          "retry_trigger_rate": 0,
+          "retry_gain_count": 0,
+          "retry_gain_rate": 0,
+          "retry_no_gain_count": 0,
+          "retry_no_gain_rate": 0
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 10015,
+          "p95": 10362,
+          "max": 10362
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 9166,
+          "p95": 9410,
+          "max": 9410
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 689,
+          "p95": 1196,
+          "max": 1196
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 8850,
+          "p95": 8927,
+          "max": 8927
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "workout_logging_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 2,
+        "http_statuses": {
+          "200": 2,
+          "502": 1
+        },
+        "gateway_errors": {
+          "provider_output_invalid": 1,
+          "none": 2
+        },
+        "validation_issue_codes": {
+          "grounding_fitlog_claim_exceeds_matching_evidence": 1
+        },
+        "expected_outputs": {
+          "text": 3
+        },
+        "selected_output_types": {
+          "missing": 1,
+          "text": 2
+        },
+        "correction_attempt_count": 1,
+        "first_pass_reliability": {
+          "logged_count": 3,
+          "first_pass_validation_pass_count": 2,
+          "first_pass_validation_pass_rate": 0.6667,
+          "correction_trigger_count": 1,
+          "correction_trigger_rate": 0.3333,
+          "correction_recovery_count": 0,
+          "correction_recovery_rate": 0,
+          "final_validation_failure_count": 1,
+          "final_validation_failure_rate": 0.3333,
+          "document_request_count": 0,
+          "first_retrieval_complete_count": 0,
+          "first_retrieval_complete_rate": 0,
+          "retry_trigger_count": 0,
+          "retry_trigger_rate": 0,
+          "retry_gain_count": 0,
+          "retry_gain_rate": 0,
+          "retry_no_gain_count": 0,
+          "retry_no_gain_rate": 0
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 4425,
+          "p95": 7770,
+          "max": 7770
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 3648,
+          "p95": 7082,
+          "max": 7082
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 777,
+          "p95": 1039,
+          "max": 1039
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 3335,
+          "p95": 3896,
+          "max": 3896
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "structured_meal_context_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 3,
+        "http_statuses": {
+          "200": 3
+        },
+        "gateway_errors": {
+          "none": 3
+        },
+        "validation_issue_codes": {},
+        "expected_outputs": {
+          "text": 3
+        },
+        "selected_output_types": {
+          "text": 3
+        },
+        "correction_attempt_count": 0,
+        "first_pass_reliability": {
+          "logged_count": 3,
+          "first_pass_validation_pass_count": 3,
+          "first_pass_validation_pass_rate": 1,
+          "correction_trigger_count": 0,
+          "correction_trigger_rate": 0,
+          "correction_recovery_count": 0,
+          "correction_recovery_rate": 0,
+          "final_validation_failure_count": 0,
+          "final_validation_failure_rate": 0,
+          "document_request_count": 0,
+          "first_retrieval_complete_count": 0,
+          "first_retrieval_complete_rate": 0,
+          "retry_trigger_count": 0,
+          "retry_trigger_rate": 0,
+          "retry_gain_count": 0,
+          "retry_gain_rate": 0,
+          "retry_no_gain_count": 0,
+          "retry_no_gain_rate": 0
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 6929,
+          "p95": 7118,
+          "max": 7118
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 6190,
+          "p95": 6218,
+          "max": 6218
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 928,
+          "p95": 1317,
+          "max": 1317
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 138,
+          "p95": 147,
+          "max": 147
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 5454,
+          "p95": 5721,
+          "max": 5721
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "document_rag_zh": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 3,
+        "http_statuses": {
+          "200": 3
+        },
+        "gateway_errors": {
+          "none": 3
+        },
+        "validation_issue_codes": {},
+        "expected_outputs": {
+          "text": 3
+        },
+        "selected_output_types": {
+          "text": 3
+        },
+        "correction_attempt_count": 0,
+        "first_pass_reliability": {
+          "logged_count": 3,
+          "first_pass_validation_pass_count": 3,
+          "first_pass_validation_pass_rate": 1,
+          "correction_trigger_count": 0,
+          "correction_trigger_rate": 0,
+          "correction_recovery_count": 0,
+          "correction_recovery_rate": 0,
+          "final_validation_failure_count": 0,
+          "final_validation_failure_rate": 0,
+          "document_request_count": 3,
+          "first_retrieval_complete_count": 3,
+          "first_retrieval_complete_rate": 1,
+          "retry_trigger_count": 0,
+          "retry_trigger_rate": 0,
+          "retry_gain_count": 0,
+          "retry_gain_rate": 0,
+          "retry_no_gain_count": 0,
+          "retry_no_gain_rate": 0
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 6282,
+          "p95": 6499,
+          "max": 6499
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 5483,
+          "p95": 5553,
+          "max": 5553
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 857,
+          "p95": 946,
+          "max": 946
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 1427,
+          "p95": 1763,
+          "max": 1763
+        },
+        "initial_embedding_ms": {
+          "sample_count": 3,
+          "p50": 742,
+          "p95": 927,
+          "max": 927
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 3,
+          "p50": 616,
+          "p95": 1079,
+          "max": 1079
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 3325,
+          "p95": 3793,
+          "max": 3793
+        },
+        "embedding_statuses": {
+          "completed": 3
+        },
+        "retry_count": 0
+      },
+      "document_rag_retry_probe": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 3,
+        "http_statuses": {
+          "200": 3
+        },
+        "gateway_errors": {
+          "none": 3
+        },
+        "validation_issue_codes": {},
+        "expected_outputs": {
+          "text": 3
+        },
+        "selected_output_types": {
+          "text": 3
+        },
+        "correction_attempt_count": 0,
+        "first_pass_reliability": {
+          "logged_count": 3,
+          "first_pass_validation_pass_count": 3,
+          "first_pass_validation_pass_rate": 1,
+          "correction_trigger_count": 0,
+          "correction_trigger_rate": 0,
+          "correction_recovery_count": 0,
+          "correction_recovery_rate": 0,
+          "final_validation_failure_count": 0,
+          "final_validation_failure_rate": 0,
+          "document_request_count": 3,
+          "first_retrieval_complete_count": 0,
+          "first_retrieval_complete_rate": 0,
+          "retry_trigger_count": 0,
+          "retry_trigger_rate": 0,
+          "retry_gain_count": 0,
+          "retry_gain_rate": 0,
+          "retry_no_gain_count": 0,
+          "retry_no_gain_rate": 0
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 5438,
+          "p95": 6965,
+          "max": 6965
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 4737,
+          "p95": 5178,
+          "max": 5178
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 794,
+          "p95": 1787,
+          "max": 1787
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 1929,
+          "p95": 2126,
+          "max": 2126
+        },
+        "initial_embedding_ms": {
+          "sample_count": 3,
+          "p50": 721,
+          "p95": 866,
+          "max": 866
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 3,
+          "p50": 1194,
+          "p95": 1245,
+          "max": 1245
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 2658,
+          "p95": 2754,
+          "max": 2754
+        },
+        "embedding_statuses": {
+          "completed": 3
+        },
+        "retry_count": 0
+      }
+    },
+    "stage_stats": {
+      "environment_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 1,
+        "max": 1
+      },
+      "auth_ms": {
+        "sample_count": 15,
+        "p50": 151,
+        "p95": 286,
+        "max": 286
+      },
+      "request_parse_ms": {
+        "sample_count": 15,
+        "p50": 1,
+        "p95": 1,
+        "max": 1
+      },
+      "subscription_device_ms": {
+        "sample_count": 15,
+        "p50": 211,
+        "p95": 311,
+        "max": 311
+      },
+      "planner_ms": {
+        "sample_count": 15,
+        "p50": 1,
+        "p95": 1,
+        "max": 1
+      },
+      "context_build_ms": {
+        "sample_count": 15,
+        "p50": 138,
+        "p95": 2126,
+        "max": 2126
+      },
+      "initial_query_normalization_ms": {
+        "sample_count": 6,
+        "p50": 10,
+        "p95": 18,
+        "max": 18
+      },
+      "initial_embedding_ms": {
+        "sample_count": 6,
+        "p50": 721,
+        "p95": 927,
+        "max": 927
+      },
+      "initial_hybrid_rpc_ms": {
+        "sample_count": 6,
+        "p50": 867,
+        "p95": 1245,
+        "max": 1245
+      },
+      "initial_reranker_ms": {
+        "sample_count": 6,
+        "p50": 1,
+        "p95": 3,
+        "max": 3
+      },
+      "rewrite_planner_ms": {
+        "sample_count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": null
+      },
+      "retry_query_normalization_ms": {
+        "sample_count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": null
+      },
+      "retry_embedding_ms": {
+        "sample_count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": null
+      },
+      "retry_hybrid_rpc_ms": {
+        "sample_count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": null
+      },
+      "retry_reranker_ms": {
+        "sample_count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": null
+      },
+      "provider_first_pass_ms": {
+        "sample_count": 15,
+        "p50": 3793,
+        "p95": 8927,
+        "max": 8927
+      },
+      "provider_first_validation_ms": {
+        "sample_count": 15,
+        "p50": 3,
+        "p95": 21,
+        "max": 21
+      },
+      "provider_correction_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 2780,
+        "max": 2780
+      },
+      "provider_correction_validation_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 10,
+        "max": 10
+      },
+      "persistence_ms": {
+        "sample_count": 15,
+        "p50": 130,
+        "p95": 401,
+        "max": 401
+      }
+    },
+    "embedding_statuses": {
+      "not_requested": 9,
+      "completed": 6
+    },
+    "retry_request_count": 0,
+    "retry_gain_count": 0,
+    "first_pass_reliability": {
+      "logged_count": 15,
+      "first_pass_validation_pass_count": 14,
+      "first_pass_validation_pass_rate": 0.9333,
+      "correction_trigger_count": 1,
+      "correction_trigger_rate": 0.0667,
+      "correction_recovery_count": 0,
+      "correction_recovery_rate": 0,
+      "final_validation_failure_count": 1,
+      "final_validation_failure_rate": 0.0667,
+      "document_request_count": 6,
+      "first_retrieval_complete_count": 3,
+      "first_retrieval_complete_rate": 0.5,
+      "retry_trigger_count": 0,
+      "retry_trigger_rate": 0,
+      "retry_gain_count": 0,
+      "retry_gain_rate": 0,
+      "retry_no_gain_count": 0,
+      "retry_no_gain_rate": 0
+    },
+    "edge_runtime_uptime_ms_at_start": {
+      "min": 5,
+      "p50": 6,
+      "max": 8
+    }
+  },
+  "retrieval_cases": [
+    {
+      "case_id": "product_zh",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Product.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Product.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Product.md",
+        "docs/zh/Product.md",
+        "docs/zh/Product.md"
+      ],
+      "top1_source": "docs/zh/Product.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 2059,
+      "latency_breakdown": {
+        "total_ms": 2059,
+        "normalization_ms": 5,
+        "embedding_ms": 908,
+        "hybrid_rpc_ms": 1145,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 31,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "product_en",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/Product.md"
+      ],
+      "relevant_sources": [
+        "docs/en/Product.md"
+      ],
+      "top3_sources": [
+        "docs/en/Product.md",
+        "docs/en/AgentDesign.md",
+        "docs/en/Product.md"
+      ],
+      "top1_source": "docs/en/Product.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1494,
+      "latency_breakdown": {
+        "total_ms": 1494,
+        "normalization_ms": 5,
+        "embedding_ms": 263,
+        "hybrid_rpc_ms": 1225,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 51,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "app_guide_mixed",
+      "language": "mixed",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/en/AppGuide.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/en/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/zh/AppGuide.md",
+        "docs/zh/AppGuide.md"
+      ],
+      "top1_source": "docs/zh/AppGuide.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1346,
+      "latency_breakdown": {
+        "total_ms": 1346,
+        "normalization_ms": 1,
+        "embedding_ms": 332,
+        "hybrid_rpc_ms": 1013,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 37,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "method_energy",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Methodology.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Methodology.md",
+        "docs/zh/Methodology.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top1_source": "docs/zh/Methodology.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1053,
+      "latency_breakdown": {
+        "total_ms": 1053,
+        "normalization_ms": 1,
+        "embedding_ms": 355,
+        "hybrid_rpc_ms": 692,
+        "reranker_ms": 5,
+        "embedding_status": "completed",
+        "embedding_input_chars": 69,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "algorithm_per_side",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Algorithm.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/AppGuide.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top1_source": "docs/zh/Algorithm.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1463,
+      "latency_breakdown": {
+        "total_ms": 1462,
+        "normalization_ms": 0,
+        "embedding_ms": 892,
+        "hybrid_rpc_ms": 570,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 86,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "algorithm_total_negative",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Algorithm.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/Database.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/Database.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top1_source": "docs/zh/Algorithm.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 906,
+      "latency_breakdown": {
+        "total_ms": 906,
+        "normalization_ms": 0,
+        "embedding_ms": 314,
+        "hybrid_rpc_ms": 592,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 94,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "database_snapshot",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/Database.md"
+      ],
+      "relevant_sources": [
+        "docs/en/Database.md",
+        "docs/en/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/en/AppGuide.md",
+        "docs/en/Database.md",
+        "docs/en/Database.md"
+      ],
+      "top1_source": "docs/en/AppGuide.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1396,
+      "latency_breakdown": {
+        "total_ms": 1396,
+        "normalization_ms": 1,
+        "embedding_ms": 343,
+        "hybrid_rpc_ms": 1052,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 99,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "cloud_local_zh",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "top3_sources": [
+        "docs/zh/CloudLocalDataBoundary.md",
+        "docs/zh/CloudLocalDataBoundary.md",
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "top1_source": "docs/zh/CloudLocalDataBoundary.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1077,
+      "latency_breakdown": {
+        "total_ms": 1077,
+        "normalization_ms": 0,
+        "embedding_ms": 297,
+        "hybrid_rpc_ms": 780,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 164,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "cloud_local_en",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "relevant_sources": [
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "top3_sources": [
+        "docs/en/CloudLocalDataBoundary.md",
+        "docs/en/CloudLocalDataBoundary.md",
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "top1_source": "docs/en/CloudLocalDataBoundary.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1249,
+      "latency_breakdown": {
+        "total_ms": 1250,
+        "normalization_ms": 1,
+        "embedding_ms": 294,
+        "hybrid_rpc_ms": 954,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 162,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "agent_permission",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/AgentDesign.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/AgentDesign.md"
+      ],
+      "top3_sources": [
+        "docs/zh/AgentDesign.md",
+        "docs/zh/AgentDesign.md",
+        "docs/zh/AgentDesign.md"
+      ],
+      "top1_source": "docs/zh/AgentDesign.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1271,
+      "latency_breakdown": {
+        "total_ms": 1271,
+        "normalization_ms": 0,
+        "embedding_ms": 602,
+        "hybrid_rpc_ms": 668,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 27,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "output_contract",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/AIOutputContract.md"
+      ],
+      "relevant_sources": [
+        "docs/en/AIOutputContract.md"
+      ],
+      "top3_sources": [
+        "docs/en/AIOutputContract.md",
+        "docs/en/AIOutputContract.md",
+        "docs/en/AIOutputContract.md"
+      ],
+      "top1_source": "docs/en/AIOutputContract.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1628,
+      "latency_breakdown": {
+        "total_ms": 1628,
+        "normalization_ms": 0,
+        "embedding_ms": 667,
+        "hybrid_rpc_ms": 960,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 79,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "rag_boundary",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/RAGDesign.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/RAGDesign.md"
+      ],
+      "top3_sources": [
+        "docs/zh/RAGDesign.md",
+        "docs/zh/RAGDesign.md",
+        "docs/zh/RAGDesign.md"
+      ],
+      "top1_source": "docs/zh/RAGDesign.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1398,
+      "latency_breakdown": {
+        "total_ms": 1398,
+        "normalization_ms": 0,
+        "embedding_ms": 457,
+        "hybrid_rpc_ms": 939,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 111,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "references_boundary",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/References.md"
+      ],
+      "relevant_sources": [
+        "docs/en/References.md",
+        "docs/en/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/en/References.md",
+        "docs/en/References.md",
+        "docs/en/Methodology.md"
+      ],
+      "top1_source": "docs/en/References.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 35,
+      "latency_ms": 1628,
+      "latency_breakdown": {
+        "total_ms": 1628,
+        "normalization_ms": 0,
+        "embedding_ms": 362,
+        "hybrid_rpc_ms": 1266,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 156,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "no_answer_weather",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [],
+      "relevant_sources": [],
+      "top3_sources": [],
+      "top1_source": null,
+      "embedding_issue": false,
+      "vector_branch_hits": 36,
+      "latency_ms": 1090,
+      "latency_breakdown": {
+        "total_ms": 1090,
+        "normalization_ms": 0,
+        "embedding_ms": 363,
+        "hybrid_rpc_ms": 726,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 9,
+        "query_variant_count": 1
+      }
+    }
+  ],
+  "access_probes": [
+    {
+      "principal": "anon",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "anon",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "user_a",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_a",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    }
+  ],
+  "checks": [
+    {
+      "check": "qwen_chat_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7912,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_permission",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7437,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_rag_boundary",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 5871,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7004,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_image",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 7199,
+      "gateway_error": null
+    },
+    {
+      "principal": "anon",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "anon",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "user_a",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_a",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "check": "active_corpus_metadata",
+      "status": "pass"
+    },
+    {
+      "check": "document_source_recall_at_3",
+      "status": "pass",
+      "observed": 1,
+      "gate": 0.97
+    },
+    {
+      "check": "document_source_precision_at_3",
+      "status": "pass",
+      "observed": 0.9487,
+      "gate": 0.85
+    },
+    {
+      "check": "critical_source_top1",
+      "status": "pass",
+      "observed": 1,
+      "gate": 0.95
+    },
+    {
+      "check": "edge_embedding_hybrid_latency_p95",
+      "status": "fail",
+      "observed_ms": 2126,
+      "sample_count": 18,
+      "gate_ms": 1500
+    },
+    {
+      "check": "query_embedding_available",
+      "status": "pass",
+      "observed_fallbacks": 0
+    },
+    {
+      "check": "no_answer_fabricated_source",
+      "status": "pass",
+      "observed_failures": 0
+    },
+    {
+      "check": "edge_pipeline_evidence",
+      "status": "pass",
+      "expected_pipeline": "rag_foundation_v1"
+    }
+  ],
+  "summary": {
+    "pass": 18,
+    "fail": 1
+  }
+}

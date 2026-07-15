@@ -1,0 +1,1158 @@
+{
+  "schema": "fitlog_cloud_rag_canary.v1",
+  "label": "latency_diagnostic_failures",
+  "target_project": "dyacqajcinjwrkbngeif",
+  "expected_pipeline": "rag_foundation_v1",
+  "active_build": {
+    "corpus_id": "fitlog_user_stable_docs",
+    "build_id": "b209353e25df637256a1825f",
+    "state": "active",
+    "manifest_hash": "e6f00671fa6a2f8b667b5f7171dc46c2c5a9f10e73a913cd4a55062c5c99e087",
+    "generator_version": "rag_foundation_chunks.v4",
+    "term_version": "fitlog_domain_terms.v1+fitlog_exercise_terms.v1",
+    "embedding_model": "text-embedding-v4",
+    "embedding_dimension": 1536,
+    "expected_source_count": 21,
+    "expected_chunk_count": 569,
+    "activated_at": "2026-07-14T18:14:54.689106+00:00"
+  },
+  "authority_counts": {
+    "current_product": 537,
+    "evidence": 24,
+    "non_goal": 8
+  },
+  "provider_checks": [
+    {
+      "check": "qwen_chat_text",
+      "status": "fail",
+      "http_status": 502,
+      "latency_ms": 33472,
+      "gateway_error": "provider_output_invalid"
+    },
+    {
+      "check": "qwen_chat_permission",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 13183,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_rag_boundary",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 13696,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 6521,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_image",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 6801,
+      "gateway_error": null
+    }
+  ],
+  "retrieval_summary": {
+    "answerable_cases": 13,
+    "source_recall_at_3": 1,
+    "source_hit_at_3": "13/13",
+    "source_precision_at_3": 0.9744,
+    "source_precision_count": "38/39",
+    "critical_top1": 1,
+    "critical_top1_count": "5/5",
+    "embedding_fallbacks": 0,
+    "p50_ms": 6454,
+    "p95_ms": 9026,
+    "stage_latency_ms": {
+      "normalization": {
+        "sample_count": 14,
+        "p50": 1,
+        "p95": 4,
+        "max": 4
+      },
+      "embedding": {
+        "sample_count": 14,
+        "p50": 397,
+        "p95": 2758,
+        "max": 2758
+      },
+      "hybrid_rpc": {
+        "sample_count": 14,
+        "p50": 6103,
+        "p95": 7666,
+        "max": 7666
+      },
+      "reranker": {
+        "sample_count": 14,
+        "p50": 0,
+        "p95": 2,
+        "max": 2
+      }
+    }
+  },
+  "edge_runtime_latency": {
+    "sample_count": 18,
+    "p50_ms": 101,
+    "p95_ms": 17103,
+    "max_ms": 17103,
+    "corpus_build_ids": [
+      "b209353e25df637256a1825f"
+    ],
+    "embedding_models": [
+      "text-embedding-v4"
+    ],
+    "reranker_versions": [
+      "fitlog_document_reranker.v2"
+    ],
+    "issue_codes": []
+  },
+  "latency_diagnostic": {
+    "schema_version": "rag_latency_diagnostic.v1",
+    "repetitions": 3,
+    "request_count": 15,
+    "matched_log_count": 15,
+    "unmatched_log_count": 0,
+    "scenario_stats": {
+      "workout_logging_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 0,
+        "http_statuses": {
+          "422": 1,
+          "502": 2
+        },
+        "gateway_errors": {
+          "record_schema_mismatch": 1,
+          "provider_output_invalid": 2
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 8205,
+          "p95": 9320,
+          "max": 9320
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 7782,
+          "p95": 8884,
+          "max": 8884
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 436,
+          "p95": 463,
+          "max": 463
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 4374,
+          "p95": 4605,
+          "max": 4605
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "structured_meal_context_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 2,
+        "http_statuses": {
+          "200": 2,
+          "502": 1
+        },
+        "gateway_errors": {
+          "none": 2,
+          "provider_output_invalid": 1
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 9737,
+          "p95": 12875,
+          "max": 12875
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 9127,
+          "p95": 12266,
+          "max": 12266
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 609,
+          "p95": 610,
+          "max": 610
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 98,
+          "p95": 101,
+          "max": 101
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 4328,
+          "p95": 6527,
+          "max": 6527
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "model_planner_no_document_rag": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 0,
+        "http_statuses": {
+          "422": 3
+        },
+        "gateway_errors": {
+          "record_schema_mismatch": 3
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 5211,
+          "p95": 5457,
+          "max": 5457
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 4790,
+          "p95": 4979,
+          "max": 4979
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 421,
+          "p95": 478,
+          "max": 478
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 4348,
+          "p95": 4510,
+          "max": 4510
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "initial_embedding_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": null
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "embedding_statuses": {
+          "not_requested": 3
+        },
+        "retry_count": 0
+      },
+      "document_rag_zh": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 0,
+        "http_statuses": {
+          "502": 3
+        },
+        "gateway_errors": {
+          "provider_output_invalid": 3
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 31376,
+          "p95": 38285,
+          "max": 38285
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 30878,
+          "p95": 37288,
+          "max": 37288
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 498,
+          "p95": 997,
+          "max": 997
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 0,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 16833,
+          "p95": 17015,
+          "max": 17015
+        },
+        "initial_embedding_ms": {
+          "sample_count": 3,
+          "p50": 776,
+          "p95": 798,
+          "max": 798
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 3,
+          "p50": 6539,
+          "p95": 6826,
+          "max": 6826
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 6983,
+          "p95": 10953,
+          "max": 10953
+        },
+        "embedding_statuses": {
+          "completed": 3
+        },
+        "retry_count": 0
+      },
+      "document_rag_retry_probe": {
+        "sample_count": 3,
+        "matched_log_count": 3,
+        "successful_http_count": 1,
+        "http_statuses": {
+          "200": 1,
+          "502": 2
+        },
+        "gateway_errors": {
+          "none": 1,
+          "provider_output_invalid": 2
+        },
+        "external_latency_ms": {
+          "sample_count": 3,
+          "p50": 12347,
+          "p95": 13387,
+          "max": 13387
+        },
+        "logged_pre_persistence_latency_ms": {
+          "sample_count": 3,
+          "p50": 11921,
+          "p95": 12891,
+          "max": 12891
+        },
+        "external_minus_logged_pre_persistence_ms": {
+          "sample_count": 3,
+          "p50": 496,
+          "p95": 972,
+          "max": 972
+        },
+        "planner_ms": {
+          "sample_count": 3,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "context_build_ms": {
+          "sample_count": 3,
+          "p50": 6683,
+          "p95": 7389,
+          "max": 7389
+        },
+        "initial_embedding_ms": {
+          "sample_count": 3,
+          "p50": 818,
+          "p95": 874,
+          "max": 874
+        },
+        "initial_hybrid_rpc_ms": {
+          "sample_count": 3,
+          "p50": 957,
+          "p95": 1258,
+          "max": 1258
+        },
+        "provider_first_pass_ms": {
+          "sample_count": 3,
+          "p50": 2562,
+          "p95": 2597,
+          "max": 2597
+        },
+        "embedding_statuses": {
+          "completed": 3
+        },
+        "retry_count": 1
+      }
+    },
+    "stage_stats": {
+      "environment_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 1,
+        "max": 1
+      },
+      "auth_ms": {
+        "sample_count": 15,
+        "p50": 160,
+        "p95": 327,
+        "max": 327
+      },
+      "request_parse_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 1,
+        "max": 1
+      },
+      "subscription_device_ms": {
+        "sample_count": 15,
+        "p50": 207,
+        "p95": 403,
+        "max": 403
+      },
+      "planner_ms": {
+        "sample_count": 15,
+        "p50": 1,
+        "p95": 4510,
+        "max": 4510
+      },
+      "context_build_ms": {
+        "sample_count": 15,
+        "p50": 98,
+        "p95": 17015,
+        "max": 17015
+      },
+      "initial_query_normalization_ms": {
+        "sample_count": 6,
+        "p50": 10,
+        "p95": 10,
+        "max": 10
+      },
+      "initial_embedding_ms": {
+        "sample_count": 6,
+        "p50": 776,
+        "p95": 874,
+        "max": 874
+      },
+      "initial_hybrid_rpc_ms": {
+        "sample_count": 6,
+        "p50": 1258,
+        "p95": 6826,
+        "max": 6826
+      },
+      "initial_reranker_ms": {
+        "sample_count": 6,
+        "p50": 1,
+        "p95": 1,
+        "max": 1
+      },
+      "rewrite_planner_ms": {
+        "sample_count": 6,
+        "p50": 2441,
+        "p95": 2687,
+        "max": 2687
+      },
+      "retry_query_normalization_ms": {
+        "sample_count": 6,
+        "p50": 8,
+        "p95": 8,
+        "max": 8
+      },
+      "retry_embedding_ms": {
+        "sample_count": 6,
+        "p50": 185,
+        "p95": 199,
+        "max": 199
+      },
+      "retry_hybrid_rpc_ms": {
+        "sample_count": 6,
+        "p50": 2861,
+        "p95": 6831,
+        "max": 6831
+      },
+      "retry_reranker_ms": {
+        "sample_count": 6,
+        "p50": 1,
+        "p95": 2,
+        "max": 2
+      },
+      "provider_first_pass_ms": {
+        "sample_count": 15,
+        "p50": 3916,
+        "p95": 10953,
+        "max": 10953
+      },
+      "provider_first_validation_ms": {
+        "sample_count": 15,
+        "p50": 6,
+        "p95": 3181,
+        "max": 3181
+      },
+      "provider_correction_ms": {
+        "sample_count": 15,
+        "p50": 3179,
+        "p95": 8957,
+        "max": 8957
+      },
+      "provider_correction_validation_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 5,
+        "max": 5
+      },
+      "persistence_ms": {
+        "sample_count": 15,
+        "p50": 0,
+        "p95": 146,
+        "max": 146
+      }
+    },
+    "embedding_statuses": {
+      "not_requested": 9,
+      "completed": 6
+    },
+    "retry_request_count": 1,
+    "retry_gain_count": 0,
+    "edge_runtime_uptime_ms_at_start": {
+      "min": 5,
+      "p50": 6,
+      "max": 11
+    }
+  },
+  "retrieval_cases": [
+    {
+      "case_id": "product_zh",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Product.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Product.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Product.md",
+        "docs/zh/Product.md",
+        "docs/zh/Product.md"
+      ],
+      "top1_source": "docs/zh/Product.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 9026,
+      "latency_breakdown": {
+        "total_ms": 9026,
+        "normalization_ms": 4,
+        "embedding_ms": 2758,
+        "hybrid_rpc_ms": 6262,
+        "reranker_ms": 2,
+        "embedding_status": "completed",
+        "embedding_input_chars": 31,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "product_en",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/Product.md"
+      ],
+      "relevant_sources": [
+        "docs/en/Product.md"
+      ],
+      "top3_sources": [
+        "docs/en/Product.md",
+        "docs/en/AgentDesign.md",
+        "docs/en/Product.md"
+      ],
+      "top1_source": "docs/en/Product.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 2813,
+      "latency_breakdown": {
+        "total_ms": 2813,
+        "normalization_ms": 4,
+        "embedding_ms": 359,
+        "hybrid_rpc_ms": 2449,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 51,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "app_guide_mixed",
+      "language": "mixed",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/en/AppGuide.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/en/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/zh/AppGuide.md",
+        "docs/zh/AppGuide.md",
+        "docs/zh/AppGuide.md"
+      ],
+      "top1_source": "docs/zh/AppGuide.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 3813,
+      "latency_breakdown": {
+        "total_ms": 3813,
+        "normalization_ms": 2,
+        "embedding_ms": 679,
+        "hybrid_rpc_ms": 3132,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 37,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "method_energy",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Methodology.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Methodology.md",
+        "docs/zh/Methodology.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top1_source": "docs/zh/Methodology.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 7441,
+      "latency_breakdown": {
+        "total_ms": 7441,
+        "normalization_ms": 1,
+        "embedding_ms": 737,
+        "hybrid_rpc_ms": 6703,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 69,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "algorithm_per_side",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Algorithm.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/Algorithm.md",
+        "docs/zh/AppGuide.md"
+      ],
+      "top1_source": "docs/zh/Algorithm.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 8448,
+      "latency_breakdown": {
+        "total_ms": 8448,
+        "normalization_ms": 1,
+        "embedding_ms": 781,
+        "hybrid_rpc_ms": 7666,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 86,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "algorithm_total_negative",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/Algorithm.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/Database.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/zh/Algorithm.md",
+        "docs/zh/Database.md",
+        "docs/zh/Methodology.md"
+      ],
+      "top1_source": "docs/zh/Algorithm.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 7001,
+      "latency_breakdown": {
+        "total_ms": 7002,
+        "normalization_ms": 1,
+        "embedding_ms": 392,
+        "hybrid_rpc_ms": 6609,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 94,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "database_snapshot",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/Database.md"
+      ],
+      "relevant_sources": [
+        "docs/en/Database.md",
+        "docs/en/AppGuide.md"
+      ],
+      "top3_sources": [
+        "docs/en/AppGuide.md",
+        "docs/en/Database.md",
+        "docs/en/Database.md"
+      ],
+      "top1_source": "docs/en/AppGuide.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 4041,
+      "latency_breakdown": {
+        "total_ms": 4041,
+        "normalization_ms": 0,
+        "embedding_ms": 949,
+        "hybrid_rpc_ms": 3092,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 99,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "cloud_local_zh",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "top3_sources": [
+        "docs/zh/CloudLocalDataBoundary.md",
+        "docs/zh/CloudLocalDataBoundary.md",
+        "docs/zh/CloudLocalDataBoundary.md"
+      ],
+      "top1_source": "docs/zh/CloudLocalDataBoundary.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 7067,
+      "latency_breakdown": {
+        "total_ms": 7067,
+        "normalization_ms": 0,
+        "embedding_ms": 291,
+        "hybrid_rpc_ms": 6775,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 164,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "cloud_local_en",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "relevant_sources": [
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "top3_sources": [
+        "docs/en/CloudLocalDataBoundary.md",
+        "docs/en/CloudLocalDataBoundary.md",
+        "docs/en/CloudLocalDataBoundary.md"
+      ],
+      "top1_source": "docs/en/CloudLocalDataBoundary.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 3973,
+      "latency_breakdown": {
+        "total_ms": 3972,
+        "normalization_ms": 0,
+        "embedding_ms": 278,
+        "hybrid_rpc_ms": 3694,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 162,
+        "query_variant_count": 3
+      }
+    },
+    {
+      "case_id": "agent_permission",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/AgentDesign.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/AgentDesign.md"
+      ],
+      "top3_sources": [
+        "docs/zh/AgentDesign.md",
+        "docs/zh/AgentDesign.md",
+        "docs/zh/AgentDesign.md"
+      ],
+      "top1_source": "docs/zh/AgentDesign.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 7206,
+      "latency_breakdown": {
+        "total_ms": 7206,
+        "normalization_ms": 1,
+        "embedding_ms": 427,
+        "hybrid_rpc_ms": 6778,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 27,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "output_contract",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/AIOutputContract.md"
+      ],
+      "relevant_sources": [
+        "docs/en/AIOutputContract.md"
+      ],
+      "top3_sources": [
+        "docs/en/AIOutputContract.md",
+        "docs/en/AIOutputContract.md",
+        "docs/en/AIOutputContract.md"
+      ],
+      "top1_source": "docs/en/AIOutputContract.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 3446,
+      "latency_breakdown": {
+        "total_ms": 3446,
+        "normalization_ms": 1,
+        "embedding_ms": 655,
+        "hybrid_rpc_ms": 2790,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 79,
+        "query_variant_count": 2
+      }
+    },
+    {
+      "case_id": "rag_boundary",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [
+        "docs/zh/RAGDesign.md"
+      ],
+      "relevant_sources": [
+        "docs/zh/RAGDesign.md"
+      ],
+      "top3_sources": [
+        "docs/zh/RAGDesign.md",
+        "docs/zh/RAGDesign.md",
+        "docs/zh/RAGDesign.md"
+      ],
+      "top1_source": "docs/zh/RAGDesign.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 7063,
+      "latency_breakdown": {
+        "total_ms": 7063,
+        "normalization_ms": 0,
+        "embedding_ms": 397,
+        "hybrid_rpc_ms": 6665,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 111,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "references_boundary",
+      "language": "en",
+      "status": "pass",
+      "expected_sources": [
+        "docs/en/References.md"
+      ],
+      "relevant_sources": [
+        "docs/en/References.md",
+        "docs/en/Methodology.md"
+      ],
+      "top3_sources": [
+        "docs/en/References.md",
+        "docs/en/References.md",
+        "docs/en/Methodology.md"
+      ],
+      "top1_source": "docs/en/References.md",
+      "embedding_issue": false,
+      "vector_branch_hits": 59,
+      "latency_ms": 4343,
+      "latency_breakdown": {
+        "total_ms": 4343,
+        "normalization_ms": 0,
+        "embedding_ms": 378,
+        "hybrid_rpc_ms": 3964,
+        "reranker_ms": 1,
+        "embedding_status": "completed",
+        "embedding_input_chars": 156,
+        "query_variant_count": 4
+      }
+    },
+    {
+      "case_id": "no_answer_weather",
+      "language": "zh",
+      "status": "pass",
+      "expected_sources": [],
+      "relevant_sources": [],
+      "top3_sources": [],
+      "top1_source": null,
+      "embedding_issue": false,
+      "vector_branch_hits": 60,
+      "latency_ms": 6454,
+      "latency_breakdown": {
+        "total_ms": 6454,
+        "normalization_ms": 0,
+        "embedding_ms": 351,
+        "hybrid_rpc_ms": 6103,
+        "reranker_ms": 0,
+        "embedding_status": "completed",
+        "embedding_input_chars": 9,
+        "query_variant_count": 1
+      }
+    }
+  ],
+  "access_probes": [
+    {
+      "principal": "anon",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "anon",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "user_a",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_a",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    }
+  ],
+  "checks": [
+    {
+      "check": "qwen_chat_text",
+      "status": "fail",
+      "http_status": 502,
+      "latency_ms": 33472,
+      "gateway_error": "provider_output_invalid"
+    },
+    {
+      "check": "qwen_chat_permission",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 13183,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_chat_rag_boundary",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 13696,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_text",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 6521,
+      "gateway_error": null
+    },
+    {
+      "check": "qwen_food_image",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 6801,
+      "gateway_error": null
+    },
+    {
+      "principal": "anon",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "anon",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 401
+    },
+    {
+      "principal": "user_a",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_a",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "document_chunks_read",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "principal": "user_b",
+      "operation": "corpus_admin_rpc",
+      "status": "pass",
+      "http_status": 403
+    },
+    {
+      "check": "active_corpus_metadata",
+      "status": "pass"
+    },
+    {
+      "check": "document_source_recall_at_3",
+      "status": "pass",
+      "observed": 1,
+      "gate": 0.97
+    },
+    {
+      "check": "document_source_precision_at_3",
+      "status": "pass",
+      "observed": 0.9744,
+      "gate": 0.85
+    },
+    {
+      "check": "critical_source_top1",
+      "status": "pass",
+      "observed": 1,
+      "gate": 0.95
+    },
+    {
+      "check": "edge_embedding_hybrid_latency_p95",
+      "status": "fail",
+      "observed_ms": 17103,
+      "sample_count": 18,
+      "gate_ms": 1500
+    },
+    {
+      "check": "query_embedding_available",
+      "status": "pass",
+      "observed_fallbacks": 0
+    },
+    {
+      "check": "no_answer_fabricated_source",
+      "status": "pass",
+      "observed_failures": 0
+    },
+    {
+      "check": "edge_pipeline_evidence",
+      "status": "pass",
+      "expected_pipeline": "rag_foundation_v1"
+    }
+  ],
+  "summary": {
+    "pass": 17,
+    "fail": 2
+  }
+}

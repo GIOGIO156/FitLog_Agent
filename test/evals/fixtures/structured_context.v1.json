@@ -1,0 +1,7 @@
+{"schema":"fitlog_eval_suite.v1","suite":"structured_context","cases":[
+  {"case_id":"meal_permission_on","workflow":"meal_decision","permission":true,"contexts":["profile_context","selected_day_summary","strategy_context"]},
+  {"case_id":"meal_permission_off","workflow":"meal_decision","permission":false,"missing":["selected_day_summary"]},
+  {"case_id":"weekly_7","workflow":"weekly_review","days":7},
+  {"case_id":"weekly_14_sparse","workflow":"weekly_review","days":14,"sparse":true},
+  {"case_id":"history_off","context":"exercise_history","permission":false,"expected":"not_called"}
+]}

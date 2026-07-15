@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app.dart';
 import '../../core/localization/localization_extensions.dart';
@@ -9,6 +10,7 @@ import '../../core/theme/fitlog_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_notifications.dart';
+import '../../core/widgets/fitlog_sliding_segmented_control.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../data/remote/ai_food_photo_analysis_client.dart';
@@ -24,6 +26,7 @@ import 'photo_food_analysis_recovery.dart';
 
 const int _maxPhotoAnalysisImageBytes = 4 * 1024 * 1024;
 const int _maxPhotoAnalysisImages = 3;
+const String _photoFoodModelPreferenceKey = 'photo_food_ai_model_choice_v1';
 const Set<String> _supportedPhotoMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -56,6 +59,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   List<PickedFoodImage> _images = const <PickedFoodImage>[];
   int _selectedImageIndex = 0;
   bool _analyzing = false;
+  AiGatewayModelChoice _modelChoice = AiGatewayModelChoice.qwen;
 
   @override
   void initState() {
@@ -67,6 +71,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     _selectedImageIndex = _images.isEmpty ? 0 : _images.length - 1;
     _noteController.text = widget.initialNote ?? '';
     _noteController.addListener(_handleNoteChanged);
+    _loadModelChoice();
   }
 
   @override
@@ -86,6 +91,50 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> _loadModelChoice() async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = preferences.getString(_photoFoodModelPreferenceKey);
+    if (!mounted || value == null) return;
+    try {
+      final choice = aiGatewayModelChoiceFromValue(value);
+      if (choice == AiGatewayModelChoice.chatgpt &&
+          !fitLogOpenAiProviderEnabled) {
+        await preferences.setString(
+          _photoFoodModelPreferenceKey,
+          AiGatewayModelChoice.qwen.value,
+        );
+        return;
+      }
+      setState(() => _modelChoice = choice);
+    } on FormatException {
+      // Keep the independent photo-analysis default for stale preferences.
+    }
+  }
+
+  Future<void> _setModelChoice(AiGatewayModelChoice value) async {
+    if (value == AiGatewayModelChoice.chatgpt && !fitLogOpenAiProviderEnabled) {
+      setState(() => _modelChoice = value);
+      FitLogNotifications.topError(
+        context,
+        context.stringsRead.aiCurrentModelUnavailable,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 240));
+      if (!mounted || _modelChoice != AiGatewayModelChoice.chatgpt) {
+        return;
+      }
+      setState(() => _modelChoice = AiGatewayModelChoice.qwen);
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        _photoFoodModelPreferenceKey,
+        AiGatewayModelChoice.qwen.value,
+      );
+      return;
+    }
+    setState(() => _modelChoice = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_photoFoodModelPreferenceKey, value.value);
   }
 
   Future<void> _pickImage(FoodImageSource source) async {
@@ -147,6 +196,11 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
 
   Future<void> _analyze() async {
     final strings = context.stringsRead;
+    if (_modelChoice == AiGatewayModelChoice.chatgpt &&
+        !fitLogOpenAiProviderEnabled) {
+      FitLogNotifications.topError(context, strings.aiCurrentModelUnavailable);
+      return;
+    }
     final images = _images;
     final userNote = _noteController.text.trim();
     if (images.isEmpty && userNote.isEmpty) {
@@ -188,7 +242,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
           )
           .toList(growable: false),
       language: strings.isChinese ? 'zh' : 'en',
-      modelChoice: AiGatewayModelChoice.qwen,
+      modelChoice: _modelChoice,
       deviceId: deviceId!,
       selectedDate: _analysisDate,
       userNote: userNote,
@@ -352,6 +406,45 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
                       labelText: strings.photoAiNoteLabel,
                       hintText: strings.photoAiNoteHint,
                       alignLabelWithHint: true,
+                    ),
+                  ),
+                ),
+                GlassPanel(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.all(12),
+                  child: Align(
+                    child: FitLogSlidingSegmentedControl<AiGatewayModelChoice>(
+                      key: const ValueKey<String>('photo_food_model_choice'),
+                      indicatorKey: const ValueKey<String>(
+                        'photo_food_model_indicator',
+                      ),
+                      segments: <FitLogSlidingSegment<AiGatewayModelChoice>>[
+                        FitLogSlidingSegment<AiGatewayModelChoice>(
+                          value: AiGatewayModelChoice.chatgpt,
+                          label: strings.aiProviderChatGpt,
+                          key: const ValueKey<String>(
+                            'photo_food_provider_chatgpt',
+                          ),
+                        ),
+                        FitLogSlidingSegment<AiGatewayModelChoice>(
+                          value: AiGatewayModelChoice.qwen,
+                          label: strings.aiProviderQwen,
+                          key: const ValueKey<String>(
+                            'photo_food_provider_qwen',
+                          ),
+                        ),
+                      ],
+                      selected: _modelChoice,
+                      onChanged: _analyzing ? null : _setModelChoice,
+                      backgroundColor: context.fitLogTheme.navBackground
+                          .withValues(alpha: 0.54),
+                      borderColor: context.fitLogTheme.outline.withValues(
+                        alpha: 0.72,
+                      ),
+                      indicatorColor: context.fitLogTheme.navIndicator,
+                      selectedTextColor: context.fitLogTheme.navSelectedText,
+                      unselectedTextColor:
+                          context.fitLogTheme.navUnselectedText,
                     ),
                   ),
                 ),

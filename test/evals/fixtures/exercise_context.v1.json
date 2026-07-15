@@ -1,0 +1,9 @@
+{"schema":"fitlog_eval_suite.v1","suite":"exercise_context","cases":[
+  {"case_id":"bulgarian_zh","mention":"保加利亚分腿蹲","key":"bulgarian_split_squat","reps_input_mode":"per_side_reps"},
+  {"case_id":"bulgarian_en","mention":"Bulgarian Split Squat","key":"bulgarian_split_squat","reps_input_mode":"per_side_reps"},
+  {"case_id":"bulgarian_key","mention":"bulgarian_split_squat","key":"bulgarian_split_squat"},
+  {"case_id":"single_arm_alias","mention":"One-arm Dumbbell Row","key":"single_arm_dumbbell_row"},
+  {"case_id":"custom_per_side","mention":"我的单侧蹲","source":"custom","permission":"request_scoped"},
+  {"case_id":"duplicate_custom","mention":"同名动作","expected":"ambiguous"},
+  {"case_id":"unknown","mention":"不存在动作","expected":"missing"}
+]}

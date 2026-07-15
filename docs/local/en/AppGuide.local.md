@@ -15,9 +15,9 @@ This guide explains what each FitLog Local app area does, how it works at a high
 
 Read more:
 
-- Product scope: [Product](Product.md)
-- Method reasoning: [Methodology](Methodology.md)
-- AI boundary: [AgentDesign](AgentDesign.md)
+- Product scope: [Product](Product.local.md)
+- Method reasoning: [Methodology](Methodology.local.md)
+- AI boundary: [AgentDesign](AgentDesign.local.md)
 
 ## Home
 
@@ -52,10 +52,10 @@ How it works:
 
 Read more:
 
-- Daily behavior: [Product](Product.md#daily-dashboard-behavior)
-- Calculation reasoning: [Methodology](Methodology.md)
-- Formulas: [Algorithm](Algorithm.md)
-- Runtime aggregate fields: [Database](Database.md#runtime-aggregates)
+- Daily behavior: [Product](Product.local.md#daily-dashboard-behavior)
+- Calculation reasoning: [Methodology](Methodology.local.md)
+- Formulas: [Algorithm](Algorithm.local.md)
+- Runtime aggregate fields: [Database](Database.local.md#runtime-aggregates)
 
 ## Food Log
 
@@ -80,9 +80,9 @@ How it works:
 
 Read more:
 
-- Food workflow: [Product](Product.md#food-workflow)
-- Tables: [Database](Database.md#food_records), [Database](Database.md#food_items)
-- AI-adjacent boundary: [AgentDesign](AgentDesign.md)
+- Food workflow: [Product](Product.local.md#food-workflow)
+- Tables: [Database](Database.local.md#food_records), [Database](Database.local.md#food_items)
+- AI-adjacent boundary: [AgentDesign](AgentDesign.local.md)
 
 ## Add Food
 
@@ -106,9 +106,9 @@ How it works:
 
 Read more:
 
-- Product behavior: [Product](Product.md#food-workflow)
-- AI boundary: [AgentDesign](AgentDesign.md)
-- Parser and summary formulas: [Algorithm](Algorithm.md#food-intake-summary)
+- Product behavior: [Product](Product.local.md#food-workflow)
+- AI boundary: [AgentDesign](AgentDesign.local.md)
+- Parser and summary formulas: [Algorithm](Algorithm.local.md#food-intake-summary)
 
 ## Workout Log
 
@@ -136,8 +136,8 @@ How it works:
 
 Read more:
 
-- Workout workflow: [Product](Product.md#workout-workflow)
-- Workout tables: [Database](Database.md#workout_sessions), [Database](Database.md#workout_sets)
+- Workout workflow: [Product](Product.local.md#workout-workflow)
+- Workout tables: [Database](Database.local.md#workout_sessions), [Database](Database.local.md#workout_sets)
 
 ## Add/Edit Workout Record
 
@@ -178,10 +178,10 @@ How it works:
 
 Read more:
 
-- Product workflow: [Product](Product.md#workout-workflow)
-- Workout calorie reasoning: [Methodology](Methodology.md#why-exercise-calories-are-net-calories), [Methodology](Methodology.md#why-strength-training-is-not-just-minutes)
-- Formulas: [Algorithm](Algorithm.md#workout-calories)
-- Storage model: [Database](Database.md#workout_sessions)
+- Product workflow: [Product](Product.local.md#workout-workflow)
+- Workout calorie reasoning: [Methodology](Methodology.local.md#why-exercise-calories-are-net-calories), [Methodology](Methodology.local.md#why-strength-training-is-not-just-minutes)
+- Formulas: [Algorithm](Algorithm.local.md#workout-calories)
+- Storage model: [Database](Database.local.md#workout_sessions)
 
 ## Workout Record Detail
 
@@ -210,8 +210,8 @@ How it works:
 
 Read more:
 
-- Product behavior: [Product](Product.md#workout-workflow)
-- Data model: [Database](Database.md#workout_sessions), [Database](Database.md#workout_sets)
+- Product behavior: [Product](Product.local.md#workout-workflow)
+- Data model: [Database](Database.local.md#workout_sessions), [Database](Database.local.md#workout_sets)
 
 ## Profile
 
@@ -251,10 +251,10 @@ How it works:
 
 Read more:
 
-- Product behavior: [Product](Product.md#diet-setup-ux)
-- User-facing method explanation: [Methodology](Methodology.md)
-- Algorithm details: [Algorithm](Algorithm.md)
-- Profile table: [Database](Database.md#user_profile)
+- Product behavior: [Product](Product.local.md#diet-setup-ux)
+- User-facing method explanation: [Methodology](Methodology.local.md)
+- Algorithm details: [Algorithm](Algorithm.local.md)
+- Profile table: [Database](Database.local.md#user_profile)
 
 ## Export
 
@@ -279,8 +279,8 @@ How it works:
 
 Read more:
 
-- Export coverage: [Database](Database.md#export-coverage)
-- Product boundary: [Product](Product.md#implemented-boundaries)
+- Export coverage: [Database](Database.local.md#export-coverage)
+- Product boundary: [Product](Product.local.md#implemented-boundaries)
 
 ## Language
 
@@ -294,7 +294,7 @@ How it works:
 
 Read more:
 
-- Storage overview: [Database](Database.md#storage-overview)
+- Storage overview: [Database](Database.local.md#storage-overview)
 
 ## Privacy And Local-first Boundary
 
@@ -313,6 +313,6 @@ What stays local:
 
 Read more:
 
-- Database storage: [Database](Database.md)
-- AI boundary: [AgentDesign](AgentDesign.md)
-- Evidence and safety boundaries: [References](References.md)
+- Database storage: [Database](Database.local.md)
+- AI boundary: [AgentDesign](AgentDesign.local.md)
+- Evidence and safety boundaries: [References](References.local.md)

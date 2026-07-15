@@ -1,0 +1,187 @@
+{
+  "schema_version": "fitlog_domain_terms.v1",
+  "dictionary_version": "domain_terms.v1",
+  "exercise_terms_asset": "assets/rag/exercise_terms.v1.json",
+  "concepts": [
+    {
+      "concept": "total_load",
+      "category": "workout_load_input",
+      "official": {"zh": "总重量 / 器械标称重量", "en": "Total / machine weight"},
+      "aliases": {"zh": ["总重量", "器械标称重量", "整组重量"], "en": ["total weight", "machine weight", "total load"]},
+      "internal_values": ["total_load"],
+      "do_not_merge_with": ["per_side_load", "bodyweight_added", "assistance_load"],
+      "version": 1
+    },
+    {
+      "concept": "per_side_load",
+      "category": "workout_load_input",
+      "official": {"zh": "每侧重量", "en": "Per-side weight"},
+      "aliases": {"zh": ["单侧重量", "单边重量", "每边重量"], "en": ["weight per side", "per-side load", "unilateral load"]},
+      "internal_values": ["per_side_load"],
+      "do_not_merge_with": ["total_load"],
+      "version": 1
+    },
+    {
+      "concept": "bodyweight_added",
+      "category": "workout_load_input",
+      "official": {"zh": "自重 + 额外加重", "en": "Bodyweight + added load"},
+      "aliases": {"zh": ["自重加重", "额外负重", "自重额外重量"], "en": ["added bodyweight load", "bodyweight plus weight", "weighted bodyweight"]},
+      "internal_values": ["bodyweight_added"],
+      "do_not_merge_with": ["assistance_load"],
+      "version": 1
+    },
+    {
+      "concept": "assistance_load",
+      "category": "workout_load_input",
+      "official": {"zh": "辅助重量", "en": "Assistance weight"},
+      "aliases": {"zh": ["辅助负重", "助力重量"], "en": ["assistance load", "assist weight", "counterweight"]},
+      "internal_values": ["assistance_load"],
+      "do_not_merge_with": ["bodyweight_added"],
+      "version": 1
+    },
+    {
+      "concept": "total_reps",
+      "category": "workout_reps_input",
+      "official": {"zh": "总次数", "en": "Total reps"},
+      "aliases": {"zh": ["整组次数", "全组次数"], "en": ["reps for the whole set", "whole-set reps"]},
+      "internal_values": ["total_reps"],
+      "do_not_merge_with": ["per_side_reps"],
+      "version": 1
+    },
+    {
+      "concept": "per_side_reps",
+      "category": "workout_reps_input",
+      "official": {"zh": "每侧次数", "en": "Per-side reps"},
+      "aliases": {"zh": ["单侧次数", "单边次数", "每边次数"], "en": ["reps per side", "unilateral reps", "per side repetitions"]},
+      "internal_values": ["per_side_reps"],
+      "do_not_merge_with": ["total_reps"],
+      "version": 1
+    },
+    {
+      "concept": "duration_seconds",
+      "category": "workout_set_metric",
+      "official": {"zh": "单组时长", "en": "Single-set duration"},
+      "aliases": {"zh": ["按时长记录", "每组秒数", "时长组"], "en": ["duration set", "seconds per set", "time-based set"]},
+      "internal_values": ["duration_seconds"],
+      "do_not_merge_with": ["total_reps", "per_side_reps"],
+      "version": 1
+    },
+    {
+      "concept": "energy_ratio",
+      "category": "diet_mode",
+      "official": {"zh": "热量比例模式", "en": "Energy-ratio mode"},
+      "aliases": {"zh": ["热量优先模式", "比例模式"], "en": ["kcal-first mode", "energy percentage mode"]},
+      "internal_values": ["energy_ratio"],
+      "do_not_merge_with": ["gram_per_kg"],
+      "version": 1
+    },
+    {
+      "concept": "gram_per_kg",
+      "category": "diet_mode",
+      "official": {"zh": "每公斤克数模式", "en": "Grams-per-kilogram mode"},
+      "aliases": {"zh": ["克每公斤", "宏量优先模式", "每公斤体重克数"], "en": ["g/kg mode", "macro-first mode", "grams per kg"]},
+      "internal_values": ["gram_per_kg"],
+      "do_not_merge_with": ["energy_ratio"],
+      "version": 1
+    },
+    {
+      "concept": "diet_goal_phase",
+      "category": "diet_phase",
+      "official": {"zh": "饮食目标阶段", "en": "Diet goal phase"},
+      "aliases": {"zh": ["减脂增肌阶段", "目标阶段"], "en": ["cutting or bulking phase", "goal phase"]},
+      "internal_values": ["diet_goal_phase", "cutting", "bulking"],
+      "do_not_merge_with": ["diet_plan_strategy"],
+      "version": 1
+    },
+    {
+      "concept": "carb_cycling",
+      "category": "diet_strategy",
+      "official": {"zh": "碳循环", "en": "Carb cycling"},
+      "aliases": {"zh": ["高低碳循环"], "en": ["carbohydrate cycling"]},
+      "internal_values": ["carb_cycling"],
+      "do_not_merge_with": ["carb_tapering"],
+      "version": 1
+    },
+    {
+      "concept": "carb_tapering",
+      "category": "diet_strategy",
+      "official": {"zh": "碳水渐降", "en": "Carb tapering"},
+      "aliases": {"zh": ["渐进降碳", "碳水递减"], "en": ["carbohydrate tapering", "progressive carb reduction"]},
+      "internal_values": ["carb_tapering"],
+      "do_not_merge_with": ["carb_cycling"],
+      "version": 1
+    },
+    {
+      "concept": "cloud_source_of_truth",
+      "category": "data_authority",
+      "official": {"zh": "云端正式数据源", "en": "Cloud source of truth"},
+      "aliases": {"zh": ["云端权威", "正式记录权威"], "en": ["cloud authority", "official cloud record"]},
+      "internal_values": ["cloud_source_of_truth"],
+      "do_not_merge_with": ["local_cache"],
+      "version": 1
+    },
+    {
+      "concept": "local_cache",
+      "category": "data_authority",
+      "official": {"zh": "本地缓存", "en": "Local cache"},
+      "aliases": {"zh": ["SQLite 缓存", "本机缓存"], "en": ["SQLite cache", "device cache"]},
+      "internal_values": ["local_cache"],
+      "do_not_merge_with": ["cloud_source_of_truth"],
+      "version": 1
+    },
+    {
+      "concept": "food_draft",
+      "category": "ai_output_family",
+      "official": {"zh": "食物草稿", "en": "Food Draft"},
+      "aliases": {"zh": ["饮食草稿", "食物记录草稿"], "en": ["food logging draft", "meal draft"]},
+      "internal_values": ["food_draft"],
+      "do_not_merge_with": ["official_food_record"],
+      "version": 1
+    },
+    {
+      "concept": "workout_draft",
+      "category": "ai_output_family",
+      "official": {"zh": "训练草稿", "en": "Workout Draft"},
+      "aliases": {"zh": ["训练记录草稿"], "en": ["workout logging draft", "exercise draft"]},
+      "internal_values": ["workout_draft"],
+      "do_not_merge_with": ["official_workout_record"],
+      "version": 1
+    },
+    {
+      "concept": "document_rag",
+      "category": "ai_context",
+      "official": {"zh": "文档检索增强", "en": "Document RAG"},
+      "aliases": {"zh": ["稳定文档检索", "产品文档检索"], "en": ["stable document retrieval", "product-document RAG"]},
+      "internal_values": ["document_rag"],
+      "do_not_merge_with": ["structured_rag"],
+      "version": 1
+    },
+    {
+      "concept": "structured_rag",
+      "category": "ai_context",
+      "official": {"zh": "结构化上下文检索", "en": "Structured RAG"},
+      "aliases": {"zh": ["结构化上下文", "记录摘要上下文"], "en": ["structured context", "record-summary context"]},
+      "internal_values": ["structured_rag"],
+      "do_not_merge_with": ["document_rag", "user_vector_memory"],
+      "version": 1
+    },
+    {
+      "concept": "answer_evidence",
+      "category": "ai_grounding",
+      "official": {"zh": "回答依据", "en": "Answer evidence"},
+      "aliases": {"zh": ["Answer Basis", "证据来源", "回答来源"], "en": ["answer basis", "grounding evidence", "source evidence"]},
+      "internal_values": ["evidence", "answer_basis"],
+      "do_not_merge_with": ["model_assumption"],
+      "version": 1
+    },
+    {
+      "concept": "record_summary_permission",
+      "category": "ai_permission",
+      "official": {"zh": "记录摘要权限", "en": "Record-summary permission"},
+      "aliases": {"zh": ["允许读取记录摘要", "本地上下文权限"], "en": ["allow record summary context", "record context permission"]},
+      "internal_values": ["allow_record_summary_context"],
+      "do_not_merge_with": ["authentication", "subscription"],
+      "version": 1
+    }
+  ]
+}

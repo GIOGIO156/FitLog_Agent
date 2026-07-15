@@ -1,6 +1,6 @@
 import type { GatewayRequest } from "./contracts.ts";
 import {
-  providerGatewayEnvelopeJsonSchema,
+  providerGatewayEnvelopeJsonSchemaForExpectedOutput,
   providerGatewayEnvelopeSchemaVersion,
 } from "../_shared/ai_output_contract.ts";
 import {
@@ -14,6 +14,7 @@ import type {
   ProviderGenerationOptions,
 } from "./providers.ts";
 import { ProviderError } from "./providers.ts";
+import { buildFoodCapabilityRequest } from "../_shared/food_capability.ts";
 
 interface OpenAiProviderParams {
   apiKey: string;
@@ -54,9 +55,6 @@ async function generateOpenAiText(
     params.options?.timeoutMs ?? params.timeoutMs,
   );
   try {
-    if (params.request.attachments.length > 0) {
-      throw new ProviderError("request_schema_mismatch");
-    }
     const response = await params.fetchImpl(
       "https://api.openai.com/v1/responses",
       {
@@ -69,13 +67,15 @@ async function generateOpenAiText(
         body: JSON.stringify({
           model: params.model,
           instructions: systemInstructions(params.request),
-          input: textInput(params.request, params.options),
+          input: responseInput(params.request, params.options),
           text: {
             format: {
               type: "json_schema",
               name: "fitlog_provider_gateway_envelope",
               strict: true,
-              schema: providerGatewayEnvelopeJsonSchema,
+              schema: providerGatewayEnvelopeJsonSchemaForExpectedOutput(
+                params.request.expectedOutput,
+              ),
             },
           },
         }),
@@ -176,7 +176,15 @@ function systemInstructions(request: GatewayRequest): string {
     `Expected output: ${request.expectedOutput}. Markdown is allowed only inside message.text.`,
     "If Expected output is auto, infer the user's natural intent from the message and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",
     "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
-    `Resolved record date: ${request.targetDate ?? "unresolved"}. Date source: ${request.dateResolutionSource}. For any draft, copy this exact date into draft.date. If unresolved, return clarification instead of guessing.`,
+    "For workout_draft.v3, use only an exercise_definition in Approved Context and copy its key, source, definition_hash, exercise_type, body_part, load_input_mode, reps_input_mode, and set_metric_type exactly. If no single approved definition exists, return clarification.",
+    `Food capability request: ${
+      JSON.stringify(
+        buildFoodCapabilityRequest(request.messageText, request.language),
+      )
+    }. Preserve higher-priority facts, use lower-priority sources only for missing fields, and keep estimates in the target language.`,
+    `Resolved record date: ${
+      request.targetDate ?? "unresolved"
+    }. Date source: ${request.dateResolutionSource}. For any draft, copy this exact date into draft.date. If unresolved, return clarification instead of guessing.`,
   ].join("\n");
 }
 
@@ -209,6 +217,26 @@ function textInput(
     lines.push(correctionPrompt("", options));
   }
   return lines.filter((line) => line.trim() !== "").join("\n");
+}
+
+function responseInput(
+  request: GatewayRequest,
+  options?: ProviderGenerationOptions,
+): string | Array<Record<string, unknown>> {
+  const text = textInput(request, options);
+  if (request.attachments.length === 0) return text;
+  return [{
+    role: "user",
+    content: [
+      { type: "input_text", text },
+      ...request.attachments.map((attachment) => ({
+        type: "input_image",
+        image_url:
+          `data:${attachment.mimeType};base64,${attachment.base64Data}`,
+        detail: "auto",
+      })),
+    ],
+  }];
 }
 
 function correctionPrompt(

@@ -69,7 +69,7 @@ FitLog_Agent uses two scoped retrieval patterns:
 - Structured RAG: known functions build compact summaries from cloud official records, daily summaries, or controlled summary builders.
 - Document RAG: the app retrieves relevant FitLog documentation snippets.
 
-Current Document RAG uses keyword, full-text, trigram, and term-overlap retrieval. Vector or semantic retrieval may be evaluated later for app documents only; it would not authorize a user food/workout/weight vector database. Long-term semantic memory over business records is out of scope for V1. Engineering details live in `RAGDesign.md`.
+Document RAG uses controlled hybrid retrieval over stable app documents: exact/phrase, versioned Chinese and bilingual terms, full-text, trigram, and compatible document embeddings are fused and reranked before evidence is exposed. This document-only embedding path does not authorize a user food/workout/weight vector database. Long-term semantic memory over business records remains out of scope for V1. Engineering details live in `RAGDesign.md`.
 
 ## Why AI Asks Questions
 
@@ -232,6 +232,8 @@ netMet = max(0, MET - 1)
 This is a local product choice built on MET conventions [REF-ALG-08](References.md), [REF-ALG-09](References.md). It makes logged exercise an add-on to a no-exercise baseline rather than counting resting energy twice.
 
 For strength training, FitLog uses a project heuristic based on normalized volume, movement profile, bodyweight involvement, and bounded recovery modifiers. This is an estimate, not lab measurement.
+
+Strength exercises do not all use the same entry convention. A pair of dumbbells may be entered as weight per side, a unilateral movement may use reps per side, a bodyweight movement may record added load, and an assisted movement records the assistance weight. FitLog therefore preserves the user's raw entry for display and stores a separate normalized calculation value. This avoids treating one dumbbell as the total load or one side's repetitions as the whole set. Custom strength exercises use the same explicit modes rather than asking users to choose an internal calorie profile.
 
 ## Why Cloud Profile Is Used
 

@@ -25,10 +25,21 @@ export interface Phase5DocumentSource {
   context_prefix: string;
   context_note: string | null;
   excerpt: string;
+  authority?: string;
+  retrieval_attempt?: 1 | 2;
+  coverage_status?: "complete" | "partial" | "insufficient" | "conflicting";
 }
 
 export interface Phase5WorkflowRoute {
-  workflow: "auto" | "food_logging" | "meal_decision" | "weekly_review" | "app_logic_answer";
+  workflow:
+    | "auto"
+    | "food_logging"
+    | "workout_logging"
+    | "meal_decision"
+    | "weekly_review"
+    | "app_logic_answer"
+    | "general_chat"
+    | "safety_boundary";
   confidence: number | null;
   reasons: string[];
   required_context: string[];
@@ -44,6 +55,66 @@ export interface Phase5ContextBundle {
   retrieved_dimensions: string[];
   missing_dimensions: string[];
   safety_flags: string[];
+  retrieval_debug?: Phase5RetrievalDebug | null;
+}
+
+export interface Phase5RetrievalDebug {
+  pipeline_version: "rag_foundation_v1";
+  query_language_profile: "zh" | "en" | "mixed";
+  canonical_concept_ids: string[];
+  corpus_id: string;
+  corpus_build_id: string | null;
+  embedding_model: string | null;
+  reranker_version: string;
+  branch_hits: {
+    exact: number;
+    terms: number;
+    full_text: number;
+    trigram: number;
+    lexical: number;
+    vector: number;
+  };
+  final_hit_count: number;
+  first_coverage_status:
+    | "complete"
+    | "partial"
+    | "insufficient"
+    | "conflicting";
+  first_missing_dimensions: string[];
+  coverage_status: "complete" | "partial" | "insufficient" | "conflicting";
+  missing_dimensions: string[];
+  retry_reason: string | null;
+  retry_count: 0 | 1;
+  retry_action:
+    | "not_needed"
+    | "disabled"
+    | "conflict_stop"
+    | "unsupported_identifier_stop"
+    | "planner_stop"
+    | "planner_failed"
+    | "invalid"
+    | "no_change"
+    | "search";
+  retry_query_changed: boolean;
+  retry_gain: boolean;
+  issue_codes: string[];
+  latency_breakdown: {
+    attempts: Array<{
+      total_ms: number;
+      normalization_ms: number;
+      embedding_ms: number | null;
+      lexical_candidate_rpc_ms: number | null;
+      hybrid_rpc_ms: number;
+      reranker_ms: number;
+      embedding_status:
+        | "not_configured"
+        | "completed"
+        | "unavailable";
+      embedding_input_chars: number;
+      query_variant_count: number;
+    }>;
+    rewrite_planner_ms: number | null;
+  };
 }
 
 export interface Phase5Evidence {

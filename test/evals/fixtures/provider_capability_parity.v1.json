@@ -1,0 +1,6 @@
+{"schema":"fitlog_eval_suite.v1","suite":"provider_parity","cases":[
+  {"case_id":"text","capability":"text_answer","providers":["openai","qwen"]},
+  {"case_id":"food_text","capability":"food_draft","input_kind":"text","providers":["openai","qwen"]},
+  {"case_id":"food_image","capability":"food_draft","input_kind":"image","providers":["openai","qwen"]},
+  {"case_id":"preference_isolation","surface":"food_photo","forbidden_cross_write":"ai_chat_model_preference"}
+]}

@@ -21,11 +21,13 @@ FitLog uses two scoped retrieval systems with different data shapes and authorit
 | System | Purpose | Authoritative source | Retrieval model |
 | --- | --- | --- | --- |
 | Structured RAG | Give meal-decision and review workflows minimum necessary user/account context. | Cloud Profile, cloud official records, `daily_summaries`, and server-side summary builders. | Known typed context builders selected by the server workflow route. |
-| Document RAG | Answer FitLog app-logic questions with traceable product/design documentation. | Versioned stable README and bilingual design documents stored as `document_chunks`. | Language filter plus full-text, trigram, and keyword-term overlap ranking. |
+| Document RAG | Answer FitLog app-logic questions with traceable product/design documentation. | Versioned stable README and bilingual design documents stored as active-build `document_chunks`. | Versioned query normalization plus controlled lexical/vector branches, explicit fusion/reranking, coverage, and at most one bounded retry. |
 
 The Gateway also sends compact same-chat context containing recent text turns and artifact summaries. Same-chat context is conversation continuity, not RAG evidence: it is not shown in the Answer basis panel and it does not prove a product rule.
 
-Embeddings, vector search, semantic long-term memory, GraphRAG, model-generated SQL, open-ended retrieval loops, and automatic document-to-cloud synchronization remain outside this design. The complete boundary is listed under [Non-goals](#non-goals).
+Stable-document embeddings are limited to the public product/help/design corpus. User-record embeddings, semantic long-term memory, GraphRAG, model-generated SQL, open-ended retrieval loops, and automatic document-to-cloud synchronization remain outside this design. The complete boundary is listed under [Non-goals](#non-goals).
+
+Document RAG uses Qwen `text-embedding-v4` in the Singapore Model Studio workspace for both corpus and query vectors. Dense vectors are fixed at 1536 dimensions. The embedding model is independent from the Qwen multimodal generation model, but both reuse the server-managed `FITLOG_QWEN_API_KEY`; the embedding endpoint is derived from `FITLOG_QWEN_BASE_URL`, and `FITLOG_DOCUMENT_EMBEDDING_MODEL` identifies the retrieval model. OpenAI is not an embedding or RAG dependency for the current release.
 
 ## Architecture
 
@@ -86,7 +88,7 @@ Context builders return compact aggregates and metadata, not raw row arrays. Eac
 Document RAG retrieves bilingual FitLog product/help/design text. Current indexed sources are:
 
 - root `README.md`
-- `docs/en/Product.md`, `AppGuide.md`, `Methodology.md`, `Algorithm.md`, `Database.md`, `AgentDesign.md`, `AIOutputContract.md`, `RAGDesign.md`, and `References.md`
+- `docs/en/Product.md`, `AppGuide.md`, `Methodology.md`, `Algorithm.md`, `Database.md`, `CloudLocalDataBoundary.md`, `AgentDesign.md`, `AIOutputContract.md`, `RAGDesign.md`, and `References.md`
 - matching files under `docs/zh/`
 
 Engineering plans, changelog history, API drafts, generated SQL, source code, user exports, and user business records are not part of the stable Document RAG corpus.
@@ -119,7 +121,7 @@ The server router selects a bounded workflow and its required dimensions:
 | `app_logic_answer` | Searches same-language stable documents and returns source-aware evidence. |
 | read-only safety boundary | Does not call the provider for unsupported write/privacy requests when the router can block deterministically. |
 
-Client workflow hints are hints, not authority. The server route and safety flags decide the actual workflow and allowed actions.
+Client workflow hints are hints, not authority. The server first applies deterministic routing and safety rules; it calls the bounded model planner only when those rules cannot resolve the workflow. The resulting Task Plan is then clamped by Context Policy before any context builder or query embedding runs. The server route and safety flags decide the actual workflow and allowed actions.
 
 Workflow routing and output selection are separate decisions. Routing chooses which authorized context to build, whether documents are retrieved, and which actions are allowed; it does not turn every unrecognized request into `text`. Explicit product entries fix their output family. In ordinary AI Chat, a high-confidence resolver may select text or a draft directly; after resolver abstention, the model uses the current request, images, and authorized context to select a bounded `output_type`. Model selection never expands RAG or write authority.
 
@@ -178,16 +180,16 @@ Context-builder failure should degrade to a named missing dimension when safe. I
 
 The implemented ingestion pipeline:
 
-1. Reads the explicit stable source-path allowlist.
-2. Parses Markdown headings and preserves `heading_path`.
-3. Splits long heading sections by paragraph, then sentence/language-aware punctuation, then hard character boundaries.
+1. Validates the versioned canonical manifest against `README.md` and every stable Markdown file in both language trees; a missing bilingual pair or an unauthorized source fails generation.
+2. Parses headings outside fenced code and preserves the complete `heading_path` and exact Markdown source text.
+3. Splits long sections at Markdown block or safe sentence boundaries. Links, URLs, code, tables, paths, extensions, enums, numbers, versions, dates, and reference IDs remain byte-for-byte intact; a protected token may form an oversized chunk rather than being corrupted.
 4. Keeps meaningful short sections so non-goals, source-of-truth rules, and mode semantics remain retrievable.
-5. Generates deterministic `section_id`, `chunk_index`, `chunk_count`, tags, status, and `context_prefix`.
-6. Hashes versioned chunk content.
-7. Generates `supabase/seed_phase5_document_chunks.sql`.
-8. Deletes the managed corpus for the allowlisted paths before inserting/updating current chunks.
+5. Generates deterministic `section_id`, `chunk_index`, `chunk_count`, tags, status, and `context_prefix` without depending on time, absolute paths, or randomness.
+6. Stores source, chunk, manifest, generator, and terminology versions in a reviewable corpus-build artifact.
+7. Generates `supabase/seed_phase5_document_chunks.sql` from that artifact.
+8. Stages a complete corpus build, validates source/chunk counts, and atomically switches the active build. Queries never combine a partial new build with the previous active build.
 
-The deterministic context prefix includes source path, heading path, tags, status, purpose, and chunk position. Optional `context_note` remains reserved for reviewed offline notes; it must not be generated from user records or at request time.
+The deterministic context prefix includes source path, heading path, tags, status, and chunk position. It supplies minimal heading context without rewriting or duplicating the source. Optional `context_note` remains reserved for reviewed offline notes; it must not be generated from user records or at request time.
 
 ## Document Status
 
@@ -203,17 +205,22 @@ The provider must not present `planned` or `non_goal` content as shipped behavio
 
 ## Retrieval
 
-Current Document RAG:
+Document retrieval:
 
-- filters by requested language;
-- ranks full-query text-search signals;
-- adds trigram similarity;
-- adds keyword-term overlap over headings, heading paths, context prefix, optional context note, and content;
-- returns a bounded number of source objects.
+- applies the same versioned NFKC/lowercase Chinese-English-number tokenization at ingestion and query time; chunks persist bounded `search_tokens`, while protected enums, paths, units, and exercise keys remain intact;
+- keeps chunking, lexical tokenization, and embeddings as separate stages: heading-aware lossless chunking defines retrievable units, tokenization feeds exact/term/full-text branches, and embeddings add semantic vector candidates over the same chunk content plus deterministic context prefix;
+- normalizes Chinese, English, and mixed queries into protected terms, canonical concepts/internal enums, reviewed aliases, exercise keys, and bounded variants without merging nearby concepts;
+- queries only the active stable-document corpus build and filters language, authority, and status;
+- stores a generated `search_tsv` column with a GIN index, while the existing token, trigram, and HNSW indexes support the other branches;
+- starts bounded indexed lexical-candidate collection and Qwen query embedding concurrently; embedding failure is explicit and lexical candidates remain usable;
+- sends the lexical candidate IDs and optional compatible 1536-dimension vector to `search_document_chunks_hybrid_v3`, which computes the original global scores and ranks inside PostgreSQL, fuses at most 30 final candidates, and returns branch scores, ranks, matched fields, and matched terms;
+- deduplicates those bounded candidates in Edge, then applies a versioned feature reranker that prioritizes exact official concepts, stable keys, current authority, requested language, source diversity, and reviewed owning-document cues such as product promise, permission, persistence, formula, evidence, and retrieval questions;
+- classifies coverage as complete, partial, insufficient, or conflicting against the Task Plan's required dimensions;
+- allows `search_fitlog_docs` one strictly parsed server-normalized retry when coverage is not complete, for a hard maximum of two searches.
 
-Chinese questions retrieve Chinese docs; English questions retrieve English docs. The current App language or dominant query language resolves mixed-language requests. The provider must answer in the requested language even when same-chat context contains another language.
+Chinese questions place Chinese docs before cross-language fallback, and English questions do the same for English docs. Mixed queries may search both; cross-language results are secondary and do not change response language. Owning-document priors refine otherwise plausible candidates but never bypass corpus authority/status filters. Embedding failure degrades to lexical branches with an issue code. Reranker failure uses the fused order. Neither downgrade fabricates sources or turns incomplete coverage into a FitLog claim.
 
-Vector or semantic retrieval may be evaluated later for stable product/help/design documents only. It requires a separate measured change and does not authorize user-business-data embeddings.
+Coverage-complete or conflicting first retrieval does not call a retry model. An unknown exact technical identifier and a normalized rewrite that is unchanged also stop without a second search. Only a genuine missing-evidence case with a materially changed, server-normalized rewrite may retry once; a second insufficient result stops with a limitation/general-knowledge boundary. Retrieval retry and output correction use separate counters and never expand context or permission.
 
 ## Prompt Assembly
 
@@ -226,7 +233,7 @@ Prompt assembly keeps these layers distinct:
 5. same-chat continuity
 6. current user request
 
-Retrieved text is untrusted evidence. Instructions contained inside retrieved documents must not override system/output rules, grant tools, request secrets, or authorize writes. Source path, heading path, status, and excerpt boundaries remain visible to the prompt builder.
+Retrieved text is untrusted evidence. Instructions contained inside retrieved documents must not override system/output rules, grant tools, request secrets, or authorize writes. Source path, heading path, status, and excerpt boundaries remain visible to the prompt builder. The provider prompt serializes controlled context compactly, omits a duplicate Document RAG summary, and keeps only the source metadata required for grounding and evidence.
 
 ## Evidence
 
@@ -262,11 +269,11 @@ When an indexed stable document changes:
 
 1. update the English and Chinese source documents together when facts change;
 2. run `node tool/phase5_document_rag/build_document_chunks.mjs`;
-3. inspect generated source paths, chunk count, status/tags, and obvious encoding issues;
-4. apply the generated seed SQL to the intended Supabase environment;
-5. run representative App Logic Q&A retrieval checks.
+3. inspect manifest/source pairing, chunk count, hashes, status/authority, protected-token scans, and the generated corpus-build artifact;
+4. build missing/stale Qwen `text-embedding-v4` vectors with `FITLOG_QWEN_API_KEY`, `FITLOG_QWEN_BASE_URL`, and `FITLOG_DOCUMENT_EMBEDDING_MODEL`, apply the generated seed to staging, synchronize vectors by matching chunk/input hashes, and activate only after source/chunk/vector parity;
+5. verify cloud parity and run the versioned retrieval/evidence evaluation suites and provider canaries.
 
-A docs-only seed refresh does not require a Flutter rebuild or Edge Function redeploy. Redeploy the Edge Function only when routing, context builders, retrieval, prompt assembly, response/evidence schema, or safety code changes.
+A docs-only corpus refresh does not require a Flutter rebuild or Edge Function redeploy. Redeploy the Edge Function only when routing, context builders, retrieval, prompt assembly, response/evidence schema, or safety code changes. Activation and rollback use corpus build IDs rather than destructive table reset.
 
 ## Evaluation
 
@@ -284,7 +291,7 @@ RAG evaluation must cover:
 - prompt-injection text inside retrieved content
 - no raw rows, notes, images, tokens, or secrets in prompts/evidence/logs
 
-Useful metrics include source recall on a reviewed question set, top-result relevance, no-result rate, missing-dimension correctness, evidence/source agreement, latency, and serialized context size. Retrieval quality claims require a versioned evaluation set rather than anecdotal examples.
+Useful metrics include source recall on a reviewed question set, top-result relevance, no-result rate, missing-dimension correctness, evidence/source agreement, latency, and serialized context size. Retrieval quality claims require a versioned evaluation set rather than anecdotal examples. Release Gates require recall@3 >= 0.97, reviewed precision@3 >= 0.85, critical top-1 >= 0.95, normal Edge retrieval p95 <= 1,500 ms, and one-retry increment <= 3,500 ms. Production timing separates query normalization, concurrent lexical-candidate and query-embedding work, final hybrid RPC, local reranking, optional rewrite planning and the second retrieval; Gateway timing separately measures planning, context building, provider generation/validation/correction, and persistence. A path that does not request Document RAG records embedding as `not_requested`, which makes routing behavior directly auditable without retaining user text or vectors.
 
 ## Non-goals
 
@@ -306,7 +313,9 @@ Useful metrics include source recall on a reviewed question set, top-result rele
 - [Database.md](Database.md): `document_chunks`, logs, cloud records, and persistence
 - [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md): cloud/local authority and cache behavior
 - [References.md](References.md): RAG, security, privacy, and evidence sources
-- [../../PHASE5_ENGINEERING_PLAN.md](../../PHASE5_ENGINEERING_PLAN.md): RAG implementation, deployment, and acceptance history
+- [../../RAG_FOUNDATION_REMEDIATION_SCOPE.md](../../RAG_FOUNDATION_REMEDIATION_SCOPE.md): confirmed scope for the active RAG foundation remediation; it describes required future work, not current behavior
+- [../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md): active implementation, validation, deployment, and rollback plan
+- [../history/phase5/PHASE5_ENGINEERING_PLAN.md](../history/phase5/PHASE5_ENGINEERING_PLAN.md): historical original Phase 5 controlled-RAG implementation, deployment, and acceptance plan
 
 ## Code References
 
@@ -316,7 +325,10 @@ Useful metrics include source recall on a reviewed question set, top-result rele
 - Prompt assembly: `supabase/functions/ai-chat-route/prompt_builder.ts`
 - Gateway evidence: `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/phase5_types.ts`
 - Document schema/RPC: `supabase/migrations/202607080001_phase5_document_rag_index.sql`
+- Foundation corpus and hybrid RPC: `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`
+- Indexed candidate retrieval: `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`
 - Service-role grants: `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`
 - Ingestion tool: `tool/phase5_document_rag/build_document_chunks.mjs`
 - Generated seed: `supabase/seed_phase5_document_chunks.sql`
+- Reliability evaluation: `tool/evals/run_rag_foundation_cloud_eval.mjs`, `docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md`; generated raw evidence remains under `test/evals/reports/`
 - Flutter evidence model/UI: `lib/domain/models/ai_gateway_evidence.dart`, `lib/features/ai/ai_page.dart`

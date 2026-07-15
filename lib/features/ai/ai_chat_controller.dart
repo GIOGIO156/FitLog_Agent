@@ -3,19 +3,27 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../data/repositories/ai_chat_repository.dart';
+import '../../data/repositories/custom_exercise_repository.dart';
 import '../../data/repositories/phase2_repository_exception.dart';
 import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_chat_session.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
+import '../../domain/models/ai_exercise_reference.dart';
 import '../../domain/models/ai_gateway_error.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/ai_gateway_response.dart';
 import '../../domain/models/ai_workout_draft.dart';
+import '../../domain/services/ai_exercise_reference_builder.dart';
 
 class AiChatController extends ChangeNotifier {
-  AiChatController({required this.repository, this.onDeviceReplaced});
+  AiChatController({
+    required this.repository,
+    this.customExerciseRepository,
+    this.onDeviceReplaced,
+  });
 
   final AiChatRepository repository;
+  final CustomExerciseRepository? customExerciseRepository;
   final VoidCallback? onDeviceReplaced;
 
   String? _accountId;
@@ -233,6 +241,16 @@ class AiChatController extends ChangeNotifier {
     _clearErrorState();
     notifyListeners();
 
+    var exerciseReferences = const <AiExerciseReference>[];
+    try {
+      if (customExerciseRepository != null) {
+        exerciseReferences = await AiExerciseReferenceBuilder(
+          customExerciseRepository!,
+        ).buildForMessage(trimmed);
+      }
+    } catch (_) {
+      exerciseReferences = const <AiExerciseReference>[];
+    }
     final request = AiGatewayRequest(
       sessionId: _selectedSessionId,
       messageText: trimmed,
@@ -246,9 +264,10 @@ class AiChatController extends ChangeNotifier {
       client: const <String, dynamic>{
         'platform': 'flutter',
         'app_version': 'phase4',
-        'draft_schema_version': 'v2',
+        'draft_schema_version': 'v3',
       },
       conversationContext: _buildConversationContext(),
+      exerciseReferences: exerciseReferences,
     );
 
     try {

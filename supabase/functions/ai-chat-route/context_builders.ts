@@ -1,11 +1,12 @@
 import type { GatewayRequest } from "./contracts.ts";
-import { searchDocumentSources, type SupabaseRestEnv } from "./document_rag.ts";
+import { searchDocumentContext, type SupabaseRestEnv } from "./document_rag.ts";
 import type {
   Phase5ContextBundle,
   Phase5ContextObject,
   Phase5DocumentSource,
   Phase5WorkflowRoute,
 } from "./phase5_types.ts";
+import { buildExerciseDefinitionContext } from "./exercise/exercise_context_builder.ts";
 
 export async function buildPhase5Context(
   env: SupabaseRestEnv,
@@ -19,12 +20,58 @@ export async function buildPhase5Context(
   const retrievedDimensions: string[] = [];
   const safetyFlags = [...route.safety_flags];
   let documentSources: Phase5DocumentSource[] = [];
+  let retrievalDebug: Phase5ContextBundle["retrieval_debug"] = null;
+
+  if (request.taskPlan?.approved_context.includes("exercise_definition")) {
+    calledTools.push("resolve_exercise_definition");
+    const exercise = buildExerciseDefinitionContext(request);
+    if (exercise.context === null) {
+      missingDimensions.push(...exercise.missing);
+    } else {
+      retrievedDimensions.push("exercise_definition");
+      contextObjects.push(exercise.context);
+    }
+  }
+
+  if (request.taskPlan?.approved_context.includes("exercise_history")) {
+    if (!request.allowRecordSummaryContext) {
+      addRecordContextDenied("exercise_history", missingDimensions, safetyFlags);
+    } else {
+      const definition = contextObjects.find((item) => item.type === "exercise_definition")?.data;
+      const exerciseKey = typeof definition?.key === "string" ? definition.key : "";
+      if (exerciseKey === "") {
+        missingDimensions.push("exercise_history");
+      } else {
+        calledTools.push("build_exercise_history_summary");
+        const range = reviewRange(request);
+        const rows = await fetchRpcRows(env, "build_exercise_history_summary", {
+          input_account_id: accountId,
+          input_exercise_keys: [exerciseKey],
+          input_start_date: range.start,
+          input_end_date: range.end,
+          input_session_limit: 20,
+        });
+        contextObjects.push(contextObject({
+          type: "exercise_history", language: request.language,
+          source: "cloud_workout_history_summary", dateRange: range,
+          data: { exercise_key: exerciseKey, summaries: rows.slice(0, 4) },
+          missing: rows.length === 0 ? ["workout_history"] : [],
+        }));
+        if (rows.length === 0) missingDimensions.push("exercise_history");
+        else retrievedDimensions.push("exercise_history");
+      }
+    }
+  }
 
   if (route.required_context.includes("document_context")) {
-    calledTools.push("search_document_chunks");
-    documentSources = await searchDocumentSources(env, request);
+    calledTools.push(env.pipeline?.contextPipelineVersion === "rag_foundation_v1"
+      ? "search_document_chunks_hybrid"
+      : "search_document_chunks");
+    const search = await searchDocumentContext(env, request);
+    documentSources = search.sources;
+    retrievalDebug = search.debug;
     if (documentSources.length === 0) {
-      missingDimensions.push("document_context");
+      missingDimensions.push("document_context", ...(search.debug?.missing_dimensions ?? []));
     } else {
       retrievedDimensions.push("document_context");
       contextObjects.push(
@@ -183,15 +230,36 @@ export async function buildPhase5Context(
     }
   }
 
+  const sanitizedContextObjects = contextObjects.map(sanitizeContextObject);
+  const boundedContextObjects = boundContextObjects(sanitizedContextObjects);
+  if (boundedContextObjects.length < sanitizedContextObjects.length) {
+    missingDimensions.push("context_budget");
+  }
   return {
     route,
-    context_objects: contextObjects.map(sanitizeContextObject),
+    context_objects: boundedContextObjects,
     document_sources: documentSources,
     called_tools: unique(calledTools),
     retrieved_dimensions: unique(retrievedDimensions),
     missing_dimensions: unique(missingDimensions),
     safety_flags: unique(safetyFlags),
+    retrieval_debug: retrievalDebug,
   };
+}
+
+function boundContextObjects(
+  objects: Phase5ContextObject[],
+  maxBytes = 24000,
+): Phase5ContextObject[] {
+  const result: Phase5ContextObject[] = [];
+  let used = 0;
+  for (const object of objects) {
+    const size = new TextEncoder().encode(JSON.stringify(object)).length;
+    if (used + size > maxBytes) continue;
+    result.push(object);
+    used += size;
+  }
+  return result;
 }
 
 function addRecordContextDenied(
@@ -465,6 +533,28 @@ async function fetchRows(
   return Array.isArray(rows)
     ? rows.filter(isRecord).map((row) => row as Record<string, unknown>)
     : [];
+}
+
+async function fetchRpcRows(
+  env: SupabaseRestEnv,
+  name: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>[]> {
+  const response = await fetch(`${env.supabaseUrl}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: { ...serviceHeaders(env), "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) return [];
+  const value = await response.json();
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function serviceHeaders(env: SupabaseRestEnv): HeadersInit {
+  return {
+    apikey: env.supabaseServiceRoleKey,
+    authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+  };
 }
 
 function contextObject(params: {

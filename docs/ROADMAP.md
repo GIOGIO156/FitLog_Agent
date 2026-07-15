@@ -51,8 +51,6 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 
 当前尚未存在：
 
-- Structured RAG。
-- Document RAG。
 - Chat 页超过三张图片附件或长期图片存储。
 - Chat 内 Food Draft 直接轻量编辑。
 - AI 自动写入正式 food record；当前 Add Food AI 食物分析 Draft、AI Chat Food Draft 和 Workout Draft 都必须进入确认编辑页，并由用户保存后才成为正式记录。
@@ -1701,6 +1699,22 @@ App 测试：
 - `CHANGELOG.md`
 
 ## 11. Phase 5: Structured RAG / Document RAG 与只读 AI Workflows
+
+### 当前整改状态
+
+原始 Phase 5 controlled Structured/Document RAG 基线与本轮 foundation remediation 已落地。生产保持 `rag_foundation_v1` 和一次有界 Document RAG retry 启用；OpenAI adapter 与 contract tests 保留，但未配置的 OpenAI 不参与当前 RAG，也不是发布核心依赖。检索使用 indexed term/FTS/trigram candidates 与 Qwen query embedding 并发，再由 PostgreSQL v3 保持全局 branch ranking、融合最多 30 个最终 candidates，交给 Edge reranker；complete/conflicting coverage、未知 exact identifier 和 unchanged rewrite 不再触发无收益 retry。Qwen 只接收当前 output family contract，受控 Context 紧凑序列化并使用 capability-specific output budgets。
+
+最终 release canary 28/28 通过：recall@3 100%、reviewed precision@3 97.44%、critical top-1 100%，正常 Edge retrieval p50/p95 为 1.061/1.250 秒；重复 text-budget canary 的 retrieval p95 为 1.299 秒，中文、英文和 unknown-identifier 路径各 3/3 first-pass valid，correction 与 retrieval retry 均为 0。固定质量与正常 p95 <= 1.5 秒 Gate 均未降低。八概念 stress probe 虽然首次 retrieval 3/3 complete，但 p95 为 1.566 秒；当前没有请求触发有 coverage gain 的 retry，因此 retry increment <= 3.5 秒的 live 数值不伪报为已采样。完整根因、失败实验、修复与验证证据见 [RAG reliability optimization report](reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md)。
+
+Stable owning docs 已在用户明确授权后完成 embedding 与 cloud activation。当前 active build 为 `99d908c576c844fd3c39d853`，覆盖 21 个稳定来源、577 chunks，local/cloud parity 均为 577/577，cloud mismatched 为 0；独立 refresh canary 复验 26/26，通过中英文检索、Provider、权限和正常 Edge retrieval Gate。该外部文档同步已收口。
+
+- 已确认范围：[`../RAG_FOUNDATION_REMEDIATION_SCOPE.md`](../RAG_FOUNDATION_REMEDIATION_SCOPE.md)
+- 当前详细执行计划：[`../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md`](../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md)
+- 原始历史计划：[`history/phase5/PHASE5_ENGINEERING_PLAN.md`](history/phase5/PHASE5_ENGINEERING_PLAN.md)
+- 本地综合报告：[`../test/evals/reports/rag_foundation_local.v1.md`](../test/evals/reports/rag_foundation_local.v1.md)
+- 云端收口报告：[`../test/evals/reports/rag_foundation_cloud_closure.v1.md`](../test/evals/reports/rag_foundation_cloud_closure.v1.md)
+
+本轮已实现中文分词、双语术语归一化、稳定文档 embedding、indexed controlled hybrid retrieval、reranker、受控检索工具、最多一次 Agentic retry、前置 Task/Context Planning、动作定义/历史 Context、Workout Draft 确定性绑定、grounded answer guard 和全面评测。其评测资产由 Phase 6 Reliability Evaluation Lab 继续复用；兼容 RPC 与 legacy pipeline 仅作为显式 rollback point 保留，不会成为 silent fallback。
 
 ### 目标
 
