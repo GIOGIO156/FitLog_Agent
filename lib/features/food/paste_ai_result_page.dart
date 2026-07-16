@@ -20,10 +20,15 @@ class PasteAiResultPage extends StatefulWidget {
 
 class _PasteAiResultPageState extends State<PasteAiResultPage> {
   final TextEditingController _jsonController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _jsonFocusNode = FocusNode();
+  final GlobalKey _jsonEditorKey = GlobalKey();
   bool _isParsing = false;
 
   @override
   void dispose() {
+    _jsonFocusNode.dispose();
+    _scrollController.dispose();
     _jsonController.dispose();
     super.dispose();
   }
@@ -86,57 +91,116 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
     final strings = context.strings;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(title: Text(strings.pasteAiResult)),
-      body: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _ReusablePromptSetupCard(
-              title: strings.copyAiFoodPrompt,
-              badge: strings.copyPromptOneTimeBadge,
-              body: strings.copyPromptSubtitle,
-              actionLabel: strings.copyPromptAction,
-              onCopy: _copyPrompt,
-            ),
-            Expanded(
-              child: GlassPanel(
-                padding: const EdgeInsets.all(12),
-                child: TextField(
-                  controller: _jsonController,
-                  keyboardType: TextInputType.multiline,
-                  maxLines: null,
-                  expands: true,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-                  decoration: const InputDecoration(
-                    hintText: '{ "meal_name": "..." }',
-                    alignLabelWithHint: true,
-                  ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final keyboardVisible = keyboardInset > 0;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || !_scrollController.hasClients) {
+              return;
+            }
+            if (!keyboardVisible) {
+              if (_scrollController.offset.abs() >= 1) {
+                _scrollController.animateTo(
+                  0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                );
+              }
+              return;
+            }
+            final editorContext = _jsonEditorKey.currentContext;
+            if (!_jsonFocusNode.hasFocus || editorContext == null) {
+              return;
+            }
+            Scrollable.ensureVisible(
+              editorContext,
+              alignment: 0.04,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+            );
+          });
+          final contentHeight =
+              constraints.maxHeight + (keyboardVisible ? keyboardInset : 0);
+          return SingleChildScrollView(
+            key: const ValueKey<String>('paste_ai_result_scroll'),
+            controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+            physics: keyboardVisible
+                ? const ClampingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            child: SizedBox(
+              height: contentHeight,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _ReusablePromptSetupCard(
+                      title: strings.copyAiFoodPrompt,
+                      usageLabel: strings.copyPromptUsageLabel,
+                      usageBody: strings.copyPromptUsageBody,
+                      recommendationLabel:
+                          strings.copyPromptRecommendationLabel,
+                      recommendationBody: strings.copyPromptRecommendationBody,
+                      actionLabel: strings.copyPromptAction,
+                      onCopy: _copyPrompt,
+                    ),
+                    Expanded(
+                      child: GlassPanel(
+                        key: _jsonEditorKey,
+                        padding: const EdgeInsets.all(12),
+                        child: TextField(
+                          controller: _jsonController,
+                          focusNode: _jsonFocusNode,
+                          keyboardType: TextInputType.multiline,
+                          maxLines: null,
+                          expands: true,
+                          scrollPadding: const EdgeInsets.only(bottom: 24),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: '{ "meal_name": "..." }',
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                      child: FilledButton.icon(
+                        onPressed: _isParsing ? null : _parseAndPreview,
+                        icon: _isParsing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.auto_fix_high_outlined),
+                        label: Text(
+                          _isParsing ? strings.parsing : strings.parse,
+                        ),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 52),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-              child: FilledButton.icon(
-                onPressed: _isParsing ? null : _parseAndPreview,
-                icon: _isParsing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.auto_fix_high_outlined),
-                label: Text(_isParsing ? strings.parsing : strings.parse),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -145,15 +209,19 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
 class _ReusablePromptSetupCard extends StatelessWidget {
   const _ReusablePromptSetupCard({
     required this.title,
-    required this.badge,
-    required this.body,
+    required this.usageLabel,
+    required this.usageBody,
+    required this.recommendationLabel,
+    required this.recommendationBody,
     required this.actionLabel,
     required this.onCopy,
   });
 
   final String title;
-  final String badge;
-  final String body;
+  final String usageLabel;
+  final String usageBody;
+  final String recommendationLabel;
+  final String recommendationBody;
   final String actionLabel;
   final VoidCallback onCopy;
 
@@ -164,50 +232,43 @@ class _ReusablePromptSetupCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: fitTheme.primarySoft,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.forum_outlined, color: fitTheme.primaryDeep),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: fitTheme.primarySoft,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  child: Text(
-                    badge,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: fitTheme.primaryDeep,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
-          Text(body, style: Theme.of(context).textTheme.bodyMedium),
+          DecoratedBox(
+            key: const ValueKey<String>('paste_prompt_instruction_panel'),
+            decoration: BoxDecoration(
+              color: fitTheme.surfaceVariant,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: fitTheme.outlineSubtle),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  _PromptInstructionSection(
+                    step: '1',
+                    label: usageLabel,
+                    body: usageBody,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1, color: fitTheme.outlineSubtle),
+                  ),
+                  _PromptInstructionSection(
+                    step: '2',
+                    label: recommendationLabel,
+                    body: recommendationBody,
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 14),
           Align(
             alignment: Alignment.centerRight,
@@ -220,6 +281,59 @@ class _ReusablePromptSetupCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PromptInstructionSection extends StatelessWidget {
+  const _PromptInstructionSection({
+    required this.step,
+    required this.label,
+    required this.body,
+  });
+
+  final String step;
+  final String label;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final fitTheme = context.fitLogTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 22,
+          child: Text(
+            step,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: fitTheme.primaryDeep,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                body,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: fitTheme.textSecondary,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

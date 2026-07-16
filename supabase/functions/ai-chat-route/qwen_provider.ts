@@ -279,7 +279,7 @@ function outputFamilySystemInstruction(request: GatewayRequest): string {
   if (request.expectedOutput === "workout_draft") {
     return `Return output_type=workout_draft with exactly one workout_draft.v3, or clarification with draft=null. Copy resolved date ${
       request.targetDate ?? "unresolved"
-    }; if unresolved, clarify. Use only one Approved Context exercise_definition and copy all identity/semantic fields exactly. Never claim the draft was saved.`;
+    }; if unresolved, clarify. Use only one Approved Context exercise_definition and copy all identity/semantic fields exactly. A clarification must only state the missing facts and ask at most two short questions; do not append an answer or a secondary task. Never claim the draft was saved.`;
   }
   return "Infer exactly one output family from the request. Keep output_type, clarification state, and draft payload consistent; never claim the result was saved.";
 }

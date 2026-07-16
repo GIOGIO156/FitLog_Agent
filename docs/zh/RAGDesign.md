@@ -121,7 +121,7 @@ RAG 不改变产品权威来源：
 | `app_logic_answer` | 检索同语言稳定文档并返回 source-aware evidence。 |
 | read-only safety boundary | Router 可以确定性阻止不支持写入/隐私请求时，不调用 provider。 |
 
-Client workflow hint 只是 hint，不是权威。服务端先应用确定性 routing 与 safety rules；只有这些规则无法判定 workflow 时才调用有界模型 planner。随后由 Context Policy 在任何 context builder 或 query embedding 运行前裁剪 Task Plan。服务端 route 和 safety flags 决定实际 workflow 与 allowed actions。
+Client workflow hint 只是 hint，不是权威。第一层路由会在任何模型 planner 之前应用确定性 safety 和 intent 规则，其 Workout 意图优先级为：明确同时要求记录训练和提问时返回 clarification；明确 Workout 记录请求进入草稿 workflow；直接询问 FitLog 行为或计算规则时进入 `app_logic_answer`；隐式 Workout 记录必须同时具有结构化动作/组数证据且不能是疑问句。既有确定性 Food 选择保持不变。只有仍无法确定的 request 才进入有界模型 planner。同会话 Workout 延续只有在上下文中真实存在 `workout_draft` artifact，且新消息含编辑或继续操作时才能确定性命中；仅仅在上一条消息中提到训练不够。随后由 Context Policy 在任何 context builder 或 query embedding 运行前裁剪 Task Plan。服务端 route 和 safety flags 决定实际 workflow 与 allowed actions。
 
 Workflow routing 与 output selection 是不同决策。Routing 决定要构建哪些授权 context、是否检索文档以及允许哪些动作；它不把所有未识别请求默认为 `text`。明确产品入口固定自己的 output family。普通 AI Chat 的高置信度 resolver 可以直接指定 text 或 draft；resolver 主动放弃时，模型结合当前请求、图片和已授权 context 选择受限 `output_type`。模型选择结果不会扩大 RAG 权限或写权限。
 

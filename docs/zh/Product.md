@@ -342,7 +342,7 @@ AI 输出类别：
 - Gateway workflow routing、只读 Structured RAG/Document RAG、`document_chunks` seed/RPC 路径、Gateway evidence snapshot，以及在 AI Chat 中展示参考文档、使用数据、缺少信息和受限操作的“回答依据”面板。
 - 通过 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` 注入 Supabase 配置，并使用本机 SharedPreferences 保存注册邮箱验证码所需的 PKCE verifier 状态。
 - Account controller 与 Auth、订阅状态、Cloud Profile、用户记录摘要授权 repository。
-- Profile 认证页使用当前主题纯色背景、无星 FitLog logo base asset、基于 SVG 曲线并贴近 logo 右上角的饱和固定圆润 AI 四角星群错峰呼吸闪烁动画，星群经过轻微左下位置微调且最小态保持更饱满，并统一使用 app 主题字体 `NotoSansSC` 与中等/半粗登录文字层级，顶部后端配置提示、键盘关闭时静态不可滚动的登录入口、输入框聚焦时紧凑可滚动的键盘避让布局、邮箱密码登录、注册邮箱验证码、密码确认、不要求 username；没有云端 profile row 的账号会自动创建默认 Cloud Profile，并包含云端保存路径和缓存展示 fallback。
+- Profile 认证页使用当前主题纯色背景、无星 FitLog logo base asset、基于 SVG 曲线并贴近 logo 右上角的饱和固定圆润 AI 四角星群错峰呼吸闪烁动画，星群经过轻微左下位置微调且最小态保持更饱满，并统一使用 app 主题字体 `NotoSansSC` 与中等/半粗登录文字层级，顶部后端配置提示、键盘关闭时静态不可滚动的 landing/登录/注册画布、只在键盘打开时启用并覆盖所有邮箱/验证码/密码字段的临时避让滚动、键盘关闭后恢复零偏移、邮箱密码登录、注册邮箱验证码、密码确认、不要求 username；没有云端 profile row 的账号会自动创建默认 Cloud Profile，并包含云端保存路径和缓存展示 fallback。
 - 持久化 Supabase 登录态恢复、AI 账号/订阅状态 sheet、带紧凑模糊浮层状态刷新和内部兑换码 entitlement 的 Profile 顶部“订阅”入口、用户记录摘要授权开关、Profile 底部退出登录账号卡片，以及退出登录/切换账号时清空输入草稿。
 - AI shell、chat controller、Gateway contract/client、evidence 解析与渲染、root navigation、mapper 和 account-controller 测试。
 

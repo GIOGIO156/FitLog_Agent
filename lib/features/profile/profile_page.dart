@@ -3205,10 +3205,32 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
   final _registerCodeController = TextEditingController();
   final _registerPasswordController = TextEditingController();
   final _registerConfirmPasswordController = TextEditingController();
+  final _authScrollController = ScrollController();
+  final _loginEmailFocusNode = FocusNode();
+  final _loginPasswordFocusNode = FocusNode();
+  final _registerEmailFocusNode = FocusNode();
+  final _registerCodeFocusNode = FocusNode();
+  final _registerPasswordFocusNode = FocusNode();
+  final _registerConfirmPasswordFocusNode = FocusNode();
+  final _loginEmailRevealKey = GlobalKey();
+  final _loginPasswordRevealKey = GlobalKey();
+  final _registerEmailRevealKey = GlobalKey();
+  final _registerCodeRevealKey = GlobalKey();
+  final _registerPasswordRevealKey = GlobalKey();
+  final _registerConfirmPasswordRevealKey = GlobalKey();
   late final AnimationController _logoController;
   _ProfileAuthMode _mode = _ProfileAuthMode.landing;
   bool _sendingRegistrationCode = false;
   bool _authenticating = false;
+
+  List<FocusNode> get _authFocusNodes => <FocusNode>[
+    _loginEmailFocusNode,
+    _loginPasswordFocusNode,
+    _registerEmailFocusNode,
+    _registerCodeFocusNode,
+    _registerPasswordFocusNode,
+    _registerConfirmPasswordFocusNode,
+  ];
 
   @override
   void initState() {
@@ -3217,10 +3239,18 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
       vsync: this,
       duration: const Duration(seconds: 6),
     )..repeat();
+    for (final focusNode in _authFocusNodes) {
+      focusNode.addListener(_handleAuthFocusChange);
+    }
   }
 
   @override
   void dispose() {
+    for (final focusNode in _authFocusNodes) {
+      focusNode.removeListener(_handleAuthFocusChange);
+      focusNode.dispose();
+    }
+    _authScrollController.dispose();
     _logoController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
@@ -3229,6 +3259,114 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     _registerPasswordController.dispose();
     _registerConfirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _handleAuthFocusChange() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  FocusNode? get _focusedAuthField {
+    for (final focusNode in _authFocusNodes) {
+      if (focusNode.hasFocus) {
+        return focusNode;
+      }
+    }
+    return null;
+  }
+
+  GlobalKey? _revealKeyFor(FocusNode focusNode) {
+    if (identical(focusNode, _loginEmailFocusNode)) {
+      return _loginEmailRevealKey;
+    }
+    if (identical(focusNode, _loginPasswordFocusNode)) {
+      return _loginPasswordRevealKey;
+    }
+    if (identical(focusNode, _registerEmailFocusNode)) {
+      return _registerEmailRevealKey;
+    }
+    if (identical(focusNode, _registerCodeFocusNode)) {
+      return _registerCodeRevealKey;
+    }
+    if (identical(focusNode, _registerPasswordFocusNode)) {
+      return _registerPasswordRevealKey;
+    }
+    if (identical(focusNode, _registerConfirmPasswordFocusNode)) {
+      return _registerConfirmPasswordRevealKey;
+    }
+    return null;
+  }
+
+  void _revealFocusedAuthField({bool correctAfterAnimation = true}) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final position = _authScrollController.position;
+    if (keyboardInset <= 0) {
+      if (position.pixels.abs() >= 1) {
+        position.animateTo(
+          0,
+          duration: _profileKeyboardRevealDuration,
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
+    final focusNode = _focusedAuthField;
+    final revealContext = focusNode == null
+        ? null
+        : _revealKeyFor(focusNode)?.currentContext;
+    final renderObject = revealContext?.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return;
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final top = renderObject.localToGlobal(Offset.zero).dy;
+    final bottom = renderObject
+        .localToGlobal(Offset(0, renderObject.size.height))
+        .dy;
+    final visibleTop = mediaQuery.padding.top + _profileKeyboardRevealTopGap;
+    final visibleBottom =
+        mediaQuery.size.height -
+        keyboardInset -
+        _profileKeyboardRevealBottomGap;
+    var delta = 0.0;
+    if (bottom > visibleBottom) {
+      delta = bottom - visibleBottom;
+    } else if (top < visibleTop) {
+      delta = top - visibleTop;
+    }
+    if (delta.abs() < 1) {
+      return;
+    }
+
+    final target = (position.pixels + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent)
+        .toDouble();
+    if ((target - position.pixels).abs() < 1) {
+      return;
+    }
+    position
+        .animateTo(
+          target,
+          duration: _profileKeyboardRevealDuration,
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() {
+          if (!correctAfterAnimation ||
+              !mounted ||
+              !identical(_focusedAuthField, focusNode)) {
+            return;
+          }
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _authScrollController.hasClients) {
+              _revealFocusedAuthField(correctAfterAnimation: false);
+            }
+          });
+        });
   }
 
   @override
@@ -3242,6 +3380,11 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           builder: (context, constraints) {
             final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
             final keyboardVisible = keyboardInset > 0;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _authScrollController.hasClients) {
+                _revealFocusedAuthField();
+              }
+            });
             final isRegister = _mode == _ProfileAuthMode.register;
             final logoSize = (constraints.maxWidth * (isRegister ? 0.30 : 0.36))
                 .clamp(isRegister ? 112.0 : 132.0, isRegister ? 146.0 : 176.0)
@@ -3304,7 +3447,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
               ),
             );
             return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              key: const ValueKey<String>('profile_auth_scroll'),
+              controller: _authScrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
               physics: keyboardVisible
                   ? const ClampingScrollPhysics()
                   : const NeverScrollableScrollPhysics(),
@@ -3350,7 +3495,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
       children: <Widget>[
         _ProfileSignInField(
           fieldKey: const ValueKey<String>('phase2_login_email_field'),
+          revealKey: _loginEmailRevealKey,
           controller: _loginEmailController,
+          focusNode: _loginEmailFocusNode,
           label: strings.emailLabel,
           icon: Icons.alternate_email_rounded,
           keyboardType: TextInputType.emailAddress,
@@ -3360,7 +3507,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
         const SizedBox(height: 14),
         _ProfileSignInField(
           fieldKey: const ValueKey<String>('phase2_login_password_field'),
+          revealKey: _loginPasswordRevealKey,
           controller: _loginPasswordController,
+          focusNode: _loginPasswordFocusNode,
           label: strings.passwordLabel,
           icon: Icons.lock_outline_rounded,
           keyboardType: TextInputType.visiblePassword,
@@ -3392,7 +3541,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
       children: <Widget>[
         _ProfileSignInField(
           fieldKey: const ValueKey<String>('phase2_register_email_field'),
+          revealKey: _registerEmailRevealKey,
           controller: _registerEmailController,
+          focusNode: _registerEmailFocusNode,
           label: strings.emailLabel,
           icon: Icons.alternate_email_rounded,
           keyboardType: TextInputType.emailAddress,
@@ -3419,7 +3570,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
         const SizedBox(height: 14),
         _ProfileSignInField(
           fieldKey: const ValueKey<String>('phase2_register_code_field'),
+          revealKey: _registerCodeRevealKey,
           controller: _registerCodeController,
+          focusNode: _registerCodeFocusNode,
           label: strings.otpCodeLabel,
           icon: Icons.pin_outlined,
           keyboardType: TextInputType.number,
@@ -3429,7 +3582,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
         const SizedBox(height: 24),
         _ProfileSignInField(
           fieldKey: const ValueKey<String>('phase2_register_password_field'),
+          revealKey: _registerPasswordRevealKey,
           controller: _registerPasswordController,
+          focusNode: _registerPasswordFocusNode,
           label: strings.passwordLabel,
           icon: Icons.lock_outline_rounded,
           keyboardType: TextInputType.visiblePassword,
@@ -3442,7 +3597,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           fieldKey: const ValueKey<String>(
             'phase2_register_confirm_password_field',
           ),
+          revealKey: _registerConfirmPasswordRevealKey,
           controller: _registerConfirmPasswordController,
+          focusNode: _registerConfirmPasswordFocusNode,
           label: strings.confirmPasswordLabel,
           icon: Icons.lock_reset_rounded,
           keyboardType: TextInputType.visiblePassword,
@@ -3595,7 +3752,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
 class _ProfileSignInField extends StatelessWidget {
   const _ProfileSignInField({
     required this.fieldKey,
+    required this.revealKey,
     required this.controller,
+    required this.focusNode,
     required this.label,
     required this.icon,
     required this.keyboardType,
@@ -3607,7 +3766,9 @@ class _ProfileSignInField extends StatelessWidget {
   });
 
   final Key fieldKey;
+  final GlobalKey revealKey;
   final TextEditingController controller;
+  final FocusNode focusNode;
   final String label;
   final IconData icon;
   final TextInputType keyboardType;
@@ -3629,48 +3790,47 @@ class _ProfileSignInField extends StatelessWidget {
       borderRadius: BorderRadius.circular(29),
       borderSide: BorderSide(color: fitTheme.outline),
     );
-    return _KeyboardFocusRevealer(
-      alignment: 0.42,
-      child: SizedBox(
-        height: 58,
-        child: TextField(
-          key: fieldKey,
-          controller: controller,
-          keyboardType: keyboardType,
-          textInputAction: textInputAction,
-          autofillHints: autofillHints,
-          onSubmitted: onSubmitted,
-          obscureText: obscureText,
-          enableSuggestions: !obscureText,
-          autocorrect: !obscureText,
-          scrollPadding: const EdgeInsets.only(bottom: 24),
-          style: fieldTextStyle,
-          decoration: InputDecoration(
-            labelText: label,
-            labelStyle: fieldTextStyle?.copyWith(color: fitTheme.mutedText),
-            filled: true,
-            fillColor: fitTheme.surface,
-            prefixIcon: Icon(icon, color: fitTheme.mutedText),
-            suffixIcon: suffix == null
-                ? null
-                : Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: suffix,
-                  ),
-            suffixIconConstraints: const BoxConstraints(
-              minHeight: 40,
-              minWidth: 96,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 16,
-            ),
-            floatingLabelBehavior: FloatingLabelBehavior.never,
-            border: border,
-            enabledBorder: border,
-            focusedBorder: border.copyWith(
-              borderSide: BorderSide(color: fitTheme.primaryBright, width: 1.4),
-            ),
+    return SizedBox(
+      key: revealKey,
+      height: 58,
+      child: TextField(
+        key: fieldKey,
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: keyboardType,
+        textInputAction: textInputAction,
+        autofillHints: autofillHints,
+        onSubmitted: onSubmitted,
+        obscureText: obscureText,
+        enableSuggestions: !obscureText,
+        autocorrect: !obscureText,
+        scrollPadding: const EdgeInsets.only(bottom: 24),
+        style: fieldTextStyle,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: fieldTextStyle?.copyWith(color: fitTheme.mutedText),
+          filled: true,
+          fillColor: fitTheme.surface,
+          prefixIcon: Icon(icon, color: fitTheme.mutedText),
+          suffixIcon: suffix == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: suffix,
+                ),
+          suffixIconConstraints: const BoxConstraints(
+            minHeight: 40,
+            minWidth: 96,
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 16,
+          ),
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+          border: border,
+          enabledBorder: border,
+          focusedBorder: border.copyWith(
+            borderSide: BorderSide(color: fitTheme.primaryBright, width: 1.4),
           ),
         ),
       ),

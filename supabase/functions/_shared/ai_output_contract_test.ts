@@ -148,6 +148,37 @@ Deno.test("expected output and clarification combinations cannot silently degrad
   assertEquals(clarification.needsClarification, true);
 });
 
+Deno.test("clarification stays concise and asks at most two questions", () => {
+  assertOutputError(() =>
+    parseProviderGatewayEnvelope(
+      JSON.stringify({
+        ...envelope(null),
+        output_type: "clarification",
+        message: { text: "这是一段不应出现在澄清中的完整回答。".repeat(20) },
+        needs_clarification: true,
+        clarification_questions: ["动作是什么？"],
+      }),
+      "workout_draft",
+    )
+  );
+  assertOutputError(() =>
+    parseProviderGatewayEnvelope(
+      JSON.stringify({
+        ...envelope(null),
+        output_type: "clarification",
+        message: { text: "还需要少量信息。" },
+        needs_clarification: true,
+        clarification_questions: [
+          "动作是什么？",
+          "重量是多少？",
+          "次数是多少？",
+        ],
+      }),
+      "workout_draft",
+    )
+  );
+});
+
 Deno.test("auto output lets the model select a contract-consistent family", () => {
   const parsed = parseProviderGatewayEnvelope(
     JSON.stringify(envelope(workoutDraft())),

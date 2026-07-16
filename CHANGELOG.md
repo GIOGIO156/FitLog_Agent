@@ -1,22 +1,28 @@
 # Changelog
 
-## 2026-07-16 Food Prompt Entry And AI Chat Keyboard Geometry
+## 2026-07-16 Food Prompt, AI Chat, And Intent Routing
 
 ### Changed
 
 - Removed the duplicate reusable-Prompt action from Add Food. Paste AI Result now owns a one-time setup card with a single labeled copy button, explains the photo/description-to-JSON return flow before recommending `FitLog 中文助手` and `FitLog Estimator`, and continues to copy the Chinese or English standing prompt according to the app language.
 - Made the fixed conversation header use a compact same-row readiness light so the provider selector cannot push status onto a second line. The empty-chat composer retains the labeled readiness pill.
 - Reused the closed-keyboard message/composer separation while the keyboard is open: the same 10 px region gap, 14 px list-bottom padding, and short bottom fade preserve a 24 px bubble-to-composer visual distance. The composer keeps its normal glass surface instead of switching to a theme-colored solid surface and oversized veil.
+- Reworked the Paste AI Result setup card into a compact two-step inset panel for usage and recommended GPTs, removed the redundant leading icon and setup badge, and retained the labeled copy action and language-matched standing Prompt.
+- Made first-layer Workout intent precedence explicit: direct FitLog rule questions stay read-only answers, explicit structured logging requests still produce drafts, mixed Workout write-and-question requests produce clarification, and same-chat Workout continuation requires a real draft artifact plus an edit operation. Existing Food selection is unchanged.
 
 ### Fixed
 
 - Added vertical-drag keyboard dismissal while preserving the first outside tap as a dismiss-only action and keeping message scrolling locked until the keyboard closes.
+- Prevented clarification responses from appending a normal answer or draft-like essay by bounding visible clarification text to 320 characters and one or two questions.
+- Restored readable black-theme colors for the Chat history heading and actual composer input without changing the muted empty-field hint, and increased animated background sampling density to remove visible horizontal banding at the blue-field peak.
+- Made Paste AI Result temporarily scrollable only while its JSON editor and keyboard are active, eliminating fixed-column overflow without changing the resting layout. Profile sign-in and registration now reveal every focused email/code/password field above the keyboard, retain keyboard-time manual scrolling, and reset to a locked zero offset after keyboard dismissal.
 
 ### Validation
 
-- `flutter analyze` reported no issues and all 230 Flutter tests passed, including updated Add Food, Paste AI Result, compact status, keyboard geometry, outside-tap, and vertical-drag coverage. The corpus/document deterministic suite passed all 20 tests.
+- `flutter analyze` reported no issues and all 233 Flutter tests passed, including the standing Prompt contract, Paste AI Result keyboard-only scrolling, Profile login/registration field reveal, Add Food, compact status, AI keyboard geometry, outside-tap, and vertical-drag coverage. All 78 Edge contract/router/provider tests and all 10 corpus/document deterministic tests passed.
 - Regenerated 577 chunks from 21 stable bilingual sources as build `d555656c39225eb8bcf1a289`, generated only the 24 missing/stale Qwen embeddings, pruned 21 obsolete records, reached 577/577 local parity, atomically activated the build in Supabase, and verified 577 cloud rows with zero mismatches.
 - The post-activation live canary passed 28/28 checks with retrieval hit 13/13, reviewed precision@3 97.44%, critical top-1 5/5, zero embedding fallbacks, and Edge retrieval p50/p95 1,119/1,435 ms. Rebuilt the configured `armeabi-v7a`, `arm64-v8a`, and `x86_64` debug split APKs.
+- After explicit document-egress authorization, regenerated 579 chunks as build `942de22e58135187a7550327`, generated the 25 missing Qwen embeddings, pruned 23 obsolete local vectors, reached 579/579 local and cloud parity, and atomically activated the build in Supabase with zero mismatches. The independent post-activation canary passed 28/28 checks, used the new build, reached retrieval hit 13/13, reviewed precision@3 92.31%, critical top-1 5/5, zero embedding fallbacks, and production Edge retrieval p50/p95 of 1,109/1,422 ms. The local evaluation report now explicitly consumes this canary and passes 10/10 checks without blocked items.
 
 ## 2026-07-15 RAG Foundation Remediation Canary And Stage Diagnostics
 

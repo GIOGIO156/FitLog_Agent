@@ -6,7 +6,9 @@ for (const item of [
   { text: "鸡胸 200g 米饭 150g", workflow: "food_logging", output: "food_draft" },
   { text: "今天还能吃这个吗", images: 1, workflow: "meal_decision", output: "text" },
   { text: "保加利亚分腿蹲每侧次数怎么算", workflow: "app_logic_answer", output: "text" },
+  { text: "像保加利分腿蹲的单侧次数，如果我填12的话，相当于一组蹲了24次？一边12次，算总训练重量的时候怎么算的", workflow: "app_logic_answer", output: "text" },
   { text: "记录保加利亚分腿蹲 3 组，每侧 12", workflow: "workout_logging", output: "workout_draft" },
+  { text: "深蹲 80kg 3 组 10 次", workflow: "workout_logging", output: "workout_draft" },
   { text: "你好", workflow: "general_chat", output: "text" },
 ] as const) {
   Deno.test(`task planner resolves ${item.text}`, async () => {
@@ -51,6 +53,22 @@ Deno.test("same-chat workout continuation inherits bounded workflow", async () =
   value.conversationContext = { messages: [], artifacts: [{ type: "workout_draft", title: "深蹲", summary: "3 组" }] };
   const plan = await buildApprovedTaskPlan(value);
   assertEquals(plan.planned_workflow, "workout_logging");
+});
+
+Deno.test("a workout question is not treated as continuation without a draft artifact", async () => {
+  const value = request("这个怎么算？");
+  value.conversationContext = { messages: [{ role: "assistant", text: "上一条解释了训练次数。" }], artifacts: [] };
+  const plan = await buildApprovedTaskPlan(value);
+  assertEquals(plan.planned_workflow, "app_logic_answer");
+  assertEquals(plan.expected_output, "text");
+});
+
+Deno.test("explicit workout write plus question requires one intent clarification", async () => {
+  const plan = await buildApprovedTaskPlan(request("帮我记录分腿蹲 3 组每侧 12 次，另外总容量怎么算？"));
+  assertEquals(plan.requires_clarification, true);
+  assertEquals(plan.expected_output, "text");
+  assertEquals(plan.reasons, ["workout_write_and_question_intents"]);
+  assertEquals(plan.source, "deterministic");
 });
 
 function request(text: string, imageCount = 0, permission = false): GatewayRequest {

@@ -33,6 +33,7 @@ Deno.test("model task planner uses bounded provider JSON without user data tools
   const result = await planner!({ message: "help", language: "en" }) as Record<string, unknown>;
   assertEquals(result.planned_workflow, "general_chat");
   assertEquals(JSON.stringify(body).includes("account_id"), false);
+  assertEquals(JSON.stringify(body).includes("never combine an answer"), true);
 });
 
 Deno.test("retrieval rewrite planner maps Qwen JSON action without broadening scope", async () => {

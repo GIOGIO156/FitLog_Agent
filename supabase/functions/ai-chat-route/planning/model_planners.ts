@@ -11,10 +11,19 @@ export function createModelTaskPlanner(
   fetchImpl: typeof fetch = fetch,
 ): ModelTaskPlanner | undefined {
   if (!plannerConfigured(choice, config)) return undefined;
-  return async (input) => callPlannerJson(choice, config, {
-    system: "Classify one FitLog chat request. Return only a task_plan.v1 JSON object with planned_workflow, expected_output, entities, requested_context, retrieval_needs, confidence, reasons, and requires_clarification. Do not answer the user and do not request raw records. Choose the minimum context needed.",
-    input,
-  }, fetchImpl);
+  return async (input) =>
+    callPlannerJson(choice, config, {
+      system: [
+        "Classify one FitLog chat request and return only one task_plan.v1 JSON object.",
+        "Choose exactly one planned_workflow and expected_output; never combine an answer with a food or workout draft.",
+        "A workout question containing numbers, reps, sets, or weight is app_logic_answer/text when it asks how, why, whether, or how a value is calculated and does not explicitly ask to log or save.",
+        "An explicit logging command such as '记录分腿蹲3组每侧12次' is workout_logging/workout_draft. A complete non-question workout statement such as '深蹲80kg 3组10次' may also be workout_logging/workout_draft.",
+        "If the user explicitly requests both logging and an answer, set requires_clarification=true instead of combining outputs.",
+        "Include schema_version, planned_workflow, expected_output, entities, requested_context, retrieval_needs, confidence, reasons, and requires_clarification.",
+        "Do not answer the user and do not request raw records. Choose the minimum context needed.",
+      ].join(" "),
+      input,
+    }, fetchImpl);
 }
 
 export function createRetrievalRewritePlanner(

@@ -506,6 +506,7 @@ void main() {
         database: database,
         accountController: controller,
         profileRepository: profileRepository,
+        resizeToAvoidBottomInset: false,
       ),
     );
     await tester.pump();
@@ -531,6 +532,109 @@ void main() {
 
     expect(find.text('gioruno156@outlook.com'), findsOneWidget);
     expect(emailFinder, findsOneWidget);
+
+    final passwordFinder = find.byKey(
+      const ValueKey<String>('phase2_login_password_field'),
+    );
+    tester.widget<TextField>(passwordFinder).focusNode!.requestFocus();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    expect(
+      tester.widget<TextField>(passwordFinder).focusNode?.hasFocus,
+      isTrue,
+    );
+    expect(MediaQuery.viewInsetsOf(tester.element(passwordFinder)).bottom, 336);
+    final visibleAuthPosition = tester
+        .widget<SingleChildScrollView>(
+          find.byKey(const ValueKey<String>('profile_auth_scroll')),
+        )
+        .controller!
+        .position;
+    expect(visibleAuthPosition.maxScrollExtent, greaterThan(0));
+    expect(visibleAuthPosition.pixels, greaterThan(0));
+    expect(
+      tester.getRect(passwordFinder).bottom,
+      lessThanOrEqualTo(844 - 336 - 22),
+    );
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+
+    final position = tester
+        .widget<SingleChildScrollView>(
+          find.byKey(const ValueKey<String>('profile_auth_scroll')),
+        )
+        .controller!
+        .position;
+    expect(position.pixels, 0);
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('profile_auth_scroll')),
+      const Offset(0, -120),
+    );
+    await tester.pump();
+    expect(position.pixels, 0);
+  });
+
+  testWidgets('Profile registration reveals every focused auth field', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final controller = AccountController(
+      authRepository: _SignedOutAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+        resizeToAvoidBottomInset: false,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('phase2_register_link')),
+    );
+    await tester.pump();
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+
+    for (final fieldKey in <String>[
+      'phase2_register_email_field',
+      'phase2_register_code_field',
+      'phase2_register_password_field',
+      'phase2_register_confirm_password_field',
+    ]) {
+      final fieldFinder = find.byKey(ValueKey<String>(fieldKey));
+      tester.widget<TextField>(fieldFinder).focusNode!.requestFocus();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 220));
+      await tester.pump(const Duration(milliseconds: 220));
+      expect(
+        tester.getRect(fieldFinder).bottom,
+        lessThanOrEqualTo(844 - 336 - 22),
+        reason: '$fieldKey should stay above the keyboard',
+      );
+    }
   });
 
   testWidgets('Profile login failure shows a readable notification in place', (
@@ -1946,6 +2050,7 @@ Widget _buildProfileTestApp({
   required AccountController accountController,
   required _FakeProfileRepository profileRepository,
   bool withRootNavOverlay = false,
+  bool resizeToAvoidBottomInset = true,
   RootTabController? rootTabController,
 }) {
   final effectiveRootTabController = rootTabController ?? RootTabController();
@@ -2028,6 +2133,7 @@ Widget _buildProfileTestApp({
       theme: buildFitLogTheme(Brightness.light),
       home: Scaffold(
         extendBody: withRootNavOverlay,
+        resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         body: withRootNavOverlay
             ? Stack(
                 children: <Widget>[

@@ -52,7 +52,7 @@ Explicit product workflows and ordinary AI Chat select outputs differently. A de
 
 Ordinary AI Chat uses two layers:
 
-1. The deterministic Gateway resolver accepts only high-confidence signals, including explicit Food/Workout draft requests, safety boundaries, and compact same-chat clarification continuation. A match fixes the expected output.
+1. The deterministic Gateway resolver accepts only high-confidence signals. For Workout intent, an explicit write-plus-question request becomes clarification, an explicit record request fixes the Workout Draft family, a direct FitLog rule question fixes `text`, and compact same-chat continuation requires a real retained Workout Draft artifact plus an edit/continue operation. Existing deterministic Food intent selection remains unchanged. A match fixes the expected output.
 2. If the resolver cannot decide, it returns `auto`, not `text`. The provider uses the natural-language request, current images, and authorized same-chat context to select one `output_type`: `text`, `food_draft`, `workout_draft`, or `clarification`.
 
 These layers do not vote. A first-layer match is authoritative; the second layer runs only after the first layer abstains. Flutter cannot submit or override `expected_output`.
@@ -62,7 +62,7 @@ These layers do not vote. A first-layer match is authoritative; the second layer
 | `auto` | The model selects one contract-consistent `output_type`. |
 | `text` | `output_type = text`, user-visible `message.text`, `draft = null`, and no claim that a draft or official record was created. |
 | `food_draft` | `output_type = food_draft` with `food_draft.v2`, or one bounded clarification. |
-| `workout_draft` | `output_type = workout_draft` with `workout_draft.v2`, or one bounded clarification. |
+| `workout_draft` | `output_type = workout_draft` with `workout_draft.v3`, or one bounded clarification. |
 
 Clarification uses `output_type = clarification`, `needs_clarification = true`, non-empty questions, and `draft = null`. Safety blocking is generated deterministically before the provider call. Workflow routing and output selection are independent: routing selects context, RAG, and permissions, while output selection chooses the result shape; validation proves the final payload satisfies both.
 
@@ -89,7 +89,7 @@ Rules:
 - `message.text` contains explanation, uncertainty, estimate rationale, and review instructions.
 - `output_type` must agree with the draft, clarification state, and user-visible message.
 - `draft` is exactly one Food Draft, one Workout Draft, or `null`.
-- A clarification response has `draft = null` and at least one short question.
+- A clarification response has `draft = null`, user-facing `message.text` no longer than 320 characters, and one or two short questions. It states only the missing or conflicting facts and never appends a normal answer, draft summary, or secondary task.
 - A non-clarification response has an empty clarification array.
 - Normal Markdown answers remain possible because Markdown is carried inside `message.text`.
 - Raw draft JSON is never rendered as assistant Markdown.

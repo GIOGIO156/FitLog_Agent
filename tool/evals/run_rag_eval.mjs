@@ -25,7 +25,9 @@ try { embeddings = JSON.parse(await readFile("tool/phase5_document_rag/document_
 }
 const embedded = embeddings?.records?.length ?? 0;
 let cloud = null;
-try { cloud = JSON.parse(await readFile("test/evals/reports/rag_foundation_cloud_closure.v1.json", "utf8")); } catch (error) {
+const cloudReportPath = process.env.FITLOG_RAG_CLOUD_REPORT_PATH ??
+  "test/evals/reports/rag_foundation_cloud_closure.v1.json";
+try { cloud = JSON.parse(await readFile(cloudReportPath, "utf8")); } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
 const cloudCheck = (name) => cloud?.checks?.find((check) => check.check === name);

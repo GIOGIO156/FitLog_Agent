@@ -74,7 +74,9 @@ Food 保存选中日期的正式食物记录。用户通过正常确认流程查
 
 Add Food 把 AI 食物分析放在第一入口。用户可以只输入文字描述，也可以同时添加最多三张相机/相册图片，并使用与 AI Chat 相互独立的 ChatGPT/千问选择器。当前发布已配置 Qwen；选择 ChatGPT 时显示正常生命周期的“当前模型不可用”错误，选择器短暂响应后自动滑回千问，保留文字和图片，不发送 request，也不改变 AI Chat 选择。小型本地 picker-recovery marker 允许 Android activity 重建后恢复分析内容，而不是返回空页面。
 
-兼容流程只在 Paste AI Result 顶部提供“建立长期食物估算对话”卡片，Add Food 不再重复显示 Prompt 入口。卡片先说明：“在新对话中发送一次此 Prompt；之后只需上传食物图片或补充描述，再将返回的完整 JSON 粘贴到下方解析。”随后推荐在 ChatGPT 中使用“FitLog 中文助手”或“FitLog Estimator”。卡片只有一个带文字的复制按钮，复制内容跟随 App 当前的中文或英文模式。外部模型每次仍只返回一个使用既有 schema 的完整扁平 JSON 对象；最后的 `estimation_notes` 通常为空，只允许放置餐食字段或具体 item note 无法表达的必要补充，不能重复基础餐食总结。
+兼容流程只在 Paste AI Result 顶部提供“建立长期食物估算对话”卡片，Add Food 不再重复显示 Prompt 入口。卡片使用紧凑的内嵌说明框，按顺序呈现两个区块：先说明“在新对话中发送一次此 Prompt；之后只需上传食物图片或补充描述，再将返回的完整 JSON 粘贴到下方解析。”，再推荐在 ChatGPT 中使用“FitLog 中文助手”或“FitLog Estimator”。卡片不重复显示图标或首次设置 badge，只有一个带文字的复制按钮；复制内容跟随 App 当前的中文或英文模式。外部模型每次仍只返回一个使用既有 schema 的完整扁平 JSON 对象；最后的 `estimation_notes` 通常为空，只允许放置餐食字段或具体 item note 无法表达的必要补充，不能重复基础餐食总结。
+
+Paste AI Result 在静止状态保持固定且不可滚动。只有 JSON editor 获得焦点且键盘可见时，页面才临时增加足够的滚动范围，把 editor 移到键盘上方，同时不压缩 Prompt 卡片也不让 viewport overflow。键盘关闭后恢复零偏移和锁定的静止布局。
 
 分析成功只创建可编辑 Food Draft：
 
@@ -96,12 +98,13 @@ AI 是主要 Agent surface：一个全屏对话，而不是快捷入口网格。
 
 ### 界面与交互
 
-- 连续的程序化粉/绿/蓝液态渐变延伸到整页和玻璃导航 pill 后方。空闲首页保持明显的全屏色场运动；发送后、历史会话、等待和阅读状态改用安静低幅度运动，让聊天内容获得注意力。背景不能退化成平移静态图或明显局部移动色块。
+- 连续的程序化粉/绿/蓝液态渐变延伸到整页和玻璃导航 pill 后方。空闲首页保持明显的全屏色场运动；发送后、历史会话、等待和阅读状态改用安静低幅度运动，让聊天内容获得注意力。背景在所有动画相位都保持空间连续，不能退化成平移静态图、明显局部移动色块或可见的横向采样条带。
 - 首页状态文案优先使用 Cloud Profile nickname。页面还包含底部 composer、紧凑 ChatGPT/Qwen selector、左侧聊天历史入口、右上账号/订阅入口，以及紧凑 privacy/readiness hint；不使用 quick chips。
 - Composer 接受文字和最多三张 JPEG、PNG 或 WebP 图片；相册可以一次填满剩余名额。当前文字和图片 turn 通过 Qwen 路由。选择未配置 ChatGPT 时显示相同的短暂错误，选择器使用与底部导航一致的滑动动画自动回到千问，保留 composer 和附件且不发送 request。状态灯仍保持订阅/设备/Gateway readiness 的真实状态；自动回到千问只是 UI 恢复，不会暗中发送请求。具体模型名和 provider key 只保留在服务端。
 - 发送时立即清空 composer 并加入 pending 用户 turn。真实 pending bubble 锚定在顶部 controls 下方，不越界、不回弹；assistant loading bubble 保持到合法回复完成持久化并重新加载。失败会恢复本次输入，最终回复不会再次强制滚动。
 - Message viewport 在顶部 controls 下方 hard clip 旧内容，并在键盘开合两种状态下复用相同的 10 px 区域间隔、14 px 列表底部留白和短 bottom fade，使最后气泡与 composer 始终保持 24 px 视觉距离。键盘打开时，浮动 composer 在键盘上方保留 12 px 呼吸间距并继续使用普通玻璃 surface，不增加主题色 veil。消息滚动在键盘关闭前锁定；点击 composer 外部或开始竖向拖动都会先收起键盘，再恢复完整阅读空间和正常滚动。其他 App 输入页面继续保留原有键盘交互。
 - Assistant 文字使用 App 风格的 GitHub-flavored Markdown 和可选择文本；用户消息保持可选择 plain text。禁用远程 Markdown 图片和 link action。图片加文字的同一 turn 把圆角 media 放在独立文字 bubble 上方，但仍保持一个 request、retry 生命周期和 history turn。
+- 黑色主题下，composer 中用户已经输入的文字和“历史会话”标题使用与 chat 标题一致的清晰主文字色；空输入框的“快问问 FitLog”仍保持较浅的提示色，因为它是 placeholder 而不是用户内容。
 - Provider 选择保存在设备本地并跨重启恢复。未发送 composer 文本在当前运行期跨 tab 和暂时禁用状态保留；开始发送、用户主动删除、退出或切换账号会清除，发送失败则恢复。
 - 发送错误使用不带关闭图标的共享被动通知，并在限定时间后自动消失；用户编辑输入、重试、切换 session、离开 AI tab 或让 App 进入后台时清除旧提示，但不删除已恢复的文字或图片。正常短暂切后台不会取消请求本身；真实超时、网络中断或 Gateway 错误在 App 回到前台后显示。
 - Chat history 同一时间只允许一个删除操作。删除进行中时，当前行显示进度，全部历史行操作暂时禁用，避免快速点击同一条或连续点击多条 session 发出互相冲突的请求。
@@ -178,6 +181,7 @@ Profile 包含账号绑定的身份信息、身体资料、饮食设置、显示
 
 - 登录前没有正式 Profile，页面显示登录/注册而不是编辑器。
 - Email/password session 跨重启保留；注册使用邮箱验证码和密码确认，nickname 之后在 Cloud Profile 编辑。
+- Auth landing、登录和注册画布在键盘关闭时不可滚动。键盘打开后只启用临时 auth 滚动范围，把当前聚焦的邮箱、验证码、密码或确认密码字段移到键盘上方；键盘关闭后恢复原始零偏移。
 - 一个账号只有一个 active device；新设备登录会替换旧设备，旧设备在下一次受保护云端交互时进入可读的 `device_replaced` 流程。
 - 登录后 Cloud Profile 是权威来源；缺失 Profile row 会用安全默认值初始化。刷新时只有账号 metadata 与当前恢复账号匹配的 cache 才能先展示。
 - Subscription loading 与 Profile loading 相互独立；订阅失败不遮挡已经成功加载的 editor，但 AI 发送继续 gated。

@@ -388,6 +388,20 @@ export function parseProviderGatewayEnvelope(
         "at least one question is required",
       );
     }
+    if (messageText.length > 320) {
+      issue(
+        issues,
+        "$.message.text",
+        "clarification message must be concise",
+      );
+    }
+    if (clarificationQuestions.length > 2) {
+      issue(
+        issues,
+        "$.clarification_questions",
+        "at most two clarification questions are allowed",
+      );
+    }
   } else {
     if (outputType === "clarification") {
       issue(

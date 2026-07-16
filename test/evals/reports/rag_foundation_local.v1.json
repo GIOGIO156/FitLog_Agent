@@ -2,7 +2,7 @@
   "schema": "fitlog_rag_eval_report.v1",
   "pipeline_version": "rag_foundation_v1",
   "corpus_id": "fitlog_user_stable_docs",
-  "build_id": "86820ab67bab9ba229f08530",
+  "build_id": "942de22e58135187a7550327",
   "fixture_suites": [
     {
       "name": "document_retrieval.v1.json",
@@ -90,8 +90,8 @@
     },
     {
       "metric": "active_chunks_embedding_freshness_parity",
-      "status": "blocked",
-      "evidence": "569/572; Qwen key/cloud authorization required when incomplete"
+      "status": "pass",
+      "evidence": "579/579; Qwen key/cloud authorization required when incomplete"
     },
     {
       "metric": "per_side_total_reps_fixture_confusion",
@@ -106,7 +106,7 @@
     {
       "metric": "document_recall_precision_release_thresholds",
       "status": "pass",
-      "evidence": "recall@3=1; precision@3=0.9744; critical top1=1"
+      "evidence": "recall@3=1; precision@3=0.9231; critical top1=1"
     },
     {
       "metric": "openai_unavailable_ui_no_request",
@@ -120,13 +120,13 @@
     },
     {
       "metric": "edge_embedding_hybrid_latency_p95",
-      "status": "fail",
-      "evidence": "16602 ms / 1500 ms; samples=3"
+      "status": "pass",
+      "evidence": "1422 ms / 1500 ms; samples=11"
     }
   ],
   "summary": {
-    "pass": 8,
-    "fail": 1,
-    "blocked": 1
+    "pass": 10,
+    "fail": 0,
+    "blocked": 0
   }
 }

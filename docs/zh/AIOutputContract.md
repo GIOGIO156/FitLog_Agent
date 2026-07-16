@@ -52,7 +52,7 @@ workflow 校验和写权限校验前，一律是不可信数据。
 
 普通 AI Chat 使用两层选择：
 
-1. Gateway 的确定性 resolver 只接受高置信度信号，包括明确的 Food/Workout 草稿请求、安全边界和紧凑的同会话 clarification 延续。命中后直接固定 expected output。
+1. Gateway 的确定性 resolver 只接受高置信度信号。对于 Workout 意图：明确同时要求记录和提问时进入 clarification；明确记录请求固定 Workout Draft family；直接询问 FitLog 规则时固定 `text`；紧凑的同会话延续必须同时存在真实保留的 Workout Draft artifact 和编辑/继续操作。既有确定性 Food 意图选择保持不变。命中后直接固定 expected output。
 2. Resolver 无法确定时返回 `auto`，而不是默认 `text`。Provider 必须结合自然语言、当前图片和已授权同会话上下文，在 `text`、`food_draft`、`workout_draft`、`clarification` 中选择一个 `output_type`。
 
 这不是两次投票：第一层命中即使用其结果；只有第一层主动放弃时才由第二层选择。Flutter 不能提交或覆盖 `expected_output`。
@@ -62,7 +62,7 @@ workflow 校验和写权限校验前，一律是不可信数据。
 | `auto` | 模型选择一个 contract-consistent `output_type`。 |
 | `text` | `output_type = text`、用户可见 `message.text`、`draft = null`，且不得声称已创建草稿或正式记录。 |
 | `food_draft` | `output_type = food_draft` 和 `food_draft.v2`，或一次有界 clarification。 |
-| `workout_draft` | `output_type = workout_draft` 和 `workout_draft.v2`，或一次有界 clarification。 |
+| `workout_draft` | `output_type = workout_draft` 和 `workout_draft.v3`，或一次有界 clarification。 |
 
 Clarification 使用 `output_type = clarification`、`needs_clarification = true`、questions 非空、`draft = null`。Safety blocked 在 provider call 前由 Gateway 确定性生成。Workflow routing 与 output selection 相互独立：前者决定上下文、RAG 与权限，后者决定结果形态；validation 证明最终 payload 同时满足两者。
 
@@ -89,7 +89,7 @@ Provider-facing Chat shape：
 - `message.text` 放解释、不确定性、估算依据和审查提示。
 - `output_type` 必须与 `draft`、clarification 状态和用户可见文字一致。
 - `draft` 只能是一个 Food Draft、一个 Workout Draft 或 `null`。
-- Clarification response 必须有 `draft = null` 和至少一个简短问题。
+- Clarification response 必须有 `draft = null`、不超过 320 个字符的用户可见 `message.text`，以及一到两个简短问题。它只说明缺失或冲突事实，不能追加普通回答、草稿总结或第二项任务。
 - 非 clarification response 的 questions array 必须为空。
 - 普通 Markdown 回答仍然允许，因为 Markdown 被装在 `message.text` 字符串中。
 - Raw draft JSON 永远不作为 assistant Markdown 渲染。

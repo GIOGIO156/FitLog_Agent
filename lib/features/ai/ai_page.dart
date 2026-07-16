@@ -1432,13 +1432,21 @@ class _AiFlowBackgroundPainter extends CustomPainter {
 
   static const List<double> _fieldSamples = <double>[
     0.0,
+    0.0625,
     0.125,
+    0.1875,
     0.25,
+    0.3125,
     0.375,
+    0.4375,
     0.50,
+    0.5625,
     0.625,
+    0.6875,
     0.75,
+    0.8125,
     0.875,
+    0.9375,
     1.0,
   ];
 
@@ -1504,7 +1512,7 @@ class _AiFlowBackgroundPainter extends CustomPainter {
         ? _disabledStops
         : _activePaletteStops(time, motionScale);
 
-    final stripeCount = (size.height / 9.5).ceil().clamp(88, 144).toInt();
+    final stripeCount = (size.height / 3).ceil().clamp(180, 420).toInt();
     final stripeHeight = size.height / stripeCount;
     for (var index = 0; index < stripeCount; index += 1) {
       final top = index * stripeHeight;
@@ -1944,6 +1952,8 @@ class _AiComposer extends StatelessWidget {
                             child: TextField(
                               key: const ValueKey<String>('ai_composer_field'),
                               controller: controller,
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(color: palette.historyText),
                               minLines: 1,
                               maxLines: 4,
                               textInputAction: TextInputAction.newline,
@@ -3681,7 +3691,12 @@ class _AiHistoryPanel extends StatelessWidget {
                           child: Text(
                             strings.aiHistoryTitle,
                             style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                                ?.copyWith(
+                                  color: _AiThemePalette.of(
+                                    context,
+                                  ).historyText,
+                                  fontWeight: FontWeight.w800,
+                                ),
                           ),
                         ),
                         IconButton(

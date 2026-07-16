@@ -1916,6 +1916,43 @@ void main() {
     expect(harness.repository.deletedSessionIds, contains('session_1'));
   });
 
+  testWidgets(
+    'dark AI surfaces use chat-title color for history heading and entered text',
+    (tester) async {
+      final harness = _readyAiHarness();
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Dinner chat'),
+      ];
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(
+        _buildReadyAiTestApp(
+          harness,
+          themeKey: FitLogThemeKey.blackOrange,
+          brightness: Brightness.dark,
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ai_composer_field')),
+        'Nina',
+      );
+      await tester.pump();
+
+      final field = tester.widget<TextField>(
+        find.byKey(const ValueKey<String>('ai_composer_field')),
+      );
+      expect(field.style?.color, const Color(0xFF3A332D));
+      expect(field.decoration?.hintText, 'Ask away with FitLog');
+      expect(field.decoration?.hintStyle, isNull);
+
+      await tester.tap(find.byTooltip('Chat history'));
+      await tester.pump();
+
+      final heading = tester.widget<Text>(find.text('Chat history'));
+      expect(heading.style?.color, const Color(0xFF3A332D));
+    },
+  );
+
   testWidgets('history supports inline rename', (tester) async {
     final harness = _readyAiHarness();
     harness.repository.sessions = <AiChatSession>[
@@ -2132,11 +2169,12 @@ Widget _buildAiTestApp(
   Widget child, {
   bool resizeToAvoidBottomInset = true,
   FitLogThemeKey themeKey = FitLogThemeKey.green,
+  Brightness brightness = Brightness.light,
 }) {
   return ChangeNotifierProvider<LanguageController>(
     create: (_) => LanguageController(),
     child: MaterialApp(
-      theme: buildFitLogTheme(Brightness.light, themeKey: themeKey),
+      theme: buildFitLogTheme(brightness, themeKey: themeKey),
       home: Scaffold(
         resizeToAvoidBottomInset: resizeToAvoidBottomInset,
         body: child,
@@ -2151,6 +2189,7 @@ Widget _buildReadyAiTestApp(
   AiChatImageRecoveryController? imageRecoveryController,
   bool resizeToAvoidBottomInset = true,
   FitLogThemeKey themeKey = FitLogThemeKey.green,
+  Brightness brightness = Brightness.light,
 }) {
   return _buildAiTestApp(
     MultiProvider(
@@ -2173,6 +2212,7 @@ Widget _buildReadyAiTestApp(
     ),
     resizeToAvoidBottomInset: resizeToAvoidBottomInset,
     themeKey: themeKey,
+    brightness: brightness,
   );
 }
 
