@@ -526,6 +526,7 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 336);
     await tester.pump();
     expect(tester.testTextInput.isVisible, isTrue);
+    expect(tester.getRect(emailFinder).bottom, closeTo(844 - 336 - 14, 1));
 
     await tester.enterText(emailFinder, 'gioruno156@outlook.com');
     await tester.pump();
@@ -536,27 +537,27 @@ void main() {
     final passwordFinder = find.byKey(
       const ValueKey<String>('phase2_login_password_field'),
     );
-    tester.widget<TextField>(passwordFinder).focusNode!.requestFocus();
+    final passwordStartBottom = tester.getRect(passwordFinder).bottom;
+    await tester.testTextInput.receiveAction(TextInputAction.next);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 40));
+
+    final focusedFieldBottom = 844 - 336 - 14;
+    final passwordMidTransitionBottom = tester.getRect(passwordFinder).bottom;
+    expect(passwordMidTransitionBottom, lessThan(passwordStartBottom));
+    expect(passwordMidTransitionBottom, greaterThan(focusedFieldBottom + 1));
+
     await tester.pump(const Duration(milliseconds: 220));
+    await tester.pump();
 
     expect(
       tester.widget<TextField>(passwordFinder).focusNode?.hasFocus,
       isTrue,
     );
     expect(MediaQuery.viewInsetsOf(tester.element(passwordFinder)).bottom, 336);
-    final visibleAuthPosition = tester
-        .widget<SingleChildScrollView>(
-          find.byKey(const ValueKey<String>('profile_auth_scroll')),
-        )
-        .controller!
-        .position;
-    expect(visibleAuthPosition.maxScrollExtent, greaterThan(0));
-    expect(visibleAuthPosition.pixels, greaterThan(0));
     expect(
       tester.getRect(passwordFinder).bottom,
-      lessThanOrEqualTo(844 - 336 - 22),
+      closeTo(focusedFieldBottom, 1),
     );
 
     tester.view.viewInsets = const FakeViewPadding(bottom: 0);
@@ -618,22 +619,35 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 336);
     await tester.pump();
 
-    for (final fieldKey in <String>[
+    const fieldKeys = <String>[
       'phase2_register_email_field',
       'phase2_register_code_field',
       'phase2_register_password_field',
       'phase2_register_confirm_password_field',
-    ]) {
+    ];
+    final firstField = find.byKey(ValueKey<String>(fieldKeys.first));
+    tester.widget<TextField>(firstField).focusNode!.requestFocus();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 220));
+
+    for (var index = 0; index < fieldKeys.length; index += 1) {
+      final fieldKey = fieldKeys[index];
       final fieldFinder = find.byKey(ValueKey<String>(fieldKey));
-      tester.widget<TextField>(fieldFinder).focusNode!.requestFocus();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 220));
-      await tester.pump(const Duration(milliseconds: 220));
+      expect(
+        tester.widget<TextField>(fieldFinder).focusNode?.hasFocus,
+        isTrue,
+        reason: '$fieldKey should own focus',
+      );
       expect(
         tester.getRect(fieldFinder).bottom,
-        lessThanOrEqualTo(844 - 336 - 22),
+        lessThanOrEqualTo(844 - 336 - 14),
         reason: '$fieldKey should stay above the keyboard',
       );
+      if (index < fieldKeys.length - 1) {
+        await tester.testTextInput.receiveAction(TextInputAction.next);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 220));
+      }
     }
   });
 

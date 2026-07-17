@@ -20,16 +20,14 @@ class PasteAiResultPage extends StatefulWidget {
 
 class _PasteAiResultPageState extends State<PasteAiResultPage> {
   final TextEditingController _jsonController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
   final FocusNode _jsonFocusNode = FocusNode();
   final GlobalKey _jsonEditorKey = GlobalKey();
   bool _isParsing = false;
 
   @override
   void dispose() {
-    _jsonFocusNode.dispose();
-    _scrollController.dispose();
     _jsonController.dispose();
+    _jsonFocusNode.dispose();
     super.dispose();
   }
 
@@ -93,116 +91,184 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(title: Text(strings.pasteAiResult)),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-          final keyboardVisible = keyboardInset > 0;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || !_scrollController.hasClients) {
-              return;
-            }
-            if (!keyboardVisible) {
-              if (_scrollController.offset.abs() >= 1) {
-                _scrollController.animateTo(
-                  0,
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                );
-              }
-              return;
-            }
-            final editorContext = _jsonEditorKey.currentContext;
-            if (!_jsonFocusNode.hasFocus || editorContext == null) {
-              return;
-            }
-            Scrollable.ensureVisible(
-              editorContext,
-              alignment: 0.04,
-              alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-            );
-          });
-          final contentHeight =
-              constraints.maxHeight + (keyboardVisible ? keyboardInset : 0);
-          return SingleChildScrollView(
-            key: const ValueKey<String>('paste_ai_result_scroll'),
-            controller: _scrollController,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-            physics: keyboardVisible
-                ? const ClampingScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
-            child: SizedBox(
-              height: contentHeight,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _ReusablePromptSetupCard(
-                      title: strings.copyAiFoodPrompt,
-                      usageLabel: strings.copyPromptUsageLabel,
-                      usageBody: strings.copyPromptUsageBody,
-                      recommendationLabel:
-                          strings.copyPromptRecommendationLabel,
-                      recommendationBody: strings.copyPromptRecommendationBody,
-                      actionLabel: strings.copyPromptAction,
-                      onCopy: _copyPrompt,
-                    ),
-                    Expanded(
-                      child: GlassPanel(
-                        key: _jsonEditorKey,
-                        padding: const EdgeInsets.all(12),
-                        child: TextField(
-                          controller: _jsonController,
-                          focusNode: _jsonFocusNode,
-                          keyboardType: TextInputType.multiline,
-                          maxLines: null,
-                          expands: true,
-                          scrollPadding: const EdgeInsets.only(bottom: 24),
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 14,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: '{ "meal_name": "..." }',
-                            alignLabelWithHint: true,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                      child: FilledButton.icon(
-                        onPressed: _isParsing ? null : _parseAndPreview,
-                        icon: _isParsing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.auto_fix_high_outlined),
-                        label: Text(
-                          _isParsing ? strings.parsing : strings.parse,
-                        ),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+      body: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    final strings = context.strings;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: ClipRect(
+        child: CustomMultiChildLayout(
+          delegate: _PasteKeyboardLayoutDelegate(),
+          children: <Widget>[
+            LayoutId(
+              id: _PasteKeyboardLayoutChild.prompt,
+              child: _KeyboardSupportingContent(
+                key: const ValueKey<String>('paste_prompt_supporting_slot'),
+                child: RepaintBoundary(
+                  child: _ReusablePromptSetupCard(
+                    title: strings.copyAiFoodPrompt,
+                    usageLabel: strings.copyPromptUsageLabel,
+                    usageBody: strings.copyPromptUsageBody,
+                    recommendationLabel: strings.copyPromptRecommendationLabel,
+                    recommendationBody: strings.copyPromptRecommendationBody,
+                    actionLabel: strings.copyPromptAction,
+                    onCopy: _copyPrompt,
+                  ),
                 ),
               ),
             ),
-          );
-        },
+            LayoutId(
+              id: _PasteKeyboardLayoutChild.editor,
+              child: _KeyboardRigidEditor(
+                child: GlassPanel(
+                  key: _jsonEditorKey,
+                  padding: const EdgeInsets.all(12),
+                  child: TextField(
+                    controller: _jsonController,
+                    focusNode: _jsonFocusNode,
+                    keyboardType: TextInputType.multiline,
+                    maxLines: null,
+                    expands: true,
+                    scrollPadding: const EdgeInsets.only(bottom: 12),
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 14,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '{ "meal_name": "..." }',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            LayoutId(
+              id: _PasteKeyboardLayoutChild.action,
+              child: _KeyboardSupportingContent(
+                key: const ValueKey<String>('paste_parse_supporting_slot'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FilledButton.icon(
+                    key: const ValueKey<String>('paste_ai_parse_button'),
+                    onPressed: _isParsing ? null : _parseAndPreview,
+                    icon: _isParsing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_fix_high_outlined),
+                    label: Text(_isParsing ? strings.parsing : strings.parse),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+}
+
+class _KeyboardRigidEditor extends StatelessWidget {
+  const _KeyboardRigidEditor({required this.child});
+
+  static const _actionExtent = 52.0;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final translation = (keyboardInset - _actionExtent).clamp(
+      0.0,
+      double.infinity,
+    );
+    return Transform.translate(offset: Offset(0, -translation), child: child);
+  }
+}
+
+class _KeyboardSupportingContent extends StatelessWidget {
+  const _KeyboardSupportingContent({super.key, required this.child});
+
+  static const _fadeTravel = 96.0;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final opacity = (1 - keyboardInset / _fadeTravel)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final hidden = opacity <= 0.01;
+    final keyboardActive = keyboardInset > 0.5;
+    return ExcludeSemantics(
+      excluding: hidden,
+      child: IgnorePointer(
+        ignoring: keyboardActive,
+        child: Opacity(opacity: opacity, child: child),
+      ),
+    );
+  }
+}
+
+enum _PasteKeyboardLayoutChild { prompt, editor, action }
+
+class _PasteKeyboardLayoutDelegate extends MultiChildLayoutDelegate {
+  static const _minimumEditorHeight = 72.0;
+
+  @override
+  void performLayout(Size size) {
+    final childConstraints = BoxConstraints(
+      minWidth: size.width,
+      maxWidth: size.width,
+      maxHeight: double.infinity,
+    );
+    final promptSize = layoutChild(
+      _PasteKeyboardLayoutChild.prompt,
+      childConstraints,
+    );
+    final actionSize = layoutChild(
+      _PasteKeyboardLayoutChild.action,
+      childConstraints,
+    );
+    final promptExtent = promptSize.height.clamp(
+      0.0,
+      (size.height - actionSize.height - _minimumEditorHeight).clamp(
+        0.0,
+        double.infinity,
+      ),
+    );
+    final editorHeight = (size.height - promptExtent - actionSize.height).clamp(
+      0.0,
+      double.infinity,
+    );
+    layoutChild(
+      _PasteKeyboardLayoutChild.editor,
+      BoxConstraints.tightFor(width: size.width, height: editorHeight),
+    );
+
+    positionChild(_PasteKeyboardLayoutChild.prompt, Offset.zero);
+    positionChild(_PasteKeyboardLayoutChild.editor, Offset(0, promptExtent));
+    positionChild(
+      _PasteKeyboardLayoutChild.action,
+      Offset(0, size.height - actionSize.height),
+    );
+  }
+
+  @override
+  bool shouldRelayout(covariant _PasteKeyboardLayoutDelegate oldDelegate) {
+    return false;
   }
 }
 

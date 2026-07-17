@@ -514,8 +514,13 @@ class AppStrings {
     'FitLog AI estimates a draft from your description and up to 3 optional food images. Review and save on the next page.',
     'FitLog AI 会根据你的描述和最多 3 张可选食物图片估算草稿。请在下一页确认后再保存。',
   );
-  String get photoAiPickPlaceholder =>
-      _t('Add optional food photos', '可选添加食物图片');
+  String get photoAiPickPlaceholder => _t('Tap to add food photos', '点击添加食物图片');
+  String get photoAiAddImageTitle => _t('Add food photos', '添加食物图片');
+  String get photoAiReplaceImageTitle => _t('Replace selected photo', '替换当前图片');
+  String photoAiImageCount(int count) =>
+      _t('$count of 3 selected', '已添加 $count/3');
+  String get photoAiSelectionLimitExceeded =>
+      _t('Select no more than the remaining photo slots.', '请选择不超过剩余名额的图片。');
   String get takePhoto => _t('Photo', '拍照');
   String get chooseFromGallery => _t('Gallery', '相册');
   String get retakePhoto => _t('Photo', '拍照');

@@ -1,8 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 enum FoodImageSource { camera, gallery }
+
+class FoodImageSelectionLimitException implements Exception {
+  const FoodImageSelectionLimitException();
+}
 
 class PickedFoodImage {
   const PickedFoodImage({
@@ -38,7 +44,12 @@ abstract class FoodImagePicker {
 
 class ImagePickerFoodImagePicker extends FoodImagePicker {
   ImagePickerFoodImagePicker({ImagePicker? picker})
-    : _picker = picker ?? ImagePicker();
+    : _picker = picker ?? ImagePicker() {
+    final implementation = ImagePickerPlatform.instance;
+    if (implementation is ImagePickerAndroid) {
+      implementation.useAndroidPhotoPicker = true;
+    }
+  }
 
   final ImagePicker _picker;
 
@@ -75,8 +86,11 @@ class ImagePickerFoodImagePicker extends FoodImagePicker {
       imageQuality: 82,
       limit: limit,
     );
+    if (files.length > limit) {
+      throw const FoodImageSelectionLimitException();
+    }
     final images = <PickedFoodImage>[];
-    for (final file in files.take(limit)) {
+    for (final file in files) {
       images.add(await _pickedImageFromFile(file));
     }
     return List<PickedFoodImage>.unmodifiable(images);

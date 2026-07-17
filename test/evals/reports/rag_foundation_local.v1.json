@@ -2,7 +2,7 @@
   "schema": "fitlog_rag_eval_report.v1",
   "pipeline_version": "rag_foundation_v1",
   "corpus_id": "fitlog_user_stable_docs",
-  "build_id": "942de22e58135187a7550327",
+  "build_id": "b4400ad8b82742b465ffd6d7",
   "fixture_suites": [
     {
       "name": "document_retrieval.v1.json",
@@ -91,7 +91,7 @@
     {
       "metric": "active_chunks_embedding_freshness_parity",
       "status": "pass",
-      "evidence": "579/579; Qwen key/cloud authorization required when incomplete"
+      "evidence": "583/583; Qwen key/cloud authorization required when incomplete"
     },
     {
       "metric": "per_side_total_reps_fixture_confusion",
@@ -120,13 +120,13 @@
     },
     {
       "metric": "edge_embedding_hybrid_latency_p95",
-      "status": "pass",
-      "evidence": "1422 ms / 1500 ms; samples=11"
+      "status": "fail",
+      "evidence": "1712 ms / 1500 ms; samples=6"
     }
   ],
   "summary": {
-    "pass": 10,
-    "fail": 0,
+    "pass": 9,
+    "fail": 1,
     "blocked": 0
   }
 }

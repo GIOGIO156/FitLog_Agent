@@ -123,10 +123,135 @@ void main() {
     expect(find.text('复制 Prompt'), findsOneWidget);
   });
 
-  testWidgets('Paste AI Result scrolls only while the keyboard is visible', (
+  testWidgets(
+    'Paste AI Result keeps fixed geometry and follows keyboard inset once',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final languageController = LanguageController();
+      addTearDown(languageController.dispose);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<LanguageController>.value(
+          value: languageController,
+          child: MaterialApp(
+            theme: buildFitLogTheme(Brightness.light),
+            home: const PasteAiResultPage(),
+          ),
+        ),
+      );
+
+      final editor = find.byType(TextField);
+      final promptPanel = find.byKey(
+        const ValueKey<String>('paste_prompt_instruction_panel'),
+      );
+      final parseButton = find.byKey(
+        const ValueKey<String>('paste_ai_parse_button'),
+      );
+      final promptSlot = find.byKey(
+        const ValueKey<String>('paste_prompt_supporting_slot'),
+      );
+      final parseSlot = find.byKey(
+        const ValueKey<String>('paste_parse_supporting_slot'),
+      );
+      expect(promptPanel, findsOneWidget);
+      expect(parseButton, findsOneWidget);
+      final initialEditorRect = tester.getRect(editor);
+      final initialPromptRect = tester.getRect(promptSlot);
+      final initialActionRect = tester.getRect(parseSlot);
+      final textField = tester.widget<TextField>(editor);
+      final editorFocusNode = textField.focusNode;
+      final editorController = textField.controller;
+
+      await tester.tap(editor);
+      await tester.pump();
+      await tester.enterText(editor, '{"meal_name":"test"}');
+      expect(editorFocusNode?.hasFocus, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      var previousTop = initialEditorRect.top;
+      for (final inset in <double>[80, 180, 336]) {
+        tester.view.viewInsets = FakeViewPadding(bottom: inset);
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        final currentRect = tester.getRect(editor);
+        expect(currentRect.size, initialEditorRect.size);
+        expect(currentRect.top, lessThanOrEqualTo(previousTop));
+        expect(currentRect.bottom, lessThanOrEqualTo(844 - inset - 12));
+        expect(tester.getRect(promptSlot), initialPromptRect);
+        expect(tester.getRect(parseSlot), initialActionRect);
+        expect(
+          tester
+              .widget<IgnorePointer>(
+                find.descendant(
+                  of: promptSlot,
+                  matching: find.byType(IgnorePointer),
+                ),
+              )
+              .ignoring,
+          isTrue,
+        );
+        previousTop = currentRect.top;
+      }
+
+      expect(promptPanel, findsOneWidget);
+      expect(parseButton, findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      expect(
+        tester
+            .widget<Opacity>(
+              find.descendant(of: promptSlot, matching: find.byType(Opacity)),
+            )
+            .opacity,
+        0,
+      );
+      expect(
+        tester
+            .widget<IgnorePointer>(
+              find.descendant(
+                of: parseSlot,
+                matching: find.byType(IgnorePointer),
+              ),
+            )
+            .ignoring,
+        isTrue,
+      );
+
+      for (final inset in <double>[180, 80, 0]) {
+        tester.view.viewInsets = FakeViewPadding(bottom: inset);
+        await tester.pump();
+
+        final currentRect = tester.getRect(editor);
+        expect(currentRect.size, initialEditorRect.size);
+        expect(currentRect.top, greaterThanOrEqualTo(previousTop));
+        expect(tester.getRect(promptSlot), initialPromptRect);
+        expect(tester.getRect(parseSlot), initialActionRect);
+        previousTop = currentRect.top;
+      }
+
+      expect(tester.getRect(editor), initialEditorRect);
+      expect(editorFocusNode?.hasFocus, isTrue);
+      expect(editorController?.text, '{"meal_name":"test"}');
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      await tester.pump();
+      final repeatedOpenRect = tester.getRect(editor);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+      await tester.pump();
+      expect(tester.getRect(editor), initialEditorRect);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      await tester.pump();
+      expect(tester.getRect(editor), repeatedOpenRect);
+      expect(editorController?.text, '{"meal_name":"test"}');
+    },
+  );
+
+  testWidgets('Paste AI Result remains bounded on a short viewport', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(390, 844);
+    tester.view.physicalSize = const Size(320, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final languageController = LanguageController();
@@ -143,42 +268,16 @@ void main() {
     );
 
     final editor = find.byType(TextField);
-    await tester.tap(editor);
-    await tester.pump();
-    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump(const Duration(milliseconds: 220));
-
+    final initialSize = tester.getSize(editor);
+    expect(initialSize.height, greaterThan(0));
     expect(tester.takeException(), isNull);
-    expect(tester.getRect(editor).top, lessThan(844 - 336 - 24));
 
-    final position = tester
-        .widget<SingleChildScrollView>(
-          find.byKey(const ValueKey<String>('paste_ai_result_scroll')),
-        )
-        .controller!
-        .position;
-    expect(position.pixels, greaterThan(0));
-
-    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    await tester.tap(editor);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 120));
-    await tester.pump(const Duration(milliseconds: 220));
-    expect(MediaQuery.viewInsetsOf(tester.element(editor)).bottom, 0);
-    final closedScroll = tester.widget<SingleChildScrollView>(
-      find.byKey(const ValueKey<String>('paste_ai_result_scroll')),
-    );
-    expect(closedScroll.physics, isA<NeverScrollableScrollPhysics>());
-    final closedPosition = closedScroll.controller!.position;
-    expect(closedPosition.maxScrollExtent, 0);
-    expect(closedPosition.pixels, 0);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('paste_ai_result_scroll')),
-      const Offset(0, -120),
-    );
-    await tester.pump();
-    expect(closedPosition.pixels, 0);
+    expect(tester.getSize(editor), initialSize);
+    expect(tester.getRect(editor).bottom, lessThanOrEqualTo(600 - 280 - 12));
+    expect(tester.takeException(), isNull);
   });
 }

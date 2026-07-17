@@ -169,6 +169,7 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
       body: Form(
         key: _formKey,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.only(bottom: 24),
           children: <Widget>[
             Card(

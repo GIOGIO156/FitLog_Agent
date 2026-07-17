@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fitlog_local/core/localization/language_controller.dart';
+import 'package:fitlog_local/core/widgets/glass_panel.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
 import 'package:fitlog_local/data/remote/ai_food_photo_analysis_client.dart';
 import 'package:fitlog_local/data/repositories/ai_local_context_permission_repository.dart';
@@ -25,6 +26,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+MemoryImage _memoryImage(ImageProvider<Object> provider) {
+  final resolved = provider is ResizeImage ? provider.imageProvider : provider;
+  return resolved as MemoryImage;
+}
 
 void main() {
   setUp(() {
@@ -60,6 +66,199 @@ void main() {
     expect(enabledSubmit.onPressed, isNotNull);
   });
 
+  testWidgets('photo controls keep clear of the fixed analysis action', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final harness = _PhotoHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    final modelFinder = find.byKey(
+      const ValueKey<String>('photo_food_model_choice'),
+    );
+    final previewFinder = find.byKey(
+      const ValueKey<String>('photo_food_preview_action'),
+    );
+    expect(
+      find.text(
+        'FitLog AI estimates a draft from your description and up to 3 optional food images. Review and save on the next page.',
+      ),
+      findsNothing,
+    );
+    expect(
+      tester.getTopLeft(modelFinder).dy,
+      lessThan(tester.getTopLeft(previewFinder).dy),
+    );
+    expect(
+      find.ancestor(of: modelFinder, matching: find.byType(GlassPanel)),
+      findsNothing,
+    );
+
+    final noteFinder = find.byKey(
+      const ValueKey<String>('photo_food_note_field'),
+    );
+    await _scrollUntilVisible(tester, noteFinder);
+    final submitFinder = find.byKey(
+      const ValueKey<String>('photo_food_submit_button'),
+    );
+    expect(
+      tester.getRect(noteFinder).bottom,
+      lessThanOrEqualTo(tester.getRect(submitFinder).top - 12),
+    );
+    final shieldFinder = find.byKey(
+      const ValueKey<String>('photo_food_submit_shield'),
+    );
+    expect(shieldFinder, findsOneWidget);
+    expect(
+      tester.getSize(shieldFinder).width,
+      closeTo(tester.getSize(submitFinder).width, 0.1),
+    );
+    expect(
+      tester.getTopLeft(shieldFinder).dy,
+      closeTo(tester.getCenter(submitFinder).dy, 0.1),
+    );
+  });
+
+  testWidgets('food note follows keyboard as a fixed-size mounted surface', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final harness = _PhotoHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).resizeToAvoidBottomInset,
+      isFalse,
+    );
+    final initialListPadding = tester
+        .widget<ListView>(find.byType(ListView))
+        .padding;
+    final noteFinder = find.byKey(
+      const ValueKey<String>('photo_food_note_field'),
+    );
+    await _scrollUntilVisible(tester, noteFinder);
+    final noteFocusNode = tester.widget<TextField>(noteFinder).focusNode;
+    await tester.tap(noteFinder);
+    await tester.pump();
+    final restingNoteRect = tester.getRect(noteFinder);
+    final restingListOffset = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 80);
+    await tester.pump();
+    final noteAt80 = tester.getRect(noteFinder);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 180);
+    await tester.pump();
+    final noteAt180 = tester.getRect(noteFinder);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    final noteAt336 = tester.getRect(noteFinder);
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_submit_shield')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Opacity>(
+            find.byKey(const ValueKey<String>('photo_food_submit_visibility')),
+          )
+          .opacity,
+      0,
+    );
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).padding,
+      initialListPadding,
+    );
+    expect(tester.widget<TextField>(noteFinder).focusNode, same(noteFocusNode));
+    expect(noteFocusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(noteAt80.size, restingNoteRect.size);
+    expect(noteAt180.size, restingNoteRect.size);
+    expect(noteAt336.size, restingNoteRect.size);
+    expect(noteAt80.top, greaterThanOrEqualTo(noteAt180.top));
+    expect(noteAt180.top, greaterThanOrEqualTo(noteAt336.top));
+    expect(noteAt336.bottom, lessThanOrEqualTo(844 - 336 - 12 + 0.1));
+    expect(
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .pixels,
+      restingListOffset,
+    );
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).padding,
+      initialListPadding,
+    );
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Opacity>(
+            find.byKey(const ValueKey<String>('photo_food_submit_visibility')),
+          )
+          .opacity,
+      1,
+    );
+    expect(tester.getRect(noteFinder), restingNoteRect);
+    expect(tester.widget<TextField>(noteFinder).focusNode, same(noteFocusNode));
+  });
+
+  testWidgets('first keyboard drag dismisses focus without moving the page', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final harness = _PhotoHarness();
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    final noteFinder = find.byKey(
+      const ValueKey<String>('photo_food_note_field'),
+    );
+    await _scrollUntilVisible(tester, noteFinder);
+    await tester.tap(noteFinder);
+    await tester.pump();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+
+    final scrollable = tester.state<ScrollableState>(
+      find.byType(Scrollable).first,
+    );
+    final initialOffset = scrollable.position.pixels;
+    final focusNode = tester.widget<TextField>(noteFinder).focusNode!;
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -180));
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isFalse);
+    expect(scrollable.position.pixels, initialOffset);
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    await tester.pump();
+  });
+
   testWidgets('photo ChatGPT choice slides back to Qwen without a request', (
     tester,
   ) async {
@@ -75,8 +274,14 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_note_field')),
       '100g salmon',
     );
-    await _scrollUntilVisible(tester, find.text('ChatGPT'));
-    await tester.tap(find.text('ChatGPT'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, 600));
+    await tester.pump(const Duration(milliseconds: 220));
+    final chatGptChoice = find.byKey(
+      const ValueKey<String>('photo_food_provider_chatgpt'),
+    );
+    await tester.ensureVisible(chatGptChoice);
+    await tester.pump();
+    await tester.tap(chatGptChoice);
     await tester.pump();
     expect(find.text('The current model is unavailable.'), findsOneWidget);
     expect(
@@ -101,7 +306,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
 
     expect(harness.client.requests, isEmpty);
-    expect(find.text('100g salmon'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(
+              const ValueKey<String>('photo_food_note_field'),
+              skipOffstage: false,
+            ),
+          )
+          .controller
+          ?.text,
+      '100g salmon',
+    );
     final preferences = await SharedPreferences.getInstance();
     expect(preferences.getString('photo_food_ai_model_choice_v1'), 'qwen');
     expect(find.text('The current model is unavailable.'), findsOneWidget);
@@ -116,18 +332,31 @@ void main() {
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
-    await _tapVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_add_icon')),
+      findsNothing,
     );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_empty_slot_0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_empty_slot_2')),
+      findsOneWidget,
+    );
+    await _pickFromGallery(tester);
     await tester.pump();
 
     expect(
       find.byKey(const ValueKey<String>('photo_food_preview_image')),
       findsOneWidget,
     );
-    expect(find.text('Photo'), findsOneWidget);
-    expect(find.text('Gallery'), findsOneWidget);
+    expect(find.text('Photo'), findsNothing);
+    expect(find.text('Gallery'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_add_icon')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('photo_food_selected_image_0')),
       findsOneWidget,
@@ -153,10 +382,7 @@ void main() {
       addTearDown(harness.dispose);
 
       await tester.pumpWidget(_buildPhotoTestApp(harness));
-      await _tapVisible(
-        tester,
-        find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-      );
+      await _pickFromGallery(tester);
       await tester.pump();
 
       final previewSize = tester.getSize(
@@ -180,10 +406,7 @@ void main() {
       addTearDown(harness.dispose);
 
       await tester.pumpWidget(_buildPhotoTestApp(harness));
-      await _tapVisible(
-        tester,
-        find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-      );
+      await _pickFromGallery(tester);
       await tester.pump();
       await _scrollUntilVisible(
         tester,
@@ -197,10 +420,14 @@ void main() {
         find.byKey(const ValueKey<String>('photo_food_submit_button')),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('photo_food_submit_button')),
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey<String>('photo_food_submit_button')),
+            )
+            .onPressed,
+        isNull,
       );
-      await tester.pump();
 
       expect(harness.client.requests, hasLength(1));
       expect(harness.client.requests.single.userNote, '米饭只吃了一半');
@@ -281,10 +508,7 @@ void main() {
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
-    await _tapVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-    );
+    await _pickFromGallery(tester);
     await tester.pump();
     await _scrollUntilVisible(
       tester,
@@ -319,10 +543,7 @@ void main() {
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
-    await _tapVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-    );
+    await _pickFromGallery(tester);
     await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
@@ -354,10 +575,7 @@ void main() {
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
-    await _tapVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-    );
+    await _pickFromGallery(tester);
     await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
@@ -398,32 +616,156 @@ void main() {
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
-    await _tapVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
-    );
+    await _pickFromGallery(tester);
     await tester.pump();
 
     var mainPreview = tester.widget<Image>(
       find.byKey(const ValueKey<String>('photo_food_preview_image')),
     );
-    expect((mainPreview.image as MemoryImage).bytes, same(thirdBytes));
+    expect(_memoryImage(mainPreview.image).bytes, same(thirdBytes));
     expect(
       find.byKey(const ValueKey<String>('photo_food_selected_image_2')),
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('photo_food_select_image_1')),
-    );
+    tester
+        .widget<InkWell>(
+          find.byKey(const ValueKey<String>('photo_food_select_image_1')),
+        )
+        .onTap!
+        .call();
     await tester.pump();
 
     mainPreview = tester.widget<Image>(
       find.byKey(const ValueKey<String>('photo_food_preview_image')),
     );
-    expect((mainPreview.image as MemoryImage).bytes, same(secondBytes));
+    expect(_memoryImage(mainPreview.image).bytes, same(secondBytes));
     expect(
       find.byKey(const ValueKey<String>('photo_food_selected_image_1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('preview can add more images and requests only free slots', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    harness.picker.queuedSelections.addAll(<List<PickedFoodImage>>[
+      <PickedFoodImage>[harness.picker.image],
+      <PickedFoodImage>[
+        PickedFoodImage(
+          bytes: Uint8List.fromList(_onePixelPng),
+          mimeType: 'image/png',
+          name: 'food-2.png',
+        ),
+        PickedFoodImage(
+          bytes: Uint8List.fromList(_onePixelPng),
+          mimeType: 'image/png',
+          name: 'food-3.png',
+        ),
+      ],
+    ]);
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _pickFromGallery(tester);
+    await _pickFromGallery(tester);
+
+    expect(harness.picker.requestedLimits, <int>[3, 2]);
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_selected_image_2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_empty_slot_2')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('full preview replaces the selected image instead of adding', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final replacement = PickedFoodImage(
+      bytes: Uint8List.fromList(_onePixelPng),
+      mimeType: 'image/png',
+      name: 'replacement.png',
+    );
+    harness.picker.queuedSelections.addAll(<List<PickedFoodImage>>[
+      <PickedFoodImage>[
+        harness.picker.image,
+        PickedFoodImage(
+          bytes: Uint8List.fromList(_onePixelPng),
+          mimeType: 'image/png',
+          name: 'food-2.png',
+        ),
+        PickedFoodImage(
+          bytes: Uint8List.fromList(_onePixelPng),
+          mimeType: 'image/png',
+          name: 'food-3.png',
+        ),
+      ],
+      <PickedFoodImage>[replacement],
+    ]);
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _pickFromGallery(tester);
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey<String>('photo_food_preview_action')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Replace selected photo'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('photo_food_gallery_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(harness.picker.requestedLimits, <int>[3, 1]);
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_empty_slot_2')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('picker overflow is rejected instead of silently truncated', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    harness.picker.queuedSelections.add(<PickedFoodImage>[
+      harness.picker.image,
+      PickedFoodImage(
+        bytes: Uint8List.fromList(_onePixelPng),
+        mimeType: 'image/png',
+        name: 'food-2.png',
+      ),
+      PickedFoodImage(
+        bytes: Uint8List.fromList(_onePixelPng),
+        mimeType: 'image/png',
+        name: 'food-3.png',
+      ),
+      PickedFoodImage(
+        bytes: Uint8List.fromList(_onePixelPng),
+        mimeType: 'image/png',
+        name: 'food-4.png',
+      ),
+    ]);
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _pickFromGallery(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+      findsNothing,
+    );
+    expect(
+      find.text('Select no more than the remaining photo slots.'),
       findsOneWidget,
     );
   });
@@ -433,6 +775,18 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pump();
   await tester.tap(finder);
+}
+
+Future<void> _pickFromGallery(WidgetTester tester) async {
+  await _tapVisible(
+    tester,
+    find.byKey(const ValueKey<String>('photo_food_preview_action')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const ValueKey<String>('photo_food_gallery_button')),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
@@ -528,6 +882,9 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     name: 'food.png',
   );
   List<PickedFoodImage>? multiImages;
+  final List<List<PickedFoodImage>> queuedSelections =
+      <List<PickedFoodImage>>[];
+  final List<int> requestedLimits = <int>[];
 
   @override
   Future<PickedFoodImage?> pick(FoodImageSource source) async {
@@ -539,8 +896,12 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     FoodImageSource source, {
     required int limit,
   }) async {
+    requestedLimits.add(limit);
+    if (queuedSelections.isNotEmpty) {
+      return queuedSelections.removeAt(0);
+    }
     final images = multiImages ?? <PickedFoodImage>[image];
-    return images.take(limit).toList(growable: false);
+    return images;
   }
 }
 

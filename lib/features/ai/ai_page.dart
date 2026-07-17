@@ -3637,7 +3637,7 @@ MarkdownStyleSheet _aiMarkdownStyleSheet(
   );
 }
 
-class _AiHistoryPanel extends StatelessWidget {
+class _AiHistoryPanel extends StatefulWidget {
   const _AiHistoryPanel({required this.controller, required this.onClose});
 
   final AiChatController? controller;
@@ -3645,153 +3645,193 @@ class _AiHistoryPanel extends StatelessWidget {
   final VoidCallback onClose;
 
   @override
+  State<_AiHistoryPanel> createState() => _AiHistoryPanelState();
+}
+
+class _AiHistoryPanelState extends State<_AiHistoryPanel> {
+  String? _renamingSessionId;
+
+  void _setRenamingSession(String sessionId, bool renaming) {
+    setState(() {
+      _renamingSessionId = renaming ? sessionId : null;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final panelWidth = math.min(MediaQuery.sizeOf(context).width * 0.78, 320.0);
+    final mediaQuery = MediaQuery.of(context);
+    final panelWidth = math.min(mediaQuery.size.width * 0.78, 320.0);
+    final keyboardInset = mediaQuery.viewInsets.bottom;
+    final panelBottomMargin = keyboardInset > 0 ? keyboardInset + 12 : 96.0;
 
     return Stack(
       children: <Widget>[
         Positioned.fill(
           child: GestureDetector(
-            onTap: onClose,
+            onTap: widget.onClose,
             child: ColoredBox(color: Colors.black.withValues(alpha: 0.10)),
           ),
         ),
         SafeArea(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              key: const ValueKey<String>('ai_history_panel'),
-              width: panelWidth,
-              height: math.max(320.0, MediaQuery.sizeOf(context).height - 140),
-              margin: const EdgeInsets.fromLTRB(12, 12, 0, 96),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.90),
-                borderRadius: const BorderRadius.horizontal(
-                  right: Radius.circular(24),
-                  left: Radius.circular(18),
-                ),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 26,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            strings.aiHistoryTitle,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  color: _AiThemePalette.of(
-                                    context,
-                                  ).historyText,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: onClose,
-                          tooltip: strings.close,
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(12, 12, 0, panelBottomMargin),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                key: const ValueKey<String>('ai_history_panel'),
+                width: panelWidth,
+                height: double.infinity,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.90),
+                    borderRadius: const BorderRadius.horizontal(
+                      right: Radius.circular(24),
+                      left: Radius.circular(18),
                     ),
-                    const SizedBox(height: 12),
-                    if (controller == null ||
-                        (controller?.accountId ?? '').isEmpty)
-                      Text(
-                        strings.aiHistorySignedOut,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: _AiThemePalette.of(context).mutedText,
-                          height: 1.4,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.78),
+                    ),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 26,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                strings.aiHistoryTitle,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: _AiThemePalette.of(
+                                        context,
+                                      ).historyText,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: widget.onClose,
+                              tooltip: strings.close,
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
                         ),
-                      )
-                    else ...<Widget>[
-                      Row(
-                        children: <Widget>[
-                          OutlinedButton.icon(
-                            key: const ValueKey<String>('ai_new_chat_button'),
-                            onPressed: () {
-                              controller!.startNewSession();
-                              onClose();
-                            },
-                            icon: const Icon(Icons.add_rounded),
-                            label: Text(strings.aiNewChat),
+                        const SizedBox(height: 12),
+                        if (widget.controller == null ||
+                            (widget.controller?.accountId ?? '').isEmpty)
+                          Text(
+                            strings.aiHistorySignedOut,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: _AiThemePalette.of(context).mutedText,
+                                  height: 1.4,
+                                ),
+                          )
+                        else ...<Widget>[
+                          Row(
+                            children: <Widget>[
+                              OutlinedButton.icon(
+                                key: const ValueKey<String>(
+                                  'ai_new_chat_button',
+                                ),
+                                onPressed: () {
+                                  widget.controller!.startNewSession();
+                                  widget.onClose();
+                                },
+                                icon: const Icon(Icons.add_rounded),
+                                label: Text(strings.aiNewChat),
+                              ),
+                              const Spacer(),
+                              if (widget.controller!.loadingSessions)
+                                const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                            ],
                           ),
-                          const Spacer(),
-                          if (controller!.loadingSessions)
-                            const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                          const SizedBox(height: 12),
+                          if (widget.controller!.sessions.isEmpty)
+                            Text(
+                              strings.aiHistoryEmpty,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: _AiThemePalette.of(
+                                      context,
+                                    ).mutedText,
+                                    height: 1.4,
+                                  ),
+                            )
+                          else
+                            Expanded(
+                              child: ListView.separated(
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                cacheExtent: 480,
+                                itemCount: widget.controller!.sessions.length,
+                                separatorBuilder: (context, index) =>
+                                    const SizedBox(height: 6),
+                                itemBuilder: (context, index) {
+                                  final session =
+                                      widget.controller!.sessions[index];
+                                  final selected =
+                                      session.id ==
+                                      widget.controller!.selectedSessionId;
+                                  return _AiHistoryTile(
+                                    key: ValueKey<String>(
+                                      'ai_history_tile_${session.id}',
+                                    ),
+                                    title: session.title.trim().isEmpty
+                                        ? strings.aiUntitledChat
+                                        : session.title,
+                                    selected: selected,
+                                    deleting: widget.controller!
+                                        .isDeletingSession(session.id),
+                                    operationsDisabled:
+                                        widget.controller!.deletingSession,
+                                    renaming: _renamingSessionId == session.id,
+                                    onRenameModeChanged: (renaming) =>
+                                        _setRenamingSession(
+                                          session.id,
+                                          renaming,
+                                        ),
+                                    onTap: () {
+                                      unawaited(
+                                        widget.controller!.selectSession(
+                                          session.id,
+                                        ),
+                                      );
+                                      widget.onClose();
+                                    },
+                                    onRename: (title) => widget.controller!
+                                        .renameSession(session.id, title),
+                                    onDelete: () => _confirmDeleteSession(
+                                      context,
+                                      widget.controller!,
+                                      session.id,
+                                      session.title.trim().isEmpty
+                                          ? strings.aiUntitledChat
+                                          : session.title,
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (controller!.sessions.isEmpty)
-                        Text(
-                          strings.aiHistoryEmpty,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: _AiThemePalette.of(context).mutedText,
-                                height: 1.4,
-                              ),
-                        )
-                      else
-                        Expanded(
-                          child: ListView.separated(
-                            itemCount: controller!.sessions.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 6),
-                            itemBuilder: (context, index) {
-                              final session = controller!.sessions[index];
-                              final selected =
-                                  session.id == controller!.selectedSessionId;
-                              return _AiHistoryTile(
-                                key: ValueKey<String>(
-                                  'ai_history_tile_${session.id}',
-                                ),
-                                title: session.title.trim().isEmpty
-                                    ? strings.aiUntitledChat
-                                    : session.title,
-                                selected: selected,
-                                deleting: controller!.isDeletingSession(
-                                  session.id,
-                                ),
-                                operationsDisabled: controller!.deletingSession,
-                                onTap: () {
-                                  unawaited(
-                                    controller!.selectSession(session.id),
-                                  );
-                                  onClose();
-                                },
-                                onRename: (title) => controller!.renameSession(
-                                  session.id,
-                                  title,
-                                ),
-                                onDelete: () => _confirmDeleteSession(
-                                  context,
-                                  controller!,
-                                  session.id,
-                                  session.title.trim().isEmpty
-                                      ? strings.aiUntitledChat
-                                      : session.title,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3848,6 +3888,8 @@ class _AiHistoryTile extends StatefulWidget {
     required this.selected,
     required this.deleting,
     required this.operationsDisabled,
+    required this.renaming,
+    required this.onRenameModeChanged,
     required this.onTap,
     required this.onRename,
     required this.onDelete,
@@ -3857,6 +3899,8 @@ class _AiHistoryTile extends StatefulWidget {
   final bool selected;
   final bool deleting;
   final bool operationsDisabled;
+  final bool renaming;
+  final ValueChanged<bool> onRenameModeChanged;
   final VoidCallback onTap;
   final Future<bool> Function(String title) onRename;
   final VoidCallback onDelete;
@@ -3865,25 +3909,48 @@ class _AiHistoryTile extends StatefulWidget {
   State<_AiHistoryTile> createState() => _AiHistoryTileState();
 }
 
-class _AiHistoryTileState extends State<_AiHistoryTile> {
+class _AiHistoryTileState extends State<_AiHistoryTile>
+    with AutomaticKeepAliveClientMixin {
   late final TextEditingController _renameController;
   late final FocusNode _renameFocusNode;
   bool _renaming = false;
   bool _saving = false;
 
   @override
+  bool get wantKeepAlive => _renaming;
+
+  @override
   void initState() {
     super.initState();
     _renameController = TextEditingController(text: widget.title);
     _renameFocusNode = FocusNode();
+    _renaming = widget.renaming;
+    if (_renaming) {
+      _requestRenameFocus();
+    }
   }
 
   @override
   void didUpdateWidget(covariant _AiHistoryTile oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.renaming != widget.renaming) {
+      _renaming = widget.renaming;
+      updateKeepAlive();
+      if (_renaming) {
+        _requestRenameFocus();
+      }
+    }
     if (!_renaming && oldWidget.title != widget.title) {
       _renameController.text = widget.title;
     }
+  }
+
+  void _requestRenameFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _renaming) {
+        _renameFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -3901,6 +3968,8 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
         offset: _renameController.text.length,
       );
     });
+    updateKeepAlive();
+    widget.onRenameModeChanged(true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _renameFocusNode.requestFocus();
@@ -3914,6 +3983,8 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
       _saving = false;
       _renameController.text = widget.title;
     });
+    updateKeepAlive();
+    widget.onRenameModeChanged(false);
   }
 
   Future<void> _submitRename() async {
@@ -3937,6 +4008,8 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
         _renaming = false;
         _saving = false;
       });
+      updateKeepAlive();
+      widget.onRenameModeChanged(false);
     } else {
       setState(() => _saving = false);
       FitLogNotifications.error(context, strings.aiRenameChatFailed);
@@ -3945,6 +4018,7 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final palette = _AiThemePalette.of(context);
     final textColor = widget.selected
         ? palette.historySelectedText
@@ -4027,6 +4101,7 @@ class _AiHistoryTileState extends State<_AiHistoryTile> {
         maxLength: 80,
         minLines: 1,
         maxLines: 2,
+        scrollPadding: const EdgeInsets.only(bottom: 12),
         style: titleStyle,
         cursorColor: _AiThemePalette.of(context).action,
         onSubmitted: (_) => _submitRename(),

@@ -74,7 +74,6 @@ class _ProfilePageState extends State<ProfilePage> {
   final _scrollController = ScrollController();
   final _settingsSectionKey = GlobalKey();
   final _selfCheckSectionKey = GlobalKey();
-  final _bodyMetricEditorKey = GlobalKey();
 
   final _nicknameController = TextEditingController();
   final _ageController = TextEditingController();
@@ -387,26 +386,6 @@ class _ProfilePageState extends State<ProfilePage> {
       _bodyMetricWaistController.text = waistText;
     });
     _rootInteractionLockController?.setNavigationLocked(true);
-    _revealBodyMetricEditor();
-  }
-
-  void _revealBodyMetricEditor() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_isEditingBodyMetricRecord) {
-        return;
-      }
-      final editorContext = _bodyMetricEditorKey.currentContext;
-      if (editorContext == null) {
-        return;
-      }
-      Scrollable.ensureVisible(
-        editorContext,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        alignment: 0.04,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-      );
-    });
   }
 
   void _cancelBodyMetricEdit() {
@@ -2032,6 +2011,7 @@ class _ProfilePageState extends State<ProfilePage> {
         children: <Widget>[
           ListView(
             controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.zero,
             children: <Widget>[
               FitLogPageHeader(
@@ -2064,26 +2044,30 @@ class _ProfilePageState extends State<ProfilePage> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: _editingNickname
-                            ? TextField(
-                                key: const ValueKey<String>(
-                                  'profile_nickname_field',
-                                ),
-                                controller: _nicknameController,
-                                autofocus: true,
-                                onChanged: (_) => setState(() {}),
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w900,
-                                      color: fitTheme.textPrimary,
-                                      height: 1.0,
-                                    ),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  hintText: strings.nicknameHint,
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
+                            ? _KeyboardFocusRevealer(
+                                child: TextField(
+                                  key: const ValueKey<String>(
+                                    'profile_nickname_field',
+                                  ),
+                                  controller: _nicknameController,
+                                  autofocus: true,
+                                  onChanged: (_) => setState(() {}),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                        color: fitTheme.textPrimary,
+                                        height: 1.0,
+                                      ),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    hintText: strings.nicknameHint,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
                                 ),
                               )
                             : InkWell(
@@ -2127,292 +2111,281 @@ class _ProfilePageState extends State<ProfilePage> {
                   onInfoTap: _openPlanMethodGuide,
                 ),
               ),
-              KeyedSubtree(
-                key: _bodyMetricEditorKey,
-                child: _ProfileSummarySectionCard(
-                  title: strings.isChinese ? '身体资料' : 'Body Profile',
-                  icon: Icons.person_outline_rounded,
-                  modified: draftSections.contains(_ProfileDraftSection.body),
-                  trailing: FitLogActionIconButton(
-                    key: const ValueKey<String>(
-                      'profile_body_metric_calendar_button',
-                    ),
-                    icon: Icons.calendar_today_outlined,
-                    tooltip: strings.date,
-                    onPressed:
-                        _savingBodyMetricRecord || _deletingBodyMetricRecord
-                        ? null
-                        : _pickBodyMetricDate,
+              _ProfileSummarySectionCard(
+                title: strings.isChinese ? '身体资料' : 'Body Profile',
+                icon: Icons.person_outline_rounded,
+                modified: draftSections.contains(_ProfileDraftSection.body),
+                trailing: FitLogActionIconButton(
+                  key: const ValueKey<String>(
+                    'profile_body_metric_calendar_button',
                   ),
-                  child: Column(
-                    children: <Widget>[
-                      if (editingBodyMetricDate != null) ...<Widget>[
-                        Row(
-                          children: <Widget>[
-                            if (_editingBodyMetricRecordExists)
-                              _BodyMetricDeleteButton(
-                                deleting: _deletingBodyMetricRecord,
-                                tooltip: strings.deleteRecord,
-                                onPressed: _deleteBodyMetricRecord,
-                              ),
-                            const Spacer(),
-                            _BodyMetricEditDateBadge(
-                              label: _formatBodyMetricEditDate(
-                                editingBodyMetricDate,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                      ],
+                  icon: Icons.calendar_today_outlined,
+                  tooltip: strings.date,
+                  onPressed:
+                      _savingBodyMetricRecord || _deletingBodyMetricRecord
+                      ? null
+                      : _pickBodyMetricDate,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    if (editingBodyMetricDate != null) ...<Widget>[
                       Row(
                         children: <Widget>[
-                          Expanded(
-                            child: _BodyProfileTile(
-                              label: strings.ageLabel,
-                              icon: Icons.accessibility_new_rounded,
-                              value: _ageController.text,
-                              editing:
-                                  bodyProfileEditing &&
-                                  !isEditingBodyMetricRecord,
-                              disabled: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.age,
-                              ),
-                              editor: _BorderlessProfileTextField(
-                                controller: _ageController,
-                                autofocus:
-                                    _editingBodyField == _BodyProfileField.age,
-                                keyboardType: TextInputType.number,
-                                onChanged: (_) => setState(() {}),
-                              ),
+                          if (_editingBodyMetricRecordExists)
+                            _BodyMetricDeleteButton(
+                              deleting: _deletingBodyMetricRecord,
+                              tooltip: strings.deleteRecord,
+                              onPressed: _deleteBodyMetricRecord,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _BodyProfileTile(
-                              label: _labelWithoutUnit(strings.heightCmLabel),
-                              icon: Icons.straighten_rounded,
-                              value: _heightCm.toStringAsFixed(1),
-                              unit: 'cm',
-                              editing:
-                                  bodyProfileEditing &&
-                                  !isEditingBodyMetricRecord,
-                              disabled: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.height,
-                              ),
-                              editor: _InlineUnitEditor(
-                                controller: _heightController,
-                                autofocus:
-                                    _editingBodyField ==
-                                    _BodyProfileField.height,
-                                unit: 'cm',
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onChanged: (_) => setState(() {}),
-                              ),
+                          const Spacer(),
+                          _BodyMetricEditDateBadge(
+                            label: _formatBodyMetricEditDate(
+                              editingBodyMetricDate,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: _BodyProfileTile(
-                              key: const ValueKey<String>(
-                                'profile_body_weight_tile',
-                              ),
-                              label: _labelWithoutUnit(strings.weightKgLabel),
-                              icon: Icons.monitor_weight_outlined,
-                              value: isEditingBodyMetricRecord
-                                  ? _bodyMetricWeightKg.toStringAsFixed(1)
-                                  : _weightKg.toStringAsFixed(1),
-                              unit: 'kg',
-                              editing:
-                                  isEditingBodyMetricRecord ||
-                                  bodyProfileEditing,
-                              emphasized: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.weight,
-                              ),
-                              editor: _InlineUnitEditor(
-                                controller: isEditingBodyMetricRecord
-                                    ? _bodyMetricWeightController
-                                    : _weightController,
-                                fieldKey: isEditingBodyMetricRecord
-                                    ? const ValueKey<String>(
-                                        'profile_body_metric_weight_field',
-                                      )
-                                    : const ValueKey<String>(
-                                        'profile_body_weight_field',
-                                      ),
-                                autofocus:
-                                    isEditingBodyMetricRecord ||
-                                    _editingBodyField ==
-                                        _BodyProfileField.weight,
-                                unit: 'kg',
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _BodyProfileTile(
-                              label: strings.sexForFormulaLabel,
-                              icon: Icons.person_2_outlined,
-                              value: strings.sexOptionLabel(_sexForFormula),
-                              editing:
-                                  bodyProfileEditing &&
-                                  !isEditingBodyMetricRecord,
-                              disabled: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.sex,
-                              ),
-                              editor: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _sexForFormula,
-                                  isExpanded: true,
-                                  isDense: true,
-                                  icon: const Icon(Icons.expand_more_rounded),
-                                  style: Theme.of(context).textTheme.titleLarge
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        color: fitTheme.textPrimary,
-                                      ),
-                                  items: AppConstants.sexOptions.map((value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(
-                                        strings.sexOptionLabel(value),
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (value) {
-                                    if (value != null) {
-                                      setState(() => _sexForFormula = value);
-                                    }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: _BodyProfileTile(
-                              label: _labelWithoutUnit(
-                                strings.bodyFatPercentLabel,
-                              ),
-                              icon: Icons.percent_rounded,
-                              value: isEditingBodyMetricRecord
-                                  ? _formatOptionalMetric(
-                                      _bodyMetricBodyFatPercent,
-                                    )
-                                  : _formatOptionalMetric(_bodyFatPercent),
-                              unit: '%',
-                              editing:
-                                  isEditingBodyMetricRecord ||
-                                  bodyProfileEditing,
-                              emphasized: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.bodyFat,
-                              ),
-                              editor: _InlineUnitEditor(
-                                controller: isEditingBodyMetricRecord
-                                    ? _bodyMetricBodyFatController
-                                    : _bodyFatController,
-                                fieldKey: isEditingBodyMetricRecord
-                                    ? const ValueKey<String>(
-                                        'profile_body_metric_body_fat_field',
-                                      )
-                                    : const ValueKey<String>(
-                                        'profile_body_fat_field',
-                                      ),
-                                autofocus:
-                                    !isEditingBodyMetricRecord &&
-                                    _editingBodyField ==
-                                        _BodyProfileField.bodyFat,
-                                unit: '%',
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _BodyProfileTile(
-                              label: _labelWithoutUnit(strings.waistCmLabel),
-                              icon: Icons.vertical_align_center_rounded,
-                              value: isEditingBodyMetricRecord
-                                  ? _formatOptionalMetric(_bodyMetricWaistCm)
-                                  : _formatOptionalMetric(_waistCm),
-                              unit: 'cm',
-                              editing:
-                                  isEditingBodyMetricRecord ||
-                                  bodyProfileEditing,
-                              emphasized: isEditingBodyMetricRecord,
-                              onTap: () => _activateBodyProfileField(
-                                _BodyProfileField.waist,
-                              ),
-                              editor: _InlineUnitEditor(
-                                controller: isEditingBodyMetricRecord
-                                    ? _bodyMetricWaistController
-                                    : _waistController,
-                                fieldKey: isEditingBodyMetricRecord
-                                    ? const ValueKey<String>(
-                                        'profile_body_metric_waist_field',
-                                      )
-                                    : const ValueKey<String>(
-                                        'profile_body_waist_field',
-                                      ),
-                                autofocus:
-                                    !isEditingBodyMetricRecord &&
-                                    _editingBodyField ==
-                                        _BodyProfileField.waist,
-                                unit: 'cm',
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (isEditingBodyMetricRecord) ...<Widget>[
-                        const SizedBox(height: 14),
-                        _InlineSaveActions(
-                          saving:
-                              _savingBodyMetricRecord ||
-                              _deletingBodyMetricRecord,
-                          saveLabel: strings.save,
-                          cancelButtonKey: const ValueKey<String>(
-                            'profile_body_metric_cancel_button',
-                          ),
-                          saveButtonKey: const ValueKey<String>(
-                            'profile_body_metric_save_button',
-                          ),
-                          onCancel: _cancelBodyMetricEdit,
-                          onSave: _saveBodyMetricRecord,
-                        ),
-                      ],
+                      const SizedBox(height: 10),
                     ],
-                  ),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _BodyProfileTile(
+                            label: strings.ageLabel,
+                            icon: Icons.accessibility_new_rounded,
+                            value: _ageController.text,
+                            editing:
+                                bodyProfileEditing &&
+                                !isEditingBodyMetricRecord,
+                            disabled: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.age,
+                            ),
+                            editor: _BorderlessProfileTextField(
+                              controller: _ageController,
+                              autofocus:
+                                  _editingBodyField == _BodyProfileField.age,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _BodyProfileTile(
+                            label: _labelWithoutUnit(strings.heightCmLabel),
+                            icon: Icons.straighten_rounded,
+                            value: _heightCm.toStringAsFixed(1),
+                            unit: 'cm',
+                            editing:
+                                bodyProfileEditing &&
+                                !isEditingBodyMetricRecord,
+                            disabled: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.height,
+                            ),
+                            editor: _InlineUnitEditor(
+                              controller: _heightController,
+                              autofocus:
+                                  _editingBodyField == _BodyProfileField.height,
+                              unit: 'cm',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _BodyProfileTile(
+                            key: const ValueKey<String>(
+                              'profile_body_weight_tile',
+                            ),
+                            label: _labelWithoutUnit(strings.weightKgLabel),
+                            icon: Icons.monitor_weight_outlined,
+                            value: isEditingBodyMetricRecord
+                                ? _bodyMetricWeightKg.toStringAsFixed(1)
+                                : _weightKg.toStringAsFixed(1),
+                            unit: 'kg',
+                            editing:
+                                isEditingBodyMetricRecord || bodyProfileEditing,
+                            emphasized: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.weight,
+                            ),
+                            editor: _InlineUnitEditor(
+                              controller: isEditingBodyMetricRecord
+                                  ? _bodyMetricWeightController
+                                  : _weightController,
+                              fieldKey: isEditingBodyMetricRecord
+                                  ? const ValueKey<String>(
+                                      'profile_body_metric_weight_field',
+                                    )
+                                  : const ValueKey<String>(
+                                      'profile_body_weight_field',
+                                    ),
+                              autofocus:
+                                  isEditingBodyMetricRecord ||
+                                  _editingBodyField == _BodyProfileField.weight,
+                              unit: 'kg',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _BodyProfileTile(
+                            label: strings.sexForFormulaLabel,
+                            icon: Icons.person_2_outlined,
+                            value: strings.sexOptionLabel(_sexForFormula),
+                            editing:
+                                bodyProfileEditing &&
+                                !isEditingBodyMetricRecord,
+                            disabled: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.sex,
+                            ),
+                            editor: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _sexForFormula,
+                                isExpanded: true,
+                                isDense: true,
+                                icon: const Icon(Icons.expand_more_rounded),
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      color: fitTheme.textPrimary,
+                                    ),
+                                items: AppConstants.sexOptions.map((value) {
+                                  return DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(strings.sexOptionLabel(value)),
+                                  );
+                                }).toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _sexForFormula = value);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _BodyProfileTile(
+                            label: _labelWithoutUnit(
+                              strings.bodyFatPercentLabel,
+                            ),
+                            icon: Icons.percent_rounded,
+                            value: isEditingBodyMetricRecord
+                                ? _formatOptionalMetric(
+                                    _bodyMetricBodyFatPercent,
+                                  )
+                                : _formatOptionalMetric(_bodyFatPercent),
+                            unit: '%',
+                            editing:
+                                isEditingBodyMetricRecord || bodyProfileEditing,
+                            emphasized: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.bodyFat,
+                            ),
+                            editor: _InlineUnitEditor(
+                              controller: isEditingBodyMetricRecord
+                                  ? _bodyMetricBodyFatController
+                                  : _bodyFatController,
+                              fieldKey: isEditingBodyMetricRecord
+                                  ? const ValueKey<String>(
+                                      'profile_body_metric_body_fat_field',
+                                    )
+                                  : const ValueKey<String>(
+                                      'profile_body_fat_field',
+                                    ),
+                              autofocus:
+                                  !isEditingBodyMetricRecord &&
+                                  _editingBodyField ==
+                                      _BodyProfileField.bodyFat,
+                              unit: '%',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _BodyProfileTile(
+                            label: _labelWithoutUnit(strings.waistCmLabel),
+                            icon: Icons.vertical_align_center_rounded,
+                            value: isEditingBodyMetricRecord
+                                ? _formatOptionalMetric(_bodyMetricWaistCm)
+                                : _formatOptionalMetric(_waistCm),
+                            unit: 'cm',
+                            editing:
+                                isEditingBodyMetricRecord || bodyProfileEditing,
+                            emphasized: isEditingBodyMetricRecord,
+                            onTap: () => _activateBodyProfileField(
+                              _BodyProfileField.waist,
+                            ),
+                            editor: _InlineUnitEditor(
+                              controller: isEditingBodyMetricRecord
+                                  ? _bodyMetricWaistController
+                                  : _waistController,
+                              fieldKey: isEditingBodyMetricRecord
+                                  ? const ValueKey<String>(
+                                      'profile_body_metric_waist_field',
+                                    )
+                                  : const ValueKey<String>(
+                                      'profile_body_waist_field',
+                                    ),
+                              autofocus:
+                                  !isEditingBodyMetricRecord &&
+                                  _editingBodyField == _BodyProfileField.waist,
+                              unit: 'cm',
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (isEditingBodyMetricRecord) ...<Widget>[
+                      const SizedBox(height: 14),
+                      _InlineSaveActions(
+                        saving:
+                            _savingBodyMetricRecord ||
+                            _deletingBodyMetricRecord,
+                        saveLabel: strings.save,
+                        cancelButtonKey: const ValueKey<String>(
+                          'profile_body_metric_cancel_button',
+                        ),
+                        saveButtonKey: const ValueKey<String>(
+                          'profile_body_metric_save_button',
+                        ),
+                        onCancel: _cancelBodyMetricEdit,
+                        onSave: _saveBodyMetricRecord,
+                      ),
+                    ],
+                  ],
                 ),
               ),
               lockWhenBodyMetricEditing(
@@ -2597,16 +2570,18 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            ProfileNumericField(
-                              controller: _goalKcalController,
-                              labelText: strings.dailyGoalKcalLabelForPhase(
-                                _dietGoalPhase,
+                            _KeyboardFocusRevealer(
+                              child: ProfileNumericField(
+                                controller: _goalKcalController,
+                                labelText: strings.dailyGoalKcalLabelForPhase(
+                                  _dietGoalPhase,
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                onChanged: (_) => setState(() {}),
                               ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              onChanged: (_) => setState(() {}),
                             ),
                             const SizedBox(height: 12),
                             if (_isBulkingPhase)
@@ -2617,64 +2592,70 @@ class _ProfilePageState extends State<ProfilePage> {
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),
-                            ProfileNumericField(
-                              controller: _proteinRatioController,
-                              labelText: strings.proteinRatioPercentLabel,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              validator: (value) {
-                                final ratio = NumberUtils.toDouble(
-                                  value,
-                                  fallback: -1,
-                                );
-                                if (ratio < 0 || ratio > 100) {
-                                  return strings.enterValidMacroRatio;
-                                }
-                                return null;
-                              },
-                              onChanged: (_) => setState(() {}),
+                            _KeyboardFocusRevealer(
+                              child: ProfileNumericField(
+                                controller: _proteinRatioController,
+                                labelText: strings.proteinRatioPercentLabel,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                validator: (value) {
+                                  final ratio = NumberUtils.toDouble(
+                                    value,
+                                    fallback: -1,
+                                  );
+                                  if (ratio < 0 || ratio > 100) {
+                                    return strings.enterValidMacroRatio;
+                                  }
+                                  return null;
+                                },
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
                             const SizedBox(height: 10),
-                            ProfileNumericField(
-                              controller: _carbsRatioController,
-                              labelText: strings.carbsRatioPercentLabel,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              validator: (value) {
-                                final ratio = NumberUtils.toDouble(
-                                  value,
-                                  fallback: -1,
-                                );
-                                if (ratio < 0 || ratio > 100) {
-                                  return strings.enterValidMacroRatio;
-                                }
-                                return null;
-                              },
-                              onChanged: (_) => setState(() {}),
+                            _KeyboardFocusRevealer(
+                              child: ProfileNumericField(
+                                controller: _carbsRatioController,
+                                labelText: strings.carbsRatioPercentLabel,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                validator: (value) {
+                                  final ratio = NumberUtils.toDouble(
+                                    value,
+                                    fallback: -1,
+                                  );
+                                  if (ratio < 0 || ratio > 100) {
+                                    return strings.enterValidMacroRatio;
+                                  }
+                                  return null;
+                                },
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
                             const SizedBox(height: 10),
-                            ProfileNumericField(
-                              controller: _fatRatioController,
-                              labelText: strings.fatRatioPercentLabel,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              validator: (value) {
-                                final ratio = NumberUtils.toDouble(
-                                  value,
-                                  fallback: -1,
-                                );
-                                if (ratio < 0 || ratio > 100) {
-                                  return strings.enterValidMacroRatio;
-                                }
-                                return null;
-                              },
-                              onChanged: (_) => setState(() {}),
+                            _KeyboardFocusRevealer(
+                              child: ProfileNumericField(
+                                controller: _fatRatioController,
+                                labelText: strings.fatRatioPercentLabel,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                validator: (value) {
+                                  final ratio = NumberUtils.toDouble(
+                                    value,
+                                    fallback: -1,
+                                  );
+                                  if (ratio < 0 || ratio > 100) {
+                                    return strings.enterValidMacroRatio;
+                                  }
+                                  return null;
+                                },
+                                onChanged: (_) => setState(() {}),
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -3198,7 +3179,7 @@ class _ProfileSignInGate extends StatefulWidget {
 enum _ProfileAuthMode { landing, signIn, register }
 
 class _ProfileSignInGateState extends State<_ProfileSignInGate>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _loginEmailController = TextEditingController();
   final _loginPasswordController = TextEditingController();
   final _registerEmailController = TextEditingController();
@@ -3219,6 +3200,8 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
   final _registerPasswordRevealKey = GlobalKey();
   final _registerConfirmPasswordRevealKey = GlobalKey();
   late final AnimationController _logoController;
+  double? _lastAuthKeyboardInset;
+  FocusNode? _lastFocusedAuthField;
   _ProfileAuthMode _mode = _ProfileAuthMode.landing;
   bool _sendingRegistrationCode = false;
   bool _authenticating = false;
@@ -3235,6 +3218,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _logoController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -3242,10 +3226,16 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     for (final focusNode in _authFocusNodes) {
       focusNode.addListener(_handleAuthFocusChange);
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _lastAuthKeyboardInset = _currentAuthKeyboardInset();
+      }
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final focusNode in _authFocusNodes) {
       focusNode.removeListener(_handleAuthFocusChange);
       focusNode.dispose();
@@ -3261,10 +3251,58 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     super.dispose();
   }
 
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    final nextInset = _currentAuthKeyboardInset();
+    final previousInset = _lastAuthKeyboardInset;
+    _lastAuthKeyboardInset = nextInset;
+    if (nextInset == null ||
+        (previousInset != null && (nextInset - previousInset).abs() < 0.5)) {
+      return;
+    }
+    _scheduleAuthReveal(animate: false);
+  }
+
+  double? _currentAuthKeyboardInset() {
+    final view = View.maybeOf(context);
+    if (view == null) {
+      return null;
+    }
+    return view.viewInsets.bottom / view.devicePixelRatio;
+  }
+
   void _handleAuthFocusChange() {
     if (mounted) {
       setState(() {});
+      final focusedField = _focusedAuthField;
+      if (focusedField != null &&
+          !identical(focusedField, _lastFocusedAuthField)) {
+        final keyboardVisible = (_currentAuthKeyboardInset() ?? 0) > 0;
+        _lastFocusedAuthField = focusedField;
+        if (keyboardVisible) {
+          if (_authScrollController.hasClients) {
+            _revealFocusedAuthField();
+          } else {
+            _scheduleAuthReveal();
+          }
+        } else {
+          _scheduleAuthReveal();
+        }
+      }
     }
+  }
+
+  void _scheduleAuthReveal({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _authScrollController.hasClients) {
+        _revealFocusedAuthField(animate: animate);
+      }
+    });
+  }
+
+  void _focusAuthField(FocusNode focusNode) {
+    focusNode.requestFocus();
   }
 
   FocusNode? get _focusedAuthField {
@@ -3298,24 +3336,29 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     return null;
   }
 
-  void _revealFocusedAuthField({bool correctAfterAnimation = true}) {
+  void _revealFocusedAuthField({bool animate = true}) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final position = _authScrollController.position;
     if (keyboardInset <= 0) {
       if (position.pixels.abs() >= 1) {
-        position.animateTo(
-          0,
-          duration: _profileKeyboardRevealDuration,
-          curve: Curves.easeOutCubic,
-        );
+        if (animate) {
+          position.animateTo(
+            0,
+            duration: _profileKeyboardRevealDuration,
+            curve: Curves.easeOutCubic,
+          );
+        } else {
+          position.jumpTo(0);
+        }
       }
       return;
     }
 
     final focusNode = _focusedAuthField;
-    final revealContext = focusNode == null
-        ? null
-        : _revealKeyFor(focusNode)?.currentContext;
+    if (focusNode == null) {
+      return;
+    }
+    final revealContext = _revealKeyFor(focusNode)?.currentContext;
     final renderObject = revealContext?.findRenderObject();
     if (renderObject is! RenderBox ||
         !renderObject.attached ||
@@ -3332,11 +3375,9 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     final visibleBottom =
         mediaQuery.size.height -
         keyboardInset -
-        _profileKeyboardRevealBottomGap;
-    var delta = 0.0;
-    if (bottom > visibleBottom) {
-      delta = bottom - visibleBottom;
-    } else if (top < visibleTop) {
+        _profileAuthKeyboardRevealBottomGap;
+    var delta = bottom - visibleBottom;
+    if (top - delta < visibleTop) {
       delta = top - visibleTop;
     }
     if (delta.abs() < 1) {
@@ -3349,24 +3390,15 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
     if ((target - position.pixels).abs() < 1) {
       return;
     }
-    position
-        .animateTo(
-          target,
-          duration: _profileKeyboardRevealDuration,
-          curve: Curves.easeOutCubic,
-        )
-        .whenComplete(() {
-          if (!correctAfterAnimation ||
-              !mounted ||
-              !identical(_focusedAuthField, focusNode)) {
-            return;
-          }
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _authScrollController.hasClients) {
-              _revealFocusedAuthField(correctAfterAnimation: false);
-            }
-          });
-        });
+    if (!animate) {
+      position.jumpTo(target);
+      return;
+    }
+    position.animateTo(
+      target,
+      duration: _profileAuthFocusTransitionDuration,
+      curve: Curves.easeOutBack,
+    );
   }
 
   @override
@@ -3380,11 +3412,6 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           builder: (context, constraints) {
             final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
             final keyboardVisible = keyboardInset > 0;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _authScrollController.hasClients) {
-                _revealFocusedAuthField();
-              }
-            });
             final isRegister = _mode == _ProfileAuthMode.register;
             final logoSize = (constraints.maxWidth * (isRegister ? 0.30 : 0.36))
                 .clamp(isRegister ? 112.0 : 132.0, isRegister ? 146.0 : 176.0)
@@ -3402,7 +3429,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
             };
             final contentHeight =
                 constraints.maxHeight +
-                (keyboardVisible ? keyboardInset + 24 : 0);
+                (keyboardVisible ? keyboardInset + 280 : 0);
             final content = SizedBox(
               height: contentHeight,
               child: Stack(
@@ -3503,6 +3530,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           autofillHints: const <String>[AutofillHints.email],
+          onSubmitted: (_) => _focusAuthField(_loginPasswordFocusNode),
         ),
         const SizedBox(height: 14),
         _ProfileSignInField(
@@ -3549,6 +3577,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.next,
           autofillHints: const <String>[AutofillHints.email],
+          onSubmitted: (_) => _focusAuthField(_registerCodeFocusNode),
           suffix: TextButton(
             key: const ValueKey<String>('phase2_register_send_code_button'),
             onPressed: _sendingRegistrationCode ? null : _sendRegistrationCode,
@@ -3578,6 +3607,7 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           keyboardType: TextInputType.number,
           textInputAction: TextInputAction.next,
           autofillHints: const <String>[AutofillHints.oneTimeCode],
+          onSubmitted: (_) => _focusAuthField(_registerPasswordFocusNode),
         ),
         const SizedBox(height: 24),
         _ProfileSignInField(
@@ -3591,6 +3621,8 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
           textInputAction: TextInputAction.next,
           obscureText: true,
           autofillHints: const <String>[AutofillHints.newPassword],
+          onSubmitted: (_) =>
+              _focusAuthField(_registerConfirmPasswordFocusNode),
         ),
         const SizedBox(height: 14),
         _ProfileSignInField(
@@ -4778,6 +4810,7 @@ class _SubscriptionRedeemSheetState extends State<_SubscriptionRedeemSheet> {
     final fitTheme = context.fitLogTheme;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -6031,28 +6064,27 @@ class _ProfileKeyboardInsetSpacer extends StatelessWidget {
   }
 }
 
-const Duration _profileKeyboardRevealDelay = Duration(milliseconds: 90);
-const Duration _profileKeyboardFallbackRevealDelay = Duration(
-  milliseconds: 220,
-);
 const Duration _profileKeyboardRevealDuration = Duration(milliseconds: 180);
-const double _profileKeyboardRevealBottomGap = 22;
+const double _profileKeyboardRevealBottomGap = 38;
 const double _profileKeyboardRevealTopGap = 12;
+const double _profileAuthKeyboardRevealBottomGap = 14;
+const Duration _profileAuthFocusTransitionDuration = Duration(
+  milliseconds: 180,
+);
 
 class _KeyboardFocusRevealer extends StatefulWidget {
-  const _KeyboardFocusRevealer({required this.child, this.alignment = 0.38});
+  const _KeyboardFocusRevealer({required this.child});
 
   final Widget child;
-  final double alignment;
 
   @override
   State<_KeyboardFocusRevealer> createState() => _KeyboardFocusRevealerState();
 }
 
 class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
-  Timer? _timer;
   bool _focused = false;
   double? _lastKeyboardInset;
+  int _revealGeneration = 0;
 
   @override
   void didChangeDependencies() {
@@ -6061,44 +6093,35 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
     if (_focused &&
         _lastKeyboardInset != null &&
         (keyboardInset - _lastKeyboardInset!).abs() > 0.5) {
-      _scheduleReveal(_profileKeyboardRevealDelay);
+      _scheduleReveal(animate: false);
     }
     _lastKeyboardInset = keyboardInset;
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   void _handleFocusChange(bool focused) {
     _focused = focused;
     if (!focused) {
-      _timer?.cancel();
+      _revealGeneration += 1;
       return;
     }
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    _scheduleReveal(
-      keyboardInset > 0
-          ? _profileKeyboardRevealDelay
-          : _profileKeyboardFallbackRevealDelay,
-    );
+    _scheduleReveal(animate: keyboardInset > 0);
   }
 
-  void _scheduleReveal(Duration delay) {
-    _timer?.cancel();
-    _timer = Timer(delay, () {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_focused || Scrollable.maybeOf(context) == null) {
-          return;
-        }
-        _revealFocusedInput();
-      });
+  void _scheduleReveal({required bool animate}) {
+    final generation = ++_revealGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_focused ||
+          generation != _revealGeneration ||
+          Scrollable.maybeOf(context) == null) {
+        return;
+      }
+      _revealFocusedInput(animate: animate);
     });
   }
 
-  void _revealFocusedInput() {
+  void _revealFocusedInput({required bool animate}) {
     final scrollable = Scrollable.maybeOf(context);
     final renderObject = context.findRenderObject();
     if (scrollable == null ||
@@ -6111,13 +6134,6 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
     final mediaQuery = MediaQuery.of(context);
     final keyboardInset = mediaQuery.viewInsets.bottom;
     if (keyboardInset <= 0) {
-      Scrollable.ensureVisible(
-        context,
-        duration: _profileKeyboardRevealDuration,
-        curve: Curves.easeOutCubic,
-        alignment: widget.alignment,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-      );
       return;
     }
 
@@ -6147,11 +6163,15 @@ class _KeyboardFocusRevealerState extends State<_KeyboardFocusRevealer> {
     if ((target - position.pixels).abs() < 1) {
       return;
     }
-    position.animateTo(
-      target,
-      duration: _profileKeyboardRevealDuration,
-      curve: Curves.easeOutCubic,
-    );
+    if (animate) {
+      position.animateTo(
+        target,
+        duration: _profileKeyboardRevealDuration,
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      position.jumpTo(target);
+    }
   }
 
   @override
@@ -6177,7 +6197,6 @@ class _BorderlessProfileTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     final fitTheme = context.fitLogTheme;
     return _KeyboardFocusRevealer(
-      alignment: 0.34,
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
@@ -6229,7 +6248,6 @@ class _InlineUnitEditor extends StatelessWidget {
       children: <Widget>[
         Expanded(
           child: _KeyboardFocusRevealer(
-            alignment: 0.34,
             child: TextField(
               key: fieldKey,
               controller: controller,

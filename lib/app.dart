@@ -612,7 +612,10 @@ class _RootAuthGate extends StatelessWidget {
       );
     }
     if (!accountController.authSession.isSignedIn) {
-      return const Scaffold(body: ProfilePage());
+      return const Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: ProfilePage(),
+      );
     }
     return const _RootShell();
   }

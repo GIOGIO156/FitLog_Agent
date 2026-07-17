@@ -1103,6 +1103,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         body: Form(
           key: _formKey,
           child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.only(
               bottom:
                   MediaQuery.paddingOf(context).bottom +
@@ -2455,6 +2456,7 @@ class _CustomExercisePageState extends State<_CustomExercisePage> {
         child: Form(
           key: _formKey,
           child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.fromLTRB(16, 12, 16, contentBottomPadding),
             children: <Widget>[
               Padding(
@@ -3428,6 +3430,8 @@ class _ExerciseLibraryPickerPageState
                     ),
                   )
                 : ListView.separated(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     itemCount: filtered.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),

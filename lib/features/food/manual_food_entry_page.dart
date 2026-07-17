@@ -127,6 +127,7 @@ class _ManualFoodEntryPageState extends State<ManualFoodEntryPage> {
       body: Form(
         key: _formKey,
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(16),
           children: <Widget>[
             FoodDateTile(date: _date, onChange: _pickDate),

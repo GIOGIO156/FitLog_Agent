@@ -1993,6 +1993,69 @@ void main() {
     expect(find.text('Updated dinner'), findsOneWidget);
   });
 
+  testWidgets('history rename stays above the keyboard for lower sessions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final harness = _readyAiHarness();
+    harness.repository.sessions = List<AiChatSession>.generate(
+      8,
+      (index) => _session('session_$index', 'Conversation $index'),
+    );
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildReadyAiTestApp(harness, resizeToAvoidBottomInset: false),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('Chat history'));
+    await tester.pump();
+
+    final targetTile = find.byKey(
+      const ValueKey<String>('ai_history_tile_session_7'),
+    );
+    await tester.drag(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('ai_history_panel')),
+        matching: find.byType(ListView),
+      ),
+      const Offset(0, -500),
+    );
+    await tester.pump(const Duration(milliseconds: 220));
+    final renameButton = find.descendant(
+      of: targetTile,
+      matching: find.byKey(const ValueKey<String>('ai_rename_chat_button')),
+    );
+    await tester.tap(renameButton);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('ai_rename_chat_field')),
+      findsOneWidget,
+    );
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 90));
+    await tester.pump(const Duration(milliseconds: 220));
+
+    final renameField = find.byKey(
+      const ValueKey<String>('ai_rename_chat_field'),
+    );
+    expect(renameField, findsOneWidget);
+    expect(
+      tester.getRect(renameField).bottom,
+      lessThanOrEqualTo(844 - 336 - 12),
+    );
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('ai_history_panel')))
+          .bottom,
+      lessThanOrEqualTo(844 - 336 - 12),
+    );
+  });
+
   testWidgets('ready AI page sends Markdown-like user text as plain text', (
     tester,
   ) async {
