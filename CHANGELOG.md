@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-18 Profile Body Precision
+
+### Fixed
+
+- Canonicalized current Profile height, weight, body-fat, and waist drafts to one decimal before both Cloud Profile and same-day body-metric persistence, then synchronized the saved snapshot and editor baseline to the same values. A two-decimal input now saves once at the displayed precision without reopening the unsaved-changes prompt.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 243 Flutter tests passed, including new coverage for one-time two-decimal normalization and legacy two-decimal cloud values that must load without a false dirty state.
+- Regenerated and validated 586 chunks from 21 stable bilingual sources as corpus build `a33cf90c1adf71ec7d08113d`; all 10 deterministic chunking and embedding-sync tests passed. After human approval review was enabled, generated the eight missing Qwen vectors, reached 586/586 local parity, atomically activated the build in Supabase, and independently verified 586 cloud rows with zero metadata mismatches.
+- Rebuilt the configured split debug APKs: `arm64-v8a` SHA-256 `bbd109a6ccd8be52e17f286a1ab01d846758a2fb71f145d641a0aa8faa631197`, `armeabi-v7a` `34566cd0bc7eec1b9955e7f1d3b7c2d41c7e76f3582088825e8e4ad5e563366b`, and `x86_64` `832512b52ff9a26cc6bc2a2d58e523eaeb19484248bbaf0a2f1781a6983831a0`.
+
 ## 2026-07-18 Food Input Keyboard Motion
 
 ### Fixed

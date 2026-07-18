@@ -451,6 +451,7 @@ Rules:
 - Cloud Profile is authoritative.
 - Device cache is display/cache only.
 - Profile page edits are local drafts until Save Changes succeeds; cloud writes upsert one complete `cloud_profiles` snapshot and increment `profile_version`.
+- Current Profile height, weight, body-fat percentage, and waist circumference are canonicalized to one decimal before the Cloud Profile snapshot and same-day `profile_save` body-metric write. The editor baseline and dirty comparison use the same canonical values.
 - Current body metrics in Profile are saved in Cloud Profile. Historical weight, body-fat, and waist records use cloud `body_metric_logs`; the local history table is cache/compatibility only.
 - Offline profile saves are disabled in V1.
 - Account deletion deletes Cloud Profile.

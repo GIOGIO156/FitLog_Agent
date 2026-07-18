@@ -451,6 +451,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 - Cloud Profile 是权威版本。
 - 设备缓存仅用于显示和缓存。
 - Profile 页面修改在“保存更改”成功前只是本地草稿；云端写入会 upsert 一份完整 `cloud_profiles` snapshot，并递增 `profile_version`。
+- 当前 Profile 的身高、体重、体脂和腰围会先规范为一位小数，再写入 Cloud Profile snapshot 和当天的 `profile_save` 身体指标记录；输入框基线与未保存判断使用相同规范值。
 - Profile 当前身体指标保存到 Cloud Profile。历史体重、体脂和腰围使用云端 `body_metric_logs`；本地历史表只作为 cache/兼容层。
 - V1 离线禁止保存 Profile。
 - 删除账号时删除 Cloud Profile。

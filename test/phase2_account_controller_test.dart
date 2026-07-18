@@ -1343,6 +1343,132 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Profile body draft quantizes two decimals once without reopening dirty state',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final database = AppDatabase.instance;
+      final profileRepository = _FakeProfileRepository(database);
+      final cloudProfileRepository = _FakeCloudProfileRepository(
+        const CloudProfileMapper().defaultForAccount('acct_1'),
+      );
+      final controller = AccountController(
+        authRepository: _FakeAuthRepository(),
+        subscriptionRepository: _FakeSubscriptionRepository(),
+        cloudProfileRepository: cloudProfileRepository,
+        profileRepository: profileRepository,
+        contextPermissionRepository: const AiLocalContextPermissionRepository(),
+        backendConfigured: true,
+      );
+      await _initializeController(controller);
+
+      await tester.pumpWidget(
+        _buildProfileTestApp(
+          database: database,
+          accountController: controller,
+          profileRepository: profileRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('profile_body_weight_tile')),
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('profile_body_weight_field')),
+        '66.18',
+      );
+      await tester.pump();
+
+      expect(find.text('1 unsaved'), findsOneWidget);
+      final saveButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey<String>('profile_draft_save_button')),
+      );
+      saveButton.onPressed!();
+      await tester.pumpAndSettle();
+
+      expect(cloudProfileRepository.saveCount, 1);
+      expect(cloudProfileRepository.cloudProfile?.profile.weightKg, 66.2);
+      expect(profileRepository.weightLogSaveCount, 1);
+      expect(profileRepository.savedWeightLog?.weightKg, 66.2);
+      expect(
+        find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('profile_body_weight_tile')),
+      );
+      await tester.pump();
+      final normalizedField = tester.widget<TextField>(
+        find.byKey(const ValueKey<String>('profile_body_weight_field')),
+      );
+      expect(normalizedField.controller?.text, '66.2');
+
+      await tester.pump();
+      expect(cloudProfileRepository.saveCount, 1);
+      expect(
+        find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('Profile treats legacy two-decimal cloud values as saved', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final database = AppDatabase.instance;
+    final profileRepository = _FakeProfileRepository(database);
+    final defaultCloudProfile = const CloudProfileMapper().defaultForAccount(
+      'acct_1',
+    );
+    final controller = AccountController(
+      authRepository: _FakeAuthRepository(),
+      subscriptionRepository: _FakeSubscriptionRepository(),
+      cloudProfileRepository: _FakeCloudProfileRepository(
+        CloudProfile(
+          accountId: defaultCloudProfile.accountId,
+          profile: defaultCloudProfile.profile.copyWith(weightKg: 66.18),
+          profileVersion: defaultCloudProfile.profileVersion,
+        ),
+      ),
+      profileRepository: profileRepository,
+      contextPermissionRepository: const AiLocalContextPermissionRepository(),
+      backendConfigured: true,
+    );
+    await _initializeController(controller);
+
+    await tester.pumpWidget(
+      _buildProfileTestApp(
+        database: database,
+        accountController: controller,
+        profileRepository: profileRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('profile_draft_save_bar')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('profile_body_weight_tile')),
+    );
+    await tester.pump();
+    final normalizedField = tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('profile_body_weight_field')),
+    );
+    expect(normalizedField.controller?.text, '66.2');
+  });
+
   testWidgets('Profile body field reveal clears the keyboard without rebound', (
     tester,
   ) async {

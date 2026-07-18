@@ -657,6 +657,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   double? get _waistCm => _nullableProfileDouble(_waistController.text);
 
+  double get _canonicalHeightCm => _oneDecimal(_heightCm);
+
+  double get _canonicalWeightKg => _oneDecimal(_weightKg);
+
+  double? get _canonicalBodyFatPercent => _oneDecimalOrNull(_bodyFatPercent);
+
+  double? get _canonicalWaistCm => _oneDecimalOrNull(_waistCm);
+
   double get _bodyMetricWeightKg =>
       NumberUtils.toDouble(_bodyMetricWeightController.text, fallback: 0);
 
@@ -703,10 +711,16 @@ class _ProfilePageState extends State<ProfilePage> {
       return false;
     }
     return _age != profile.age ||
-        (_heightCm - profile.heightCm).abs() > 0.01 ||
-        (_weightKg - profile.weightKg).abs() > 0.01 ||
-        _nullableDoubleChanged(_bodyFatPercent, profile.bodyFatPercent) ||
-        _nullableDoubleChanged(_waistCm, profile.waistCm) ||
+        (_canonicalHeightCm - _oneDecimal(profile.heightCm)).abs() > 0.01 ||
+        (_canonicalWeightKg - _oneDecimal(profile.weightKg)).abs() > 0.01 ||
+        _nullableDoubleChanged(
+          _canonicalBodyFatPercent,
+          _oneDecimalOrNull(profile.bodyFatPercent),
+        ) ||
+        _nullableDoubleChanged(
+          _canonicalWaistCm,
+          _oneDecimalOrNull(profile.waistCm),
+        ) ||
         _sexForFormula != profile.sexForFormula;
   }
 
@@ -747,13 +761,19 @@ class _ProfilePageState extends State<ProfilePage> {
       strings.isChinese ? '身体资料' : 'Body Profile',
       <String>[
         if (_age != profile.age) strings.ageLabel,
-        if (_doubleChanged(_heightCm, profile.heightCm))
+        if (_doubleChanged(_canonicalHeightCm, _oneDecimal(profile.heightCm)))
           _labelWithoutUnit(strings.heightCmLabel),
-        if (_doubleChanged(_weightKg, profile.weightKg))
+        if (_doubleChanged(_canonicalWeightKg, _oneDecimal(profile.weightKg)))
           _labelWithoutUnit(strings.weightKgLabel),
-        if (_nullableDoubleChanged(_bodyFatPercent, profile.bodyFatPercent))
+        if (_nullableDoubleChanged(
+          _canonicalBodyFatPercent,
+          _oneDecimalOrNull(profile.bodyFatPercent),
+        ))
           _labelWithoutUnit(strings.bodyFatPercentLabel),
-        if (_nullableDoubleChanged(_waistCm, profile.waistCm))
+        if (_nullableDoubleChanged(
+          _canonicalWaistCm,
+          _oneDecimalOrNull(profile.waistCm),
+        ))
           _labelWithoutUnit(strings.waistCmLabel),
         if (_sexForFormula != profile.sexForFormula) strings.sexForFormulaLabel,
       ],
@@ -842,6 +862,12 @@ class _ProfilePageState extends State<ProfilePage> {
     return NumberUtils.toDouble(trimmed, fallback: 0);
   }
 
+  double _oneDecimal(double value) => (value * 10).roundToDouble() / 10;
+
+  double? _oneDecimalOrNull(double? value) {
+    return value == null ? null : _oneDecimal(value);
+  }
+
   bool _sameStringMap(Map<String, String> a, Map<String, String> b) {
     if (a.length != b.length) {
       return false;
@@ -921,10 +947,10 @@ class _ProfilePageState extends State<ProfilePage> {
     return UserProfile(
       nickname: _nicknameController.text.trim(),
       age: _age,
-      heightCm: _heightCm,
-      weightKg: _weightKg,
-      bodyFatPercent: _bodyFatPercent,
-      waistCm: _waistCm,
+      heightCm: _canonicalHeightCm,
+      weightKg: _canonicalWeightKg,
+      bodyFatPercent: _canonicalBodyFatPercent,
+      waistCm: _canonicalWaistCm,
       sexForFormula: _sexForFormula,
       activityLevel: activityLevel,
       dailyEnergyGoalType: _dailyGoalType,
@@ -1499,6 +1525,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final updatedAccountController = _maybeAccountController(listen: false);
     setState(() {
       _loadedProfile = profile;
+      _syncDraftFromProfile(profile);
       _dailyGoalType = profile.dailyEnergyGoalType;
       _dietGoalPhase = profile.dietGoalPhase;
       _dietCalculationMode = profile.dietCalculationMode;
@@ -3129,6 +3156,9 @@ class _ProfilePageState extends State<ProfilePage> {
         if (cloudProfile != null &&
             (_loadedCloudAccountId != cloudProfile.accountId ||
                 _loadedCloudProfileVersion != cloudProfile.profileVersion)) {
+          if (_savingProfileDraft) {
+            return null;
+          }
           final canShowCache = _canShowCachedProfileFor(accountController);
           _scheduleCloudProfileReload(showLoading: !canShowCache);
           return canShowCache

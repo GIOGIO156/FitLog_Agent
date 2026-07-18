@@ -193,7 +193,7 @@ Profile contains account-bound identity, body information, diet setup, presentat
 
 ### Body Profile And Trends
 
-The current body profile includes age, height, weight, sex, body-fat percentage, and waist circumference. Current values save with the complete Cloud Profile; historical weight, body-fat, and waist records use the separate body-record flow.
+The current body profile includes age, height, weight, sex, body-fat percentage, and waist circumference. Current height, weight, body-fat, and waist values are saved at one-decimal precision. Save Changes immediately reflects the canonical saved value in the editor and clears the draft once; historical weight, body-fat, and waist records use the separate body-record flow.
 
 The Body Profile calendar opens on today. Today returns to the current profile view; a past date opens the in-page historical editor. Only weight, body-fat percentage, and waist circumference are editable there. Missing past records start empty, deletion is confirmed and destructive, non-editable page areas remain visibly locked, and keyboard focus keeps the active editor readable. Saving a past record never silently replaces the current Profile; promoting historical values requires explicit confirmation.
 
