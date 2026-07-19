@@ -85,10 +85,10 @@ const chat = await timedJson(`${supabaseUrl}/functions/v1/ai-chat-route`, {
   headers: userHeaders(sessionA.accessToken),
   body: JSON.stringify({
     session_id: null,
-    message: { text: "保加利亚分腿蹲的每侧次数如何计算训练量？" },
-    language: "zh",
+    message: { text: "Where is the workout exercise snapshot persisted?" },
+    language: "en",
     model_choice: "qwen",
-    workflow_hint: "app_logic_answer",
+    workflow_hint: "auto",
     device_id: deviceId,
     allow_record_summary_context: false,
     client: { draft_schema_version: "v3" },
@@ -96,11 +96,9 @@ const chat = await timedJson(`${supabaseUrl}/functions/v1/ai-chat-route`, {
 });
 providerChecks.push(
   providerResult(
-    "qwen_chat_text",
+    "qwen_chat_database_auto",
     chat,
-    (body) =>
-      body.error === null && body.model_provider === "qwen" &&
-      typeof (body.message as Json | undefined)?.text === "string",
+    databaseAnswerPassed,
   ),
 );
 if (expectedPipeline === "rag_foundation_v1") {
@@ -120,7 +118,7 @@ if (expectedPipeline === "rag_foundation_v1") {
           message: { text },
           language: "zh",
           model_choice: "qwen",
-          workflow_hint: "app_logic_answer",
+          workflow_hint: "auto",
           device_id: deviceId,
           allow_record_summary_context: false,
           client: { draft_schema_version: "v3" },
@@ -133,6 +131,9 @@ if (expectedPipeline === "rag_foundation_v1") {
         response,
         (body) =>
           body.error === null && body.model_provider === "qwen" &&
+          body.workflow === "app_logic_answer" &&
+          body.output_type === "text" &&
+          body.needs_clarification === false &&
           typeof (body.message as Json | undefined)?.text === "string",
       ),
     );
@@ -190,7 +191,8 @@ const allDiagnosticScenarios = [
   },
   {
     scenario: "document_rag_useful_retry_probe",
-    text: "请简要说明 FitLog 中 energy_ratio、gram_per_kg、diet_goal_phase、carb_cycling、carb_tapering、Document RAG、Food Draft 和 Workout Draft 分别受什么规则约束。",
+    text:
+      "请简要说明 FitLog 中 energy_ratio、gram_per_kg、diet_goal_phase、carb_cycling、carb_tapering、Document RAG、Food Draft 和 Workout Draft 分别受什么规则约束。",
     language: "zh",
     workflowHint: "app_logic_answer",
   },
@@ -219,7 +221,7 @@ for (const scenario of diagnosticScenarios) {
           message: { text: scenario.text },
           language: scenario.language,
           model_choice: "qwen",
-          workflow_hint: scenario.workflowHint,
+          workflow_hint: "auto",
           device_id: deviceId,
           selected_date: "2026-07-15",
           allow_record_summary_context: false,
@@ -263,11 +265,186 @@ providerChecks.push(
     foodText,
     (body) =>
       body.error === null && body.model_provider === "qwen" &&
-      (body.draft !== null || body.needs_clarification === true),
+      body.draft !== null && body.needs_clarification === false,
   ),
 );
 
 const imageBase64 = await syntheticPngBase64(256, 256);
+const chatFoodImage = await timedJson(
+  `${supabaseUrl}/functions/v1/ai-chat-route`,
+  {
+    method: "POST",
+    headers: userHeaders(sessionA.accessToken),
+    body: JSON.stringify({
+      session_id: null,
+      message: { text: "一锅武汉排骨藕汤，喝了三碗" },
+      language: "zh",
+      model_choice: "qwen",
+      workflow_hint: "auto",
+      device_id: deviceId,
+      selected_date: "2026-07-15",
+      allow_record_summary_context: false,
+      attachments: [{
+        kind: "image",
+        mime_type: "image/png",
+        base64_data: imageBase64,
+        byte_length: Uint8Array.from(atob(imageBase64), (value) =>
+          value.charCodeAt(0)).length,
+      }],
+      client: { draft_schema_version: "v3" },
+    }),
+  },
+);
+providerChecks.push(
+  providerResult(
+    "qwen_chat_food_image_auto",
+    chatFoodImage,
+    (body) =>
+      body.error === null && body.model_provider === "qwen" &&
+      body.workflow === "food_logging" && body.output_type === "food_draft" &&
+      body.draft !== null && body.needs_clarification === false,
+  ),
+);
+
+const clarificationOriginRequestId =
+  `canary_clarification_origin_${label}_${Date.now()}`;
+const clarificationReplyRequestId =
+  `canary_clarification_reply_${label}_${Date.now()}`;
+const clarificationOrigin = await timedJson(
+  `${supabaseUrl}/functions/v1/ai-chat-route`,
+  {
+    method: "POST",
+    headers: userHeaders(sessionA.accessToken),
+    body: JSON.stringify({
+      session_id: null,
+      message: {
+        text:
+          "请记录保加利亚分腿蹲80kg 3组每侧10次，这个动作的每侧次数如何计算训练量？",
+      },
+      language: "zh",
+      model_choice: "qwen",
+      workflow_hint: "auto",
+      device_id: deviceId,
+      client_request_id: clarificationOriginRequestId,
+      allow_record_summary_context: false,
+      client: { draft_schema_version: "v3" },
+    }),
+  },
+);
+providerChecks.push(
+  providerResult(
+    "qwen_chat_typed_clarification_created",
+    clarificationOrigin,
+    (body) => {
+      const clarification = body.clarification as Json | null;
+      const options = Array.isArray(clarification?.options)
+        ? clarification.options as Json[]
+        : [];
+      return body.error === null && body.needs_clarification === true &&
+        clarification?.schema_version === "ai_chat_clarification.v2" &&
+        clarification?.kind === "intent_selection" &&
+        typeof clarification?.clarification_id === "string" &&
+        options.some((option) => option.id === "answer") &&
+        options.some((option) => option.id === "workout_draft");
+    },
+  ),
+);
+
+const originClarification = clarificationOrigin.body.clarification as
+  | Json
+  | null;
+const clarificationId = typeof originClarification?.clarification_id ===
+    "string"
+  ? originClarification.clarification_id
+  : "";
+const clarificationSessionId = typeof clarificationOrigin.body.session_id ===
+    "string"
+  ? clarificationOrigin.body.session_id
+  : "";
+const clarificationReplyBody = {
+  session_id: clarificationSessionId,
+  message: { text: "回答问题" },
+  language: "zh",
+  model_choice: "qwen",
+  workflow_hint: "auto",
+  device_id: deviceId,
+  client_request_id: clarificationReplyRequestId,
+  clarification_reply: {
+    clarification_id: clarificationId,
+    option_id: "answer",
+  },
+  allow_record_summary_context: false,
+  client: { draft_schema_version: "v3" },
+};
+const clarificationReply = clarificationId === "" ||
+    clarificationSessionId === ""
+  ? failedSyntheticResponse("clarification_origin_invalid")
+  : await timedJson(`${supabaseUrl}/functions/v1/ai-chat-route`, {
+    method: "POST",
+    headers: userHeaders(sessionA.accessToken),
+    body: JSON.stringify(clarificationReplyBody),
+  });
+providerChecks.push(
+  providerResult(
+    "qwen_chat_typed_clarification_consumed",
+    clarificationReply,
+    (body) =>
+      body.error === null && body.workflow === "app_logic_answer" &&
+      body.output_type === "text" && body.needs_clarification === false &&
+      typeof body.assistant_message_id === "string",
+  ),
+);
+const clarificationReplay = clarificationId === "" ||
+    clarificationSessionId === ""
+  ? failedSyntheticResponse("clarification_origin_invalid")
+  : await timedJson(`${supabaseUrl}/functions/v1/ai-chat-route`, {
+    method: "POST",
+    headers: userHeaders(sessionA.accessToken),
+    body: JSON.stringify(clarificationReplyBody),
+  });
+providerChecks.push({
+  check: "qwen_chat_typed_clarification_replay_idempotent",
+  status: clarificationReplay.ok && clarificationReply.ok &&
+      clarificationReplay.body.assistant_message_id ===
+        clarificationReply.body.assistant_message_id &&
+      clarificationReplay.body.debug_summary_id ===
+        clarificationReply.body.debug_summary_id
+    ? "pass"
+    : "fail",
+  http_status: clarificationReplay.status,
+  latency_ms: clarificationReplay.latencyMs,
+  gateway_error: (clarificationReplay.body.error as Json | null)?.code ?? null,
+  observed: {
+    same_assistant_message: clarificationReplay.body.assistant_message_id ===
+      clarificationReply.body.assistant_message_id,
+    same_debug_summary: clarificationReplay.body.debug_summary_id ===
+      clarificationReply.body.debug_summary_id,
+  },
+});
+const clarificationStateResponse = clarificationId === ""
+  ? failedSyntheticResponse("clarification_origin_invalid")
+  : await timedJson(
+    `${supabaseUrl}/rest/v1/ai_chat_clarifications?select=state,attempt_count,resolved_option_id,resolution_request_id&id=eq.${clarificationId}`,
+    { headers: serviceHeaders() },
+  );
+const clarificationRows = Array.isArray(clarificationStateResponse.body)
+  ? clarificationStateResponse.body as Json[]
+  : [];
+providerChecks.push({
+  check: "qwen_chat_typed_clarification_state_resolved_once",
+  status: clarificationStateResponse.ok && clarificationRows.length === 1 &&
+      clarificationRows[0].state === "resolved" &&
+      clarificationRows[0].attempt_count === 1 &&
+      clarificationRows[0].resolved_option_id === "answer" &&
+      clarificationRows[0].resolution_request_id === clarificationReplyRequestId
+    ? "pass"
+    : "fail",
+  http_status: clarificationStateResponse.status,
+  latency_ms: clarificationStateResponse.latencyMs,
+  gateway_error: null,
+  observed: clarificationRows[0] ?? null,
+});
+
 const foodImage = await timedJson(
   `${supabaseUrl}/functions/v1/ai-food-photo-analyze`,
   {
@@ -295,7 +472,7 @@ providerChecks.push(
     foodImage,
     (body) =>
       body.error === null && body.model_provider === "qwen" &&
-      (body.draft !== null || body.needs_clarification === true),
+      body.draft !== null && body.needs_clarification === false,
   ),
 );
 
@@ -426,7 +603,7 @@ const retrievalSummary = {
 const edgeLogQuery = new URL(`${supabaseUrl}/rest/v1/ai_request_logs`);
 edgeLogQuery.searchParams.set(
   "select",
-  "created_at,session_id,status,error_code,latency_ms,workflow_type,expected_output,selected_output_type,planned_workflow,task_plan_source,target_response_language,query_language_profile,retrieval_latency_ms,planner_latency_ms,correction_latency_ms,retrieval_retry_count,retrieval_retry_gain,retrieval_coverage_status,retrieval_issue_codes_json,validation_issue_codes_json,semantic_issue_codes_json,grounding_issue_codes_json,first_pass_validation_status,correction_attempt_count,final_validation_status,latency_breakdown_json,prompt_context_bytes,corpus_build_id,embedding_model,reranker_version",
+  "created_at,session_id,status,error_code,latency_ms,workflow_type,expected_output,selected_output_type,planned_workflow,task_plan_source,target_response_language,query_language_profile,retrieval_latency_ms,planner_latency_ms,correction_latency_ms,retrieval_retry_count,retrieval_retry_gain,retrieval_coverage_status,retrieval_issue_codes_json,validation_issue_codes_json,semantic_issue_codes_json,grounding_issue_codes_json,first_pass_validation_status,correction_attempt_count,final_validation_status,latency_breakdown_json,prompt_context_bytes,corpus_build_id,embedding_model,reranker_version,decision_version,decision_source,decision_reason,decision_shadow_mismatch,selected_capability,clarification_id,clarification_state,clarification_attempt,attachment_policy,failure_class,write_guard_reason",
 );
 edgeLogQuery.searchParams.set("account_id", `eq.${sessionA.userId}`);
 edgeLogQuery.searchParams.set("surface", "eq.ai_chat");
@@ -858,6 +1035,20 @@ async function timedJson(url: string, init: RequestInit) {
   };
 }
 
+function failedSyntheticResponse(code: string): {
+  ok: boolean;
+  status: number;
+  body: Json;
+  latencyMs: number;
+} {
+  return {
+    ok: false,
+    status: 0,
+    body: { error: { code } },
+    latencyMs: 0,
+  };
+}
+
 async function rawFetch(url: string, init: RequestInit) {
   const response = await retryingFetch(url, init);
   const body = await response.text();
@@ -913,13 +1104,48 @@ function providerResult(
   response: { ok: boolean; status: number; body: Json; latencyMs: number },
   predicate: (body: Json) => boolean,
 ) {
+  const clarification = response.body.clarification as Json | null;
+  const draft = response.body.draft as Json | null;
+  const evidence = response.body.evidence as Json | null;
+  const sources = Array.isArray(evidence?.document_sources)
+    ? evidence.document_sources as Json[]
+    : [];
   return {
     check,
     status: response.ok && predicate(response.body) ? "pass" : "fail",
     http_status: response.status,
     latency_ms: response.latencyMs,
     gateway_error: (response.body.error as Json | null)?.code ?? null,
+    observed: {
+      workflow: response.body.workflow ?? null,
+      output_type: response.body.output_type ?? null,
+      needs_clarification: response.body.needs_clarification ?? null,
+      clarification_kind: clarification?.kind ?? null,
+      attachment_policy: clarification?.attachment_policy ?? null,
+      draft_schema: draft?.schema_version ?? null,
+      evidence_docs: sources.map((source) => source.doc_path).filter((value) =>
+        typeof value === "string"
+      ).slice(0, 5),
+    },
   };
+}
+
+function databaseAnswerPassed(body: Json): boolean {
+  const text = String((body.message as Json | undefined)?.text ?? "")
+    .toLowerCase();
+  const evidence = body.evidence as Json | null;
+  const sources = Array.isArray(evidence?.document_sources)
+    ? evidence.document_sources as Json[]
+    : [];
+  const safetyFlags = Array.isArray(evidence?.safety_flags)
+    ? evidence.safety_flags.map(String)
+    : [];
+  return body.error === null && body.model_provider === "qwen" &&
+    body.workflow === "app_logic_answer" && body.output_type === "text" &&
+    body.needs_clarification === false &&
+    /workout_(?:records|sessions|sets)/.test(text) &&
+    sources.some((source) => /database\.md$/i.test(String(source.doc_path))) &&
+    !safetyFlags.some((flag) => flag.startsWith("provider_claimed_write"));
 }
 
 function ratio(numerator: number, denominator: number): number {
@@ -1279,13 +1505,13 @@ function markdownReport(report: CloudReport): string {
     } |`;
   }).join("\n");
   return `# RAG foundation cloud canary: ${report.label}\n\n` +
-    `Target: \`${report.target_project}\`  \nExpected pipeline: \`${report.expected_pipeline}\`  \n` +
+    `Target: \`${report.target_project}\`\n\nExpected pipeline: \`${report.expected_pipeline}\`\n\n` +
     `Active build: \`${
       (report.active_build as Json | null)?.build_id ?? "none"
-    }\`  \n` +
+    }\`\n\n` +
     `Embedding: \`${report.active_build?.embedding_model ?? "none"}\` / ${
       report.active_build?.embedding_dimension ?? "none"
-    }  \nConnect-level transport retries: ${report.transport_retries}\n\n` +
+    }\n\nConnect-level transport retries: ${report.transport_retries}\n\n` +
     `## Provider canaries\n\n| Check | Status | Latency (ms) | Error |\n| --- | --- | ---: | --- |\n${providerRows}\n\n` +
     `## Retrieval\n\nSource recall@3: ${report.retrieval_summary.source_recall_at_3} (${report.retrieval_summary.source_hit_at_3}); source precision@3: ${report.retrieval_summary.source_precision_at_3} (${report.retrieval_summary.source_precision_count}); critical top-1: ${report.retrieval_summary.critical_top1} (${report.retrieval_summary.critical_top1_count}); p50/p95: ${report.retrieval_summary.p50_ms}/${report.retrieval_summary.p95_ms} ms.\n\n` +
     `The direct-runner latency includes the test machine's route to both Qwen and Supabase. The production Edge sample is the release latency gate: p50/p95 ${report.edge_runtime_latency.p50_ms}/${report.edge_runtime_latency.p95_ms} ms across ${report.edge_runtime_latency.sample_count} requests.\n\n` +

@@ -23,13 +23,14 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 
 ## 2. 当前源码基线
 
-当前代码仍主要是复制来的 FitLog Local。
+当前代码以 FitLog Local 的产品和确定性算法为基线，Agent V1 的账号、云端正式记录、AI Gateway、草稿合同与 Phase 5 RAG 主体已经落地。当前执行入口是 [AI Chat 编排与可靠性整改计划](../AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md)，不是回退重做 Phase 4/5。
 
 当前已存在：
 
 - Flutter + Dart App shell。
 - `Home`、`Food`、`AI`、`Workout`、`Profile` 五个主要 tab。
 - Phase 4 AI Chat shell：居中 AI tab、真实 Gateway 发送、本机持久化 ChatGPT/千问模型选择器、只表达可用性的 status pill、云端 history 读取/切换/新建/inline 重命名/确认删除、用户记录摘要授权开关和 request/debug logging。
+- Provider-neutral `chat_decision.v2`、typed/persisted clarification、当前图片生命周期、历史 decision shadow diff、真实 production-path fixture runner 和细分系统错误已经部署；migration、真实 auto canary、受控 soak、回滚演练和 configured split APK 已完成，legacy 生产分支已退场。连接设备的 PackageInstaller commit 无法完成，因此两条原始故障与附件重启的真机人工 journey 仍是最后一个发布 Gate。
 - Phase 2 账号/Profile 基础：Supabase 配置入口、邮箱密码与注册验证码 auth repository、订阅状态 repository、内部兑换码 entitlement RPC、Cloud Profile repository/mapper、Profile 登录 gate、Cloud Profile 自动初始化、Profile 订阅卡、AI 账号/订阅状态 sheet、用户记录摘要授权开关。
 - Phase 2 Supabase migration：`subscriptions`、`cloud_profiles`、`internal_subscription_codes` 和 `internal_subscription_redemptions` 表、既有 `cloud_profiles` 兼容补列、RLS、字段约束、内部兑换码 RPC 和开发 seed 说明。
 - Phase 3 Cloud Records Foundation 和主要 hardening 链路已落地：root auth gate、`account_active_devices`/active-device RPC、`body_metric_logs`、food/workout 云端表、`daily_summaries` 表、本地 v15 partial cache metadata、body/food/workout cloud-backed repository、正式写入 active-device guard、登录冷启动后台账号恢复、Home 选中日期 `daily_summary_cache` + stale-while-revalidate、`daily_summaries` 云端 upsert/恢复、近期 summary warm-cache、confirmed cache eviction，以及基于云端正式 records 的导出完整性。
@@ -88,6 +89,12 @@ V1 完整落地是指：
 27. AI 不静默修改 Profile、目标、策略、carb cycling、carb taper 或删除记录。
 28. Phase 6 可靠性评测必须证明 RAG、context、prompt contract、安全边界和草稿确认链路达到发布阈值。
 29. 发布前完成错误处理、隐私删除、弱网、性能和回归验证。
+30. 普通 Chat 每个 turn 只由 `chat_decision.v2` 选择 capability、output、Context、clarification 和附件策略；旧生产分支与 runtime flags 已退场，历史 comparator 只属于回归测试。
+31. Clarification 必须可持久化、幂等消费、有限次数且可终止；planner/provider/validation 故障不能伪装成用户歧义。
+32. 清晰图片请求在同一 turn 消费当前图片；跨 turn 只允许 account/session scoped runtime lease，重启或本地清理后要求重新附图。
+33. Chat 整改不得降级 Phase 5 keyword/term normalization、vector retrieval、hybrid fusion、reranker、coverage/retry、Structured RAG 或 Document RAG。
+34. 记录、草稿与恢复继续遵守既有权威来源：本地 `workout_record_drafts`、Cloud official records 和用户确认路径不能被 Chat 状态替代。
+35. 发布证据必须逐条执行生产函数和 hard oracle，并包含已归档的 decision shadow、数据库/食物图片触发案例、错误分类、迁移、云端 canary、soak 与 rollback 验证。
 
 ## 4. 总体阶段原则
 

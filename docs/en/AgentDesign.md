@@ -22,8 +22,9 @@ FitLog does not execute a model on-device. Remote calls pass through Supabase Ed
 ```text
 User request
   -> authentication, subscription, and active-device checks
+  -> restore and consume any matching pending clarification
   -> fixed-entry and deterministic safety rules
-  -> approved Task Plan and server Context Policy
+  -> one approved Chat Decision and server Context Policy
   -> allowed same-chat / exercise / Structured RAG / Document RAG context
   -> configured provider call (Qwen in the current release)
   -> shared output validation and normalization
@@ -32,6 +33,8 @@ User request
 ```
 
 Each AI path separates four responsibilities. Surface orchestration owns entry, target language, local provider preference, approved terminal states, and UI confirmation. A versioned Capability Core owns task, Food/Workout semantics, fact priority, and context needs. OpenAI/Qwen adapters encode that capability into provider-specific text, image, schema, and tool protocols without redefining product rules. Shared validation enforces structure, domain semantics, language, grounding, safety, and confirmation. A provider change cannot broaden context, alter fact priority, bypass validation, or write official data.
+
+`chat_decision.v2` is the only active ordinary-Chat decision contract. In fixed precedence it consumes an eligible clarification reply, applies safety and fixed-entry constraints, accepts small symmetric high-confidence rules, and otherwise invokes one bounded planner. Its output jointly fixes the capability, allowed and selected output family, authorized Context request, clarification state, and attachment policy. The former legacy decision branch and its runtime flags are retired; its comparator remains only in deterministic historical-parity tests and cannot affect production. Planner failure is a system failure, not evidence that the user is ambiguous.
 
 The operating layer includes:
 
@@ -97,6 +100,8 @@ The AI page must make capability and authority visible without exposing provider
 - The usable Qwen selection is device-local. Exact models and provider credentials remain server-side. An unavailable ChatGPT selection enters the current UI only for brief tap feedback, then the selector automatically slides back to Qwen; it is not persisted as an active provider.
 - Up to three JPEG, PNG, or WebP attachments are supported. Current requests route through Qwen. Selecting unconfigured ChatGPT in AI Chat or Add Food AI analysis shows the normal transient `current model unavailable` error, preserves input, sends no provider request, and restores the Qwen selection through the shared sliding control. This UI recovery is not provider fallback and never converts the original tap into a Qwen request; the status pill continues to reflect subscription, device, and Gateway readiness only.
 - Small local picker-recovery markers may restore composer text, selected provider, attachments, or Add Food analysis after Android activity recreation. Recovery never queues or sends content and never bypasses real account/Gateway readiness.
+- Intent clarification is represented by a persisted `ai_chat_clarification.v2` object with an opaque ID and allowlisted options. The client sends a typed option reply with a stable request ID; the server claims and consumes it idempotently before any new intent inference. Missing business fields receive at most one follow-up. Repeated no-progress signatures terminate as a stable error.
+- Current images are used in the same turn whenever the request is clear. An unclear image does not reopen intent selection when clear user text is already sufficient for the selected answer or draft; uncertainty stays in the result instead. A clarification may retain only a runtime attachment lease scoped to account and session; the database, history, logs, and RAG corpus never retain pixels. Reload, restart, local-data clearing, logout, or account switch invalidates that lease and changes the visible state to reattach-required.
 - Unsent composer text survives tab switches and temporary disabled states during the current runtime. Send start clears it into a pending turn; failure restores it. Logout or account switch clears it.
 - Cloud history supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a recovery UI.
 - Assistant text uses maintained Markdown rendering with selectable text, no remote image loading, and no link execution.
@@ -167,7 +172,7 @@ FitLog uses three distinct context categories:
 
 Context is built on the server only after auth, subscription, and active-device checks. The client cannot submit server-owned context objects, arbitrary SQL, tool calls, official-write payloads, or provider credentials. Complete raw histories, historical images, unrestricted notes, export archives, and local workout drafts are excluded by default.
 
-Before any Context Builder runs, a versioned `task_plan.v1` separates workflow/context planning from output-family selection. Fixed entries and high-confidence deterministic rules plan first; only an ambiguous request reaches a bounded model planner. The plan carries the server-planned workflow, allowed output family, bounded entities, requested Context, retrieval needs, clarification state, confidence, and source. Server policy then approves or rejects each Context type according to workflow, record-summary permission, and data minimization. Public workflow values may therefore include `workout_logging`, `general_chat`, and `safety_boundary`, while the client can only hint approved entry workflows.
+Before any Context Builder runs, `chat_decision.v2` selects the capability, output family, requested Context, clarification, and current-attachment policy. Fixed entries and high-confidence deterministic rules decide first; only unresolved open semantics reach a bounded text or multimodal planner. The server then derives the compatible `task_plan.v1` and approves or rejects each Context type according to workflow, record-summary permission, and data minimization. Public workflow values may therefore include `workout_logging`, `general_chat`, and `safety_boundary`, while the client can only hint approved entry workflows.
 
 Detailed object schemas, permissions, retrieval, ingestion, evidence, injection handling, evaluation, and update lifecycle are defined in [RAGDesign.md](RAGDesign.md).
 

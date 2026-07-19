@@ -581,12 +581,28 @@ Rules:
 
 - Account-bound RLS protects client reads.
 - The Gateway writes one user message and one assistant message per accepted turn. Accepted image Chat persists as text messages while up to three images are forwarded only in the current Gateway request.
-- `final_answer_json` may store a lightweight `ai_chat_artifacts.v2` snapshot for validated artifacts such as `food_draft.v2` or `workout_draft.v2`, plus the resolved `target_date`, date-resolution source, `ai_chat_evidence.v1`, or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue. The history reader retains compatibility with v1 artifacts by using their stored selected date when the legacy draft lacks its own date.
+- `final_answer_json` may store a lightweight `ai_chat_artifacts.v2` snapshot for validated artifacts such as `food_draft.v2` or `workout_draft.v3`, plus the resolved `target_date`, date-resolution source, `ai_chat_evidence.v1`, or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue. The history reader retains compatibility with v1/v2 artifacts by using their stored selected date when the legacy draft lacks its own date.
 - `role` is limited to `user` and `assistant`; `message_type` remains text-only for persisted chat history. Image bytes/base64 are not stored in `ai_chat_messages`.
 - Message order is deterministic by `message_sequence`, with timestamps and ids available as stable secondary fields.
 - A message must match its parent session's `account_id`.
 - Messages are not stored long-term locally by default.
 - Messages must not expose internal chain-of-thought or raw debug traces.
+
+### `ai_chat_clarifications`
+
+Purpose: authoritative control state for bounded, resumable Chat clarification.
+
+Fields include the account/session and origin message IDs, optional parent clarification, `ai_chat_clarification.v2`, kind, allowlisted options, missing dimensions, attachment policy, progress signature, state, attempt count, resolution request/option/result, expiry, and timestamps. States are `pending`, `resolving`, `resolved`, `superseded`, `cancelled`, or `expired`.
+
+Rules:
+
+- Account/session RLS permits clients to read only their own active state; service-owned RPCs perform compare-and-transition mutations.
+- One partial unique index permits at most one `pending` or `resolving` row per session.
+- Claiming validates account, session, clarification ID, option, expiry, and request ID. The same completed request ID replays its accepted terminal result; concurrent or stale conflicting requests do not invoke the provider twice.
+- A failed claim can return to `pending`; repeated intent or missing-business signatures that make no progress are rejected. Intent selection and missing-business follow-up are each bounded to one step.
+- Options and missing dimensions are compact control metadata. Original message text remains in the normal message row; this table stores no image bytes/base64 or runtime attachment identifiers.
+- `attachment_policy` only tells Flutter whether current runtime pixels can be rebound. History reload, restart, local-data clearing, logout, or account switch makes unavailable pixels `resend_required` rather than reconstructing them from cloud state.
+- This cloud-only additive migration does not change SQLite `AppDatabase.dbVersion` or the local `workout_record_drafts` authority.
 
 ### `ai_request_logs`
 
@@ -619,6 +635,17 @@ Fields:
 - `final_validation_status`
 - `provider_completion_status`
 - `latency_breakdown_json`
+- `decision_version`
+- `decision_source`
+- `decision_reason`
+- `selected_capability`
+- `clarification_id`
+- `clarification_state`
+- `clarification_attempt`
+- `attachment_policy`
+- `failure_class`
+- `write_guard_reason`
+- `decision_shadow_mismatch`
 - `created_at`
 
 This table is a server-side operational record:
@@ -628,7 +655,8 @@ This table is a server-side operational record:
 - Migration `202607110002_ai_observability_update_grants.sql` allows the Edge Function service role to finalize `ai_request_logs` and `ai_debug_summaries` after the initial RPC insert. Authenticated clients still have no direct read or write policy.
 - The additive `202607150001_rag_latency_breakdown.sql` migration adds a bounded `ai_latency_breakdown.v1` object. It separates Edge runtime age, environment/auth/request/device checks, planning, context building, query normalization, embedding, hybrid RPC, reranking, rewrite planning, provider generation/validation/correction, and persistence. Missing or inapplicable stages remain `null` or `not_requested`; the object never stores raw messages, vectors, document excerpts, images, provider output, secrets, business records, or chain-of-thought.
 - The additive `202607150002_ai_chat_turn_rag_workflows.sql` migration aligns the `record_ai_chat_turn` RPC validation with the table contract for `workout_logging`, `general_chat`, and `safety_boundary`; existing workflow values and the service-role-only execution boundary remain intact.
-- Chat uses `prompt_version = phase5_rag_readonly_v1` and `schema_version = ai_chat_response.v2`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`. Additive workflow constraints preserve legacy values and also accept server-planned `workout_logging`, `general_chat`, and `safety_boundary`.
+- Chat uses `prompt_version = chat_orchestration_v2` and `schema_version = ai_chat_response.v3`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`. Additive workflow constraints preserve legacy values and also accept server-planned `workout_logging`, `general_chat`, and `safety_boundary`.
+- Additive migrations `202607190001_ai_chat_clarification_state.sql` and `202607190002_ai_chat_orchestration_observability.sql` add the server-owned clarification state/RPCs and compact decision, clarification, attachment, failure, write-guard, and shadow-mismatch categories. They never persist request-time pixels, full provider output, or prompts in those fields. Follow-up migration `202607190003_ai_chat_clarification_digest_search_path.sql` explicitly includes Supabase's `extensions` schema in the security-definer turn RPC so `pgcrypto.digest` can compute progress signatures on both fresh and upgraded projects.
 - Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
 - `selected_output_type` is written only after provider output passes contract validation. Issue codes are fixed categories and contain no field values, user prompt, or provider text.
 - Authenticated clients have no direct read policy.
@@ -787,7 +815,7 @@ Export correctness comes from cloud official records, cloud summaries, or builde
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
 - AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`, `supabase/migrations/202607190001_ai_chat_clarification_state.sql`, `supabase/migrations/202607190002_ai_chat_orchestration_observability.sql`, `supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql`
 - Supabase AI Gateway: `supabase/functions/_shared/ai_output_contract.ts`, `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
 - Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat and AI food analysis repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`

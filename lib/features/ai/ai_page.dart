@@ -18,6 +18,7 @@ import '../../core/widgets/fitlog_bottom_nav_bar.dart';
 import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_sliding_segmented_control.dart';
 import '../../domain/models/ai_chat_message.dart';
+import '../../domain/models/ai_chat_clarification.dart';
 import '../../domain/models/ai_availability.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
 import '../../domain/models/ai_gateway_evidence.dart';
@@ -412,6 +413,7 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
           ),
           onOpenFoodDraft: _openFoodDraftPreview,
           onOpenWorkoutDraft: _openWorkoutDraftPreview,
+          onSelectClarification: _selectClarificationOption,
         ),
         if (_historyOpen)
           _AiHistoryPanel(
@@ -730,6 +732,48 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         setState(() => _attachedImages = sentImages);
       }
     }
+  }
+
+  Future<void> _selectClarificationOption(
+    AiChatClarificationOption option,
+  ) async {
+    final chatController = _maybeChatController(listen: false);
+    final accountController = _maybeAccountController(listen: false);
+    final cloudRuntimeContext = _maybeCloudRuntimeContext(listen: false);
+    if (chatController == null ||
+        accountController == null ||
+        cloudRuntimeContext == null ||
+        chatController.sending) {
+      return;
+    }
+    final deviceId = cloudRuntimeContext.deviceId;
+    if ((deviceId ?? '').isEmpty) {
+      chatController.showLocalError(
+        const AiGatewayError(
+          code: AiGatewayErrorCode.unknown,
+          rawCode: 'active_device_missing',
+          message: 'Active device is not ready.',
+        ),
+      );
+      return;
+    }
+    final cloudProfile = accountController.cloudProfileState.cloudProfile;
+    final strings = context.stringsRead;
+    _prepareMessageListForSend();
+    await chatController.sendClarificationOption(
+      option: option,
+      language: strings.isChinese ? 'zh' : 'en',
+      modelChoice: _modelChoiceFor(_provider),
+      deviceId: deviceId!,
+      selectedDate:
+          context.read<SelectedDateNotifier?>()?.selectedDate ??
+          DateUtilsX.todayKey(),
+      profileVersion: cloudProfile == null
+          ? null
+          : 'profile_${cloudProfile.profileVersion}',
+      allowRecordSummaryContext:
+          accountController.localContextPermission?.allowed ?? false,
+    );
   }
 
   void _prepareMessageListForSend() {
@@ -1098,6 +1142,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         return strings.phase2ErrorMessage('device_replaced');
       case AiGatewayErrorCode.gatewayTimeout:
         return strings.aiGatewayTimeout;
+      case AiGatewayErrorCode.providerUnavailable:
+        return strings.aiCurrentModelUnavailable;
       case AiGatewayErrorCode.providerFailure:
         return strings.aiProviderFailure;
       case AiGatewayErrorCode.requestSchemaMismatch:
@@ -1109,6 +1155,15 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         return strings.aiProviderRefusal;
       case AiGatewayErrorCode.providerIncomplete:
         return strings.aiProviderIncomplete;
+      case AiGatewayErrorCode.plannerUnavailable:
+      case AiGatewayErrorCode.plannerOutputInvalid:
+        return strings.aiPlannerFailure;
+      case AiGatewayErrorCode.clarificationConflict:
+        return strings.aiClarificationConflict;
+      case AiGatewayErrorCode.clarificationExpired:
+        return strings.aiClarificationExpired;
+      case AiGatewayErrorCode.attachmentUnavailable:
+        return strings.aiAttachmentUnavailable;
       case AiGatewayErrorCode.networkFailure:
         return strings.aiChatNetworkFailure;
       case AiGatewayErrorCode.unknown:
@@ -1178,6 +1233,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     required this.onSend,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
+    required this.onSelectClarification,
   });
 
   final Size screenSize;
@@ -1205,6 +1261,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
   final ValueChanged<String> onSend;
   final void Function(AiFoodDraft draft, String? modelProvider) onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+  final ValueChanged<AiChatClarificationOption> onSelectClarification;
 
   @override
   Widget build(BuildContext context) {
@@ -1255,6 +1312,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
                   scrollingDisabled: composerAttachedToKeyboard,
                   onOpenFoodDraft: onOpenFoodDraft,
                   onOpenWorkoutDraft: onOpenWorkoutDraft,
+                  onSelectClarification: onSelectClarification,
                 ),
               ),
             )
@@ -2339,6 +2397,7 @@ class _AiMessageList extends StatelessWidget {
     required this.scrollingDisabled,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
+    required this.onSelectClarification,
   });
 
   final AiChatController controller;
@@ -2350,6 +2409,7 @@ class _AiMessageList extends StatelessWidget {
   final bool scrollingDisabled;
   final void Function(AiFoodDraft draft, String? modelProvider) onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+  final ValueChanged<AiChatClarificationOption> onSelectClarification;
 
   @override
   Widget build(BuildContext context) {
@@ -2379,9 +2439,11 @@ class _AiMessageList extends StatelessWidget {
           foodDraft: controller.foodDraftArtifactFor(message),
           workoutDraft: controller.workoutDraftArtifactFor(message),
           evidence: message.gatewayEvidence,
+          clarification: controller.clarificationFor(message),
           onOpenFoodDraft: (draft) =>
               onOpenFoodDraft(draft, message.modelProvider),
           onOpenWorkoutDraft: onOpenWorkoutDraft,
+          onSelectClarification: onSelectClarification,
         ),
         isUser: message.isUser,
       );
@@ -2557,8 +2619,10 @@ class _AiMessageBubble extends StatelessWidget {
     required this.foodDraft,
     required this.workoutDraft,
     required this.evidence,
+    required this.clarification,
     required this.onOpenFoodDraft,
     required this.onOpenWorkoutDraft,
+    required this.onSelectClarification,
   });
 
   final AiChatMessage message;
@@ -2566,8 +2630,10 @@ class _AiMessageBubble extends StatelessWidget {
   final AiFoodDraftArtifact? foodDraft;
   final AiWorkoutDraftArtifact? workoutDraft;
   final AiGatewayEvidence? evidence;
+  final AiChatClarification? clarification;
   final ValueChanged<AiFoodDraft> onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft> onOpenWorkoutDraft;
+  final ValueChanged<AiChatClarificationOption> onSelectClarification;
 
   @override
   Widget build(BuildContext context) {
@@ -2579,8 +2645,10 @@ class _AiMessageBubble extends StatelessWidget {
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
       evidence: evidence,
+      clarification: clarification,
       onOpenFoodDraft: onOpenFoodDraft,
       onOpenWorkoutDraft: onOpenWorkoutDraft,
+      onSelectClarification: onSelectClarification,
     );
   }
 }
@@ -2614,8 +2682,10 @@ class _AiBubbleSurface extends StatelessWidget {
     this.foodDraft,
     this.workoutDraft,
     this.evidence,
+    this.clarification,
     this.onOpenFoodDraft,
     this.onOpenWorkoutDraft,
+    this.onSelectClarification,
   });
 
   final String text;
@@ -2625,8 +2695,10 @@ class _AiBubbleSurface extends StatelessWidget {
   final AiFoodDraftArtifact? foodDraft;
   final AiWorkoutDraftArtifact? workoutDraft;
   final AiGatewayEvidence? evidence;
+  final AiChatClarification? clarification;
   final ValueChanged<AiFoodDraft>? onOpenFoodDraft;
   final ValueChanged<AiWorkoutDraft>? onOpenWorkoutDraft;
+  final ValueChanged<AiChatClarificationOption>? onSelectClarification;
 
   @override
   Widget build(BuildContext context) {
@@ -2653,6 +2725,14 @@ class _AiBubbleSurface extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
+        if (clarification?.options.isNotEmpty == true &&
+            onSelectClarification != null) ...[
+          const SizedBox(height: 10),
+          _AiClarificationOptions(
+            clarification: clarification!,
+            onSelected: onSelectClarification!,
+          ),
+        ],
         if (foodDraft != null) ...[
           const SizedBox(height: 12),
           _AiFoodDraftArtifactCard(
@@ -2693,6 +2773,51 @@ class _AiBubbleSurface extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AiClarificationOptions extends StatelessWidget {
+  const _AiClarificationOptions({
+    required this.clarification,
+    required this.onSelected,
+  });
+
+  final AiChatClarification clarification;
+  final ValueChanged<AiChatClarificationOption> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = _AiThemePalette.of(context);
+    final language = context.strings.isChinese ? 'zh' : 'en';
+    return Wrap(
+      key: ValueKey<String>('ai_clarification_options_${clarification.id}'),
+      spacing: 8,
+      runSpacing: 8,
+      children: clarification.options
+          .map(
+            (option) => OutlinedButton(
+              key: ValueKey<String>(
+                'ai_clarification_${clarification.id}_${option.id}',
+              ),
+              onPressed: () => onSelected(option),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: palette.assistantText,
+                side: BorderSide(color: palette.artifactBorder),
+                textStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+              child: Text(option.labelFor(language)),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }
@@ -2771,7 +2896,7 @@ class _AiEvidencePanel extends StatelessWidget {
                   (source) => _AiEvidenceChip(
                     label: strings.aiEvidenceSourceLabel(
                       _aiEvidenceDocFileName(source.docPath),
-                      source.heading,
+                      source.presentationLabel,
                     ),
                   ),
                 )

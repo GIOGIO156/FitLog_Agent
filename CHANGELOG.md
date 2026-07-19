@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-07-19 AI Chat Orchestration And Reliability
+
+### Added
+
+- Added the provider-neutral `chat_decision.v2` production path, behavior-parity fixtures with real executors, privacy-safe shadow comparison, and an `auto` workflow cloud canary that asserts completed answers/drafts rather than accepting arbitrary clarification.
+- Added server-owned `ai_chat_clarification.v2` state with typed options, account/session-bound claims, stable request-ID replay, bounded no-progress/expiry handling, runtime-only attachment leases, history restoration, and Flutter option/error UI.
+- Restored the six Phase 4 plans under `docs/history/phase4/` as `HISTORICAL / DO NOT EXECUTE` parity evidence without adding them to Document RAG.
+
+### Changed
+
+- Made one Chat decision own capability, output family, authorized Context, clarification, and attachment policy. Typed replies now restore the originating task's required Context, while existing Structured RAG, keyword/vector hybrid retrieval, reranking, coverage/retry, Food/Workout validators, and confirmed draft handoff/recovery authority remain unchanged.
+- Current images reach the bounded planner when capability truly depends on them and reach the selected provider in the same turn. A clear consumed-food statement can produce a Food Draft even when an attached image is unclear; uncertainty stays in the draft instead of reopening intent selection.
+- Narrowed write-claim blocking to completed AI/user-record mutations and normalized only balanced Markdown inline-code delimiters in evidence presentation labels, preserving the raw evidence payload and technical identifiers.
+
+### Fixed
+
+- Fixed the repeated three-option loop after replies such as `回答问题` or `食物草稿`, the clear soup-image request being rejected before model use, passive database storage explanations being mistaken for completed AI writes, and planner/provider failures being displayed as user ambiguity.
+- Fixed clarification insertion on Supabase by explicitly resolving `pgcrypto.digest` from the `extensions` schema, and preserved both assistant message and debug-summary IDs in a successful clarification replay.
+
+### Validation
+
+- Applied additive migrations `202607190001` through `202607190003` and kept `rag_foundation_v1`, Document RAG retry, vector retrieval, hybrid fusion, reranking, coverage, and retry enabled. A legacy rollback rehearsal kept Edge/RAG/data available while intentionally failing 8 v2 behavior gates; the final deployed code then retired the legacy branch and its two runtime secrets. The post-retirement real-Qwen `auto` cloud gate passed 33/33 checks, including both reported failures, typed create/consume/replay with `resolved` and `attempt_count = 1`, Food image completion, 13/13 source recall, 37/39 source precision, 5/5 critical top-1, production Edge embeddings with no issue codes, and the unchanged 1500 ms Edge retrieval p95 gate.
+- `flutter analyze` reported no issues; all 259 Flutter tests, 63 required Edge tests, 278 full Edge tests, 21 documentation/corpus/migration tests, and 108 local release fixtures passed. Configured split debug APKs were built and hashed. The attached custom Android 11 device accepted the complete APK bytes but did not finish PackageInstaller commit, so manual-device journeys remain open. The final 21-source/613-chunk local documentation build was not sent to the external embedding provider; cloud remains on the separately verified 586-chunk active build pending explicit data-externalization approval.
+
 ## 2026-07-19 Photo Picker And Workout Draft Recovery
 
 ### Changed

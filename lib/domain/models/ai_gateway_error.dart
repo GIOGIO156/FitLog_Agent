@@ -3,11 +3,17 @@ enum AiGatewayErrorCode {
   subscriptionRequired,
   deviceReplaced,
   gatewayTimeout,
+  providerUnavailable,
   providerFailure,
   requestSchemaMismatch,
   providerOutputInvalid,
   providerRefusal,
   providerIncomplete,
+  plannerUnavailable,
+  plannerOutputInvalid,
+  clarificationConflict,
+  clarificationExpired,
+  attachmentUnavailable,
   recordSchemaMismatch,
   networkFailure,
   unknown,
@@ -24,6 +30,8 @@ extension AiGatewayErrorCodeValue on AiGatewayErrorCode {
         return 'device_replaced';
       case AiGatewayErrorCode.gatewayTimeout:
         return 'gateway_timeout';
+      case AiGatewayErrorCode.providerUnavailable:
+        return 'provider_unavailable';
       case AiGatewayErrorCode.providerFailure:
         return 'provider_failure';
       case AiGatewayErrorCode.requestSchemaMismatch:
@@ -34,6 +42,16 @@ extension AiGatewayErrorCodeValue on AiGatewayErrorCode {
         return 'provider_refusal';
       case AiGatewayErrorCode.providerIncomplete:
         return 'provider_incomplete';
+      case AiGatewayErrorCode.plannerUnavailable:
+        return 'planner_unavailable';
+      case AiGatewayErrorCode.plannerOutputInvalid:
+        return 'planner_output_invalid';
+      case AiGatewayErrorCode.clarificationConflict:
+        return 'clarification_conflict';
+      case AiGatewayErrorCode.clarificationExpired:
+        return 'clarification_expired';
+      case AiGatewayErrorCode.attachmentUnavailable:
+        return 'attachment_unavailable';
       case AiGatewayErrorCode.recordSchemaMismatch:
         return 'record_schema_mismatch';
       case AiGatewayErrorCode.networkFailure:
@@ -105,6 +123,8 @@ AiGatewayErrorCode aiGatewayErrorCodeFromValue(String? value) {
       return AiGatewayErrorCode.deviceReplaced;
     case 'gateway_timeout':
       return AiGatewayErrorCode.gatewayTimeout;
+    case 'provider_unavailable':
+      return AiGatewayErrorCode.providerUnavailable;
     case 'provider_failure':
       return AiGatewayErrorCode.providerFailure;
     case 'request_schema_mismatch':
@@ -115,6 +135,16 @@ AiGatewayErrorCode aiGatewayErrorCodeFromValue(String? value) {
       return AiGatewayErrorCode.providerRefusal;
     case 'provider_incomplete':
       return AiGatewayErrorCode.providerIncomplete;
+    case 'planner_unavailable':
+      return AiGatewayErrorCode.plannerUnavailable;
+    case 'planner_output_invalid':
+      return AiGatewayErrorCode.plannerOutputInvalid;
+    case 'clarification_conflict':
+      return AiGatewayErrorCode.clarificationConflict;
+    case 'clarification_expired':
+      return AiGatewayErrorCode.clarificationExpired;
+    case 'attachment_unavailable':
+      return AiGatewayErrorCode.attachmentUnavailable;
     case 'record_schema_mismatch':
       return AiGatewayErrorCode.recordSchemaMismatch;
     case 'network_failure':

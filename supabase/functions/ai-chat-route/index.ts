@@ -11,6 +11,7 @@ import {
   estimateTokens,
   extractBearerToken,
   extractSessionIdFromAccessToken,
+  type GatewayClarification,
   type GatewayDraft,
   type GatewayRequest,
   GatewayRequestError,
@@ -21,6 +22,7 @@ import {
   type PersistedTurn,
   type ProviderOutputType,
   stringField,
+  type WorkflowType,
 } from "./contracts.ts";
 import type { Phase5Evidence } from "./phase5_types.ts";
 import {
@@ -35,31 +37,36 @@ import {
 } from "./providers.ts";
 import {
   type IntentResolutionSource,
-  resolveOutputSelection,
 } from "./expected_output.ts";
-import { routeGatewayWorkflow } from "./workflow_router.ts";
 import { resolveRecordDate } from "./record_date_resolver.ts";
 import { draftConfirmationMessage } from "./draft_response_builder.ts";
 import {
   type PipelineRuntimeConfig,
   readPipelineRuntimeConfig,
 } from "./pipeline_config.ts";
-import {
-  buildApprovedTaskPlan,
-  planToLegacyRoute,
-} from "./planning/task_planner.ts";
+import { planToLegacyRoute } from "./planning/task_planner.ts";
 import {
   type QueryEmbeddingConfig,
   qwenEmbeddingEndpoint,
 } from "./rag/query_embedding.ts";
 import {
-  createModelTaskPlanner,
+  createModelChatDecisionPlanner,
   createRetrievalRewritePlanner,
 } from "./planning/model_planners.ts";
 import { explicitFoodFactsFromText } from "../_shared/food_capability.ts";
+import { evaluateWriteClaim } from "./guarding/write_claim_guard.ts";
+import {
+  buildApprovedChatDecision,
+  chatDecisionToTaskPlan,
+} from "./planning/chat_decision.ts";
+import {
+  ChatDecisionPlanningError,
+  type ChatDecisionV2,
+} from "./planning/chat_decision_contract.ts";
+import { matchClarificationReplyText } from "./planning/clarification_reply.ts";
 
-const phase5PromptVersion = "phase5_rag_readonly_v1";
-const phase5SchemaVersion = "ai_chat_response.v2";
+const phase5PromptVersion = "chat_orchestration_v2";
+const phase5SchemaVersion = "ai_chat_response.v3";
 const minimumCorrectionBudgetMs = 1500;
 const edgeRuntimeStartedAt = Date.now();
 
@@ -76,6 +83,17 @@ interface OutputContractTelemetry {
     | "completed"
     | "refusal"
     | "incomplete";
+  decisionVersion: string | null;
+  decisionSource: string | null;
+  decisionReason: string | null;
+  decisionShadowMismatch: string | null;
+  selectedCapability: string | null;
+  clarificationId: string | null;
+  clarificationState: string | null;
+  clarificationAttempt: number | null;
+  attachmentPolicy: string | null;
+  failureClass: string | null;
+  writeGuardReason: string | null;
 }
 
 interface RuntimeStageTelemetry {
@@ -132,6 +150,11 @@ Deno.serve(async (request) => {
   let env: GatewayEnv | null = null;
   let accountId: string | null = null;
   let parsedRequest: GatewayRequest | null = null;
+  let activeClarificationClaim: {
+    clarificationId: string;
+    clientRequestId: string;
+    committed: boolean;
+  } | null = null;
   let outputTelemetry: OutputContractTelemetry = defaultOutputTelemetry();
   const stageTelemetry: RuntimeStageTelemetry = {
     edgeRuntimeUptimeMsAtStart: startedAt - edgeRuntimeStartedAt,
@@ -183,23 +206,48 @@ Deno.serve(async (request) => {
     stageTelemetry.subscriptionDeviceLatencyMs = Date.now() -
       subscriptionDeviceStartedAt;
 
-    const providerConfig = readProviderRuntimeConfig();
-    const modelTaskPlanner = createModelTaskPlanner(
-      parsedRequest.modelChoice,
-      providerConfig,
+    const clarificationResolution = await resolveClarificationContext(
+      env,
+      accountId,
+      parsedRequest,
     );
+    if (clarificationResolution.replayResponse !== null) {
+      return clarificationResolution.replayResponse;
+    }
+    parsedRequest = clarificationResolution.request;
+    activeClarificationClaim = clarificationResolution.claim;
+
+    const providerConfig = readProviderRuntimeConfig();
     const plannerStartedAt = Date.now();
-    const taskPlan = env.pipeline.contextPipelineVersion === "rag_foundation_v1"
-      ? await buildApprovedTaskPlan(parsedRequest, modelTaskPlanner)
-      : null;
+    const chatDecision: ChatDecisionV2 = await buildApprovedChatDecision(
+      parsedRequest,
+      createModelChatDecisionPlanner(
+        parsedRequest.modelChoice,
+        providerConfig,
+      ),
+    );
+    const taskPlan = chatDecisionToTaskPlan(chatDecision);
+    outputTelemetry = {
+      ...outputTelemetry,
+      decisionVersion: chatDecision.schema_version,
+      decisionSource: chatDecision.source,
+      decisionReason: chatDecision.reasons[0] ?? null,
+      selectedCapability: chatDecision.capability,
+      attachmentPolicy: chatDecision.attachment_policy,
+      clarificationId: parsedRequest.resolvedClarification?.clarificationId ??
+        null,
+      clarificationState: parsedRequest.resolvedClarification === null ||
+          parsedRequest.resolvedClarification === undefined
+        ? null
+        : "resolving",
+    };
     stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
-    const route = taskPlan === null
-      ? routeGatewayWorkflow(parsedRequest)
-      : planToLegacyRoute(taskPlan);
+    const route = planToLegacyRoute(taskPlan);
     const retrievalStartedAt = Date.now();
     parsedRequest = {
       ...parsedRequest,
       workflowType: route.workflow,
+      chatDecision,
       taskPlan,
     };
     parsedRequest = {
@@ -218,15 +266,15 @@ Deno.serve(async (request) => {
       ),
     };
     stageTelemetry.retrievalLatencyMs = Date.now() - retrievalStartedAt;
-    const outputSelection = taskPlan === null
-      ? resolveOutputSelection(parsedRequest)
-      : {
-        expectedOutput: taskPlan.expected_output,
-        source: taskPlan.source === "model"
-          ? "model" as const
-          : "deterministic" as const,
-        reason: taskPlan.reasons[0] ?? "task_plan",
-      };
+    const outputSelection = {
+      expectedOutput: chatDecision.selected_output_family,
+      source: chatDecision.source === "model"
+        ? "model" as const
+        : chatDecision.source === "fixed_entry"
+        ? "fixed_workflow" as const
+        : "deterministic" as const,
+      reason: chatDecision.reasons[0] ?? "chat_decision_v2",
+    };
     const dateResolution = resolveRecordDate(
       parsedRequest.messageText,
       parsedRequest.selectedDate,
@@ -250,7 +298,10 @@ Deno.serve(async (request) => {
         firstPassValidationStatus: "passed",
         finalValidationStatus: "passed",
       };
-      const assistantText = plannerClarificationMessage(parsedRequest.language);
+      const assistantText = plannerClarificationMessage(
+        parsedRequest.language,
+        chatDecision,
+      );
       const evidence = evidenceFromRequest(parsedRequest, "read_only");
       const persistenceStartedAt = Date.now();
       const persisted = await recordChatTurn(
@@ -262,7 +313,17 @@ Deno.serve(async (request) => {
         assistantText,
         finalAnswerSnapshot(null, parsedRequest, evidence),
         Date.now() - startedAt,
+        pendingClarificationFromDecision(chatDecision, assistantText),
       );
+      outputTelemetry = {
+        ...outputTelemetry,
+        clarificationId: persisted.clarificationId,
+        clarificationState: "pending",
+        clarificationAttempt: 0,
+      };
+      if (activeClarificationClaim !== null) {
+        activeClarificationClaim.committed = true;
+      }
       stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
       await updateDebugSummary(
         env,
@@ -292,6 +353,12 @@ Deno.serve(async (request) => {
           draft: null,
           needsClarification: true,
           clarificationQuestions: [assistantText],
+          clarification: gatewayClarification(
+            persisted.clarificationId,
+            chatDecision,
+            assistantText,
+            parsedRequest.language,
+          ),
           debugSummaryId: persisted.debugSummaryId,
           evidence,
           error: null,
@@ -319,6 +386,9 @@ Deno.serve(async (request) => {
         finalAnswerSnapshot(null, parsedRequest, evidence),
         Date.now() - startedAt,
       );
+      if (activeClarificationClaim !== null) {
+        activeClarificationClaim.committed = true;
+      }
       stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
       await updateDebugSummary(
         env,
@@ -460,6 +530,16 @@ Deno.serve(async (request) => {
       parsedProvider.messageText,
       parsedRequest,
     );
+    if (
+      providerGuard.safetyFlag?.startsWith(
+        "provider_claimed_write_blocked:",
+      ) === true
+    ) {
+      outputTelemetry = {
+        ...outputTelemetry,
+        writeGuardReason: providerGuard.safetyFlag.split(":")[1] ?? null,
+      };
+    }
     const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
     const assistantText = draft !== null
       ? draftConfirmationMessage(parsedRequest.language, draft)
@@ -471,6 +551,12 @@ Deno.serve(async (request) => {
       draft === null ? "read_only" : "artifact_returned",
       providerGuard.safetyFlag,
     );
+    const pendingClarification = pendingClarificationFromProvider(
+      providerGuard.allowDraft && parsedProvider.needsClarification,
+      parsedProvider.clarificationQuestions,
+      parsedRequest,
+      assistantText,
+    );
     const persistenceStartedAt = Date.now();
     const persisted = await recordChatTurn(
       env,
@@ -481,7 +567,26 @@ Deno.serve(async (request) => {
       assistantText,
       finalAnswerSnapshot(draft, parsedRequest, evidence),
       Date.now() - startedAt,
+      pendingClarification,
     );
+    outputTelemetry = {
+      ...outputTelemetry,
+      clarificationId: persisted.clarificationId ??
+        parsedRequest.resolvedClarification?.clarificationId ?? null,
+      clarificationState: persisted.clarificationId !== null
+        ? "pending"
+        : parsedRequest.resolvedClarification === null ||
+            parsedRequest.resolvedClarification === undefined
+        ? null
+        : "resolved",
+      clarificationAttempt: parsedRequest.resolvedClarification === null ||
+          parsedRequest.resolvedClarification === undefined
+        ? persisted.clarificationId === null ? null : 0
+        : 1,
+    };
+    if (activeClarificationClaim !== null) {
+      activeClarificationClaim.committed = true;
+    }
     stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
     await updateDebugSummary(
       env,
@@ -516,6 +621,11 @@ Deno.serve(async (request) => {
         clarificationQuestions: providerGuard.allowDraft
           ? parsedProvider.clarificationQuestions
           : [],
+        clarification: gatewayClarificationFromPending(
+          persisted.clarificationId,
+          pendingClarification,
+          parsedRequest.language,
+        ),
         debugSummaryId: persisted.debugSummaryId,
         evidence,
         error: null,
@@ -523,6 +633,17 @@ Deno.serve(async (request) => {
       200,
     );
   } catch (error) {
+    if (
+      env !== null && accountId !== null && activeClarificationClaim !== null &&
+      !activeClarificationClaim.committed
+    ) {
+      await releaseClarificationClaim(
+        env,
+        accountId,
+        activeClarificationClaim.clarificationId,
+        activeClarificationClaim.clientRequestId,
+      );
+    }
     const gatewayError = toGatewayHttpError(error);
     if (
       env !== null &&
@@ -563,6 +684,299 @@ interface GatewayEnv {
   supabaseServiceRoleKey: string;
   pipeline: PipelineRuntimeConfig;
   documentEmbedding: QueryEmbeddingConfig | null;
+}
+
+interface PendingClarificationPayload {
+  schema_version: "ai_chat_clarification.v2";
+  kind: "intent_selection" | "missing_business_fields";
+  question: string;
+  options: Array<{
+    id: "answer" | "food_draft" | "workout_draft" | "continue";
+    label_zh: string;
+    label_en: string;
+    resulting_output: "text" | "food_draft" | "workout_draft";
+    resulting_workflow: WorkflowType;
+  }>;
+  missing_dimensions: string[];
+  attachment_policy:
+    | "none"
+    | "consume_current"
+    | "runtime_rebind_available"
+    | "resend_required";
+  attempt: number;
+}
+
+interface ClarificationResolutionResult {
+  request: GatewayRequest;
+  replayResponse: Response | null;
+  claim: {
+    clarificationId: string;
+    clientRequestId: string;
+    committed: boolean;
+  } | null;
+}
+
+async function resolveClarificationContext(
+  env: GatewayEnv,
+  accountId: string,
+  request: GatewayRequest,
+): Promise<ClarificationResolutionResult> {
+  if (request.sessionId === null) {
+    if (
+      request.clarificationReply !== null &&
+      request.clarificationReply !== undefined
+    ) {
+      throw new GatewayHttpError("clarification_conflict", 409);
+    }
+    return { request, replayResponse: null, claim: null };
+  }
+
+  const matched = request.clarificationReply ??
+    await matchPendingClarification(env, accountId, request);
+  if (matched === null) {
+    return { request, replayResponse: null, claim: null };
+  }
+  const clientRequestId = matched.clientRequestId;
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/rpc/claim_ai_chat_clarification`,
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_account_id: accountId,
+        input_session_id: request.sessionId,
+        input_clarification_id: matched.clarificationId,
+        input_option_id: matched.optionId,
+        input_client_request_id: clientRequestId,
+        input_attachment_available: request.attachments.length > 0,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw clarificationRpcError(await response.text());
+  }
+  const result = recordValue(await response.json());
+  if (result.status === "resolved_replay") {
+    return {
+      request,
+      replayResponse: cachedClarificationResponse(
+        request,
+        result.cached_result,
+      ),
+      claim: null,
+    };
+  }
+  if (result.status === "resolution_in_progress") {
+    throw new GatewayHttpError("clarification_conflict", 409);
+  }
+  const output = String(result.resulting_output ?? "");
+  const workflow = String(result.resulting_workflow ?? "");
+  const originMessageText = String(result.origin_message_text ?? "").trim();
+  const attachmentPolicy = String(result.attachment_policy ?? "none");
+  if (
+    !["text", "food_draft", "workout_draft"].includes(output) ||
+    ![
+      "auto",
+      "food_logging",
+      "workout_logging",
+      "meal_decision",
+      "weekly_review",
+      "app_logic_answer",
+      "general_chat",
+      "safety_boundary",
+    ].includes(workflow) ||
+    originMessageText === "" ||
+    ![
+      "none",
+      "consume_current",
+      "runtime_rebind_available",
+      "resend_required",
+    ].includes(attachmentPolicy)
+  ) {
+    throw new GatewayHttpError("clarification_conflict", 409);
+  }
+  const supplemental = request.messageText.trim();
+  const effectiveMessage = matched.optionId === "continue"
+    ? `${originMessageText}\n${
+      request.language === "zh" ? "用户补充" : "User follow-up"
+    }: ${supplemental}`
+    : originMessageText;
+  return {
+    request: {
+      ...request,
+      messageText: effectiveMessage,
+      resolvedClarification: {
+        clarificationId: matched.clarificationId,
+        optionId: matched.optionId,
+        resultingOutput: output as "text" | "food_draft" | "workout_draft",
+        resultingWorkflow: workflow as WorkflowType,
+        originMessageText,
+        attachmentPolicy: attachmentPolicy as
+          | "none"
+          | "consume_current"
+          | "runtime_rebind_available"
+          | "resend_required",
+      },
+    },
+    replayResponse: null,
+    claim: {
+      clarificationId: matched.clarificationId,
+      clientRequestId,
+      committed: false,
+    },
+  };
+}
+
+async function matchPendingClarification(
+  env: GatewayEnv,
+  accountId: string,
+  request: GatewayRequest,
+): Promise<
+  {
+    clarificationId: string;
+    optionId: "answer" | "food_draft" | "workout_draft" | "continue";
+    clientRequestId: string;
+  } | null
+> {
+  if (request.messageText.trim() === "" || request.sessionId === null) {
+    return null;
+  }
+  const query = new URLSearchParams({
+    select: "id,kind,options_json",
+    account_id: `eq.${accountId}`,
+    session_id: `eq.${request.sessionId}`,
+    state: "eq.pending",
+    order: "created_at.desc",
+    limit: "1",
+  });
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/ai_chat_clarifications?${query.toString()}`,
+    { headers: serviceHeaders(env) },
+  );
+  if (!response.ok) throw new GatewayHttpError("provider_failure", 502);
+  const rows = await response.json();
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const row = recordValue(rows[0]);
+  const clarificationId = String(row.id ?? "");
+  if (clarificationId === "") return null;
+  const options = Array.isArray(row.options_json)
+    ? row.options_json.map(recordValue)
+    : [];
+  const optionId = matchClarificationReplyText(
+    request.messageText,
+    row.kind,
+    options,
+  );
+  if (optionId === null) return null;
+  return {
+    clarificationId,
+    optionId,
+    clientRequestId: request.clientRequestId ?? crypto.randomUUID(),
+  };
+}
+
+async function releaseClarificationClaim(
+  env: GatewayEnv,
+  accountId: string,
+  clarificationId: string,
+  clientRequestId: string,
+): Promise<void> {
+  try {
+    await fetch(
+      `${env.supabaseUrl}/rest/v1/rpc/release_ai_chat_clarification`,
+      {
+        method: "POST",
+        headers: serviceHeaders(env),
+        body: JSON.stringify({
+          input_account_id: accountId,
+          input_clarification_id: clarificationId,
+          input_client_request_id: clientRequestId,
+        }),
+      },
+    );
+  } catch (_) {
+    // Best effort: a stale resolving row expires server-side and cannot cross accounts.
+  }
+}
+
+function clarificationRpcError(details: string): GatewayHttpError {
+  if (details.includes("attachment_unavailable")) {
+    return new GatewayHttpError("attachment_unavailable", 409);
+  }
+  if (details.includes("clarification_expired")) {
+    return new GatewayHttpError("clarification_expired", 409);
+  }
+  if (details.includes("clarification_conflict")) {
+    return new GatewayHttpError("clarification_conflict", 409);
+  }
+  return new GatewayHttpError("provider_failure", 502);
+}
+
+function cachedClarificationResponse(
+  request: GatewayRequest,
+  value: unknown,
+): Response {
+  const cached = recordValue(value);
+  const turn = recordValue(cached.turn);
+  const finalAnswer = recordValue(cached.final_answer_json);
+  const artifacts = Array.isArray(finalAnswer.artifacts)
+    ? finalAnswer.artifacts.map(recordValue)
+    : [];
+  const draftValue = artifacts.length > 0 ? artifacts[0].draft : null;
+  const draft = draftValue === null || draftValue === undefined
+    ? null
+    : draftValue as GatewayDraft;
+  const clarification = clarificationFromSnapshot(finalAnswer.clarification);
+  const evidenceSnapshot = recordValue(finalAnswer.evidence);
+  const evidence = Object.keys(evidenceSnapshot).length === 0
+    ? null
+    : evidenceSnapshot as unknown as Phase5Evidence;
+  const outputType: ProviderOutputType =
+    draft?.schema_version === "food_draft.v2"
+      ? "food_draft"
+      : draft?.schema_version === "workout_draft.v3"
+      ? "workout_draft"
+      : clarification !== null
+      ? "clarification"
+      : "text";
+  return jsonResponse(
+    gatewayResponse({
+      sessionId: typeof turn.session_id === "string"
+        ? turn.session_id
+        : request.sessionId,
+      assistantMessageId: typeof turn.assistant_message_id === "string"
+        ? turn.assistant_message_id
+        : null,
+      modelChoice: request.modelChoice,
+      modelProvider: typeof cached.model_provider === "string"
+        ? cached.model_provider
+        : null,
+      messageText: typeof cached.assistant_text === "string"
+        ? cached.assistant_text
+        : null,
+      language: request.language,
+      workflow: typeof cached.workflow === "string"
+        ? cached.workflow
+        : request.workflowType,
+      outputType,
+      draft: draftForClient(draft, request),
+      needsClarification: clarification !== null,
+      clarificationQuestions: [],
+      clarification,
+      debugSummaryId: typeof turn.debug_summary_id === "string"
+        ? turn.debug_summary_id
+        : null,
+      evidence,
+      error: null,
+    }),
+    200,
+  );
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function draftForClient(
@@ -710,11 +1124,13 @@ async function recordChatTurn(
   assistantText: string,
   finalAnswerJson: Record<string, unknown> | null,
   latencyMs: number,
+  pendingClarification: PendingClarificationPayload | null = null,
 ): Promise<PersistedTurn> {
-  const userMessageText = request.messageText.trim() ||
+  const userMessageText = (request.submittedMessageText ?? request.messageText)
+    .trim() ||
     imageOnlyMessage(request);
   const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/record_ai_chat_turn`,
+    `${env.supabaseUrl}/rest/v1/rpc/record_ai_chat_turn_v2`,
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -735,6 +1151,15 @@ async function recordChatTurn(
         input_assistant_text: assistantText,
         input_final_answer_json: finalAnswerJson,
         input_image_count: request.attachments.length,
+        input_resolved_clarification_id:
+          request.resolvedClarification?.clarificationId ?? null,
+        input_resolution_request_id: request.resolvedClarification === null ||
+            request.resolvedClarification === undefined
+          ? null
+          : request.clientRequestId ?? null,
+        input_pending_clarification_json: pendingClarification,
+        input_supersede_pending: request.resolvedClarification === null ||
+          request.resolvedClarification === undefined,
       }),
     },
   );
@@ -743,6 +1168,15 @@ async function recordChatTurn(
     const details = await response.text();
     if (details.includes("record_schema_mismatch")) {
       throw new GatewayHttpError("record_schema_mismatch", 422);
+    }
+    if (details.includes("clarification_expired")) {
+      throw new GatewayHttpError("clarification_expired", 409);
+    }
+    if (details.includes("clarification_conflict")) {
+      throw new GatewayHttpError("clarification_conflict", 409);
+    }
+    if (details.includes("clarification_no_progress")) {
+      throw new GatewayHttpError("provider_output_invalid", 502);
     }
     throw new GatewayHttpError("provider_failure", 502);
   }
@@ -753,6 +1187,7 @@ async function recordChatTurn(
     sessionId: stringField(result, "session_id"),
     assistantMessageId: stringField(result, "assistant_message_id"),
     debugSummaryId: stringField(result, "debug_summary_id"),
+    clarificationId: optionalStringField(result, "clarification_id"),
   };
 }
 
@@ -841,19 +1276,15 @@ function guardProviderOutput(
   ) {
     return { messageText, allowDraft: true, safetyFlag: null };
   }
-  if (providerClaimedWrite(messageText)) {
+  const writeClaim = evaluateWriteClaim(messageText);
+  if (writeClaim.blocked) {
     return {
       messageText: readOnlyBoundaryMessage(request.language),
       allowDraft: false,
-      safetyFlag: "provider_claimed_write_blocked",
+      safetyFlag: `provider_claimed_write_blocked:${writeClaim.reason}`,
     };
   }
   return { messageText, allowDraft: false, safetyFlag: null };
-}
-
-function providerClaimedWrite(value: string): boolean {
-  return /已保存|已修改|已应用|已删除|已经保存|已经修改|saved|deleted|changed your goal|updated your goal|applied carb taper/i
-    .test(value);
 }
 
 function validationIssueCodes(issues: OutputValidationIssue[]): string[] {
@@ -891,10 +1322,186 @@ function readOnlyBoundaryMessage(language: "zh" | "en"): string {
     : "I cannot directly write records, delete records, change goals, or apply strategies. Use the normal confirmed UI for those actions; I can explain what to check and what to do next.";
 }
 
-function plannerClarificationMessage(language: "zh" | "en"): string {
+function plannerClarificationMessage(
+  language: "zh" | "en",
+  decision: ChatDecisionV2 | null,
+): string {
+  const options = decision?.clarification?.options ?? [];
+  if (options.length === 0) {
+    return language === "zh"
+      ? "当前请求存在多个可能目标，请补充你希望获得的结果。"
+      : "This request has more than one plausible goal. Please clarify the result you want.";
+  }
+  const labels = options.map((option) =>
+    language === "zh" ? option.label_zh : option.label_en
+  ).join(language === "zh" ? "、" : ", ");
   return language === "zh"
-    ? "请说明你希望我回答问题、估算并生成食物草稿，还是生成训练草稿。"
-    : "Please say whether you want an answer, a food estimate and draft, or a workout draft.";
+    ? `请选择：${labels}。`
+    : `Please choose: ${labels}.`;
+}
+
+function pendingClarificationFromDecision(
+  decision: ChatDecisionV2 | null,
+  question: string,
+): PendingClarificationPayload | null {
+  const clarification = decision?.clarification;
+  if (clarification === null || clarification === undefined) return null;
+  return {
+    schema_version: "ai_chat_clarification.v2",
+    kind: clarification.kind,
+    question,
+    options: clarification.options.map((option) => ({
+      ...option,
+      resulting_workflow: option.resulting_workflow as WorkflowType,
+    })),
+    missing_dimensions: clarification.missing_dimensions,
+    attachment_policy: clarification.attachment_policy,
+    attempt: 1,
+  };
+}
+
+function pendingClarificationFromProvider(
+  needsClarification: boolean,
+  clarificationQuestions: string[],
+  request: GatewayRequest,
+  question: string,
+): PendingClarificationPayload | null {
+  if (!needsClarification || clarificationQuestions.length === 0) return null;
+  const resultingOutput = request.expectedOutput === "auto"
+    ? "text"
+    : request.expectedOutput;
+  return {
+    schema_version: "ai_chat_clarification.v2",
+    kind: "missing_business_fields",
+    question,
+    options: [{
+      id: "continue",
+      label_zh: "补充信息",
+      label_en: "Provide details",
+      resulting_output: resultingOutput,
+      resulting_workflow: request.workflowType,
+    }],
+    missing_dimensions: request.phase5Context?.missing_dimensions.length
+      ? request.phase5Context.missing_dimensions
+      : clarificationQuestions.map((_, index) => `business_field_${index + 1}`),
+    attachment_policy: request.attachments.length > 0
+      ? "runtime_rebind_available"
+      : "none",
+    attempt: 1,
+  };
+}
+
+function gatewayClarification(
+  clarificationId: string | null,
+  decision: ChatDecisionV2 | null,
+  question: string,
+  language: "zh" | "en",
+): GatewayClarification | null {
+  const clarification = decision?.clarification;
+  if (
+    clarificationId === null || clarification === null ||
+    clarification === undefined
+  ) return null;
+  return {
+    clarification_id: clarificationId,
+    schema_version: "ai_chat_clarification.v2",
+    kind: clarification.kind,
+    options: clarification.options.map((option) => ({
+      id: option.id,
+      label: language === "zh" ? option.label_zh : option.label_en,
+      label_zh: option.label_zh,
+      label_en: option.label_en,
+      resulting_output: option.resulting_output,
+    })),
+    question,
+    missing_dimensions: clarification.missing_dimensions,
+    attachment_policy: clarification.attachment_policy,
+    attempt: 1,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function gatewayClarificationFromPending(
+  clarificationId: string | null,
+  pending: PendingClarificationPayload | null,
+  language: "zh" | "en",
+): GatewayClarification | null {
+  if (clarificationId === null || pending === null) return null;
+  return {
+    clarification_id: clarificationId,
+    schema_version: "ai_chat_clarification.v2",
+    kind: pending.kind,
+    options: pending.options.flatMap((option) =>
+      option.id === "continue" ? [] : [{
+        id: option.id,
+        label: language === "zh" ? option.label_zh : option.label_en,
+        label_zh: option.label_zh,
+        label_en: option.label_en,
+        resulting_output: option.resulting_output,
+      }]
+    ),
+    question: pending.question,
+    missing_dimensions: pending.missing_dimensions,
+    attachment_policy: pending.attachment_policy,
+    attempt: pending.attempt,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function clarificationFromSnapshot(
+  value: unknown,
+): GatewayClarification | null {
+  const row = recordValue(value);
+  const options = Array.isArray(row.options)
+    ? row.options.map(recordValue).flatMap((option) => {
+      if (
+        option.id !== "answer" && option.id !== "food_draft" &&
+        option.id !== "workout_draft"
+      ) return [];
+      return [{
+        id: option.id as "answer" | "food_draft" | "workout_draft",
+        label: String(option.label ?? option.label_zh ?? ""),
+        label_zh: String(option.label_zh ?? ""),
+        label_en: String(option.label_en ?? ""),
+        resulting_output: String(option.resulting_output ?? "text") as
+          | "text"
+          | "food_draft"
+          | "workout_draft",
+      }];
+    })
+    : [];
+  if (
+    typeof (row.clarification_id ?? row.id) !== "string" ||
+    row.schema_version !== "ai_chat_clarification.v2" ||
+    (row.kind !== "intent_selection" &&
+      row.kind !== "missing_business_fields") ||
+    (row.kind === "intent_selection" && options.length === 0)
+  ) return null;
+  const attachmentPolicy = String(row.attachment_policy ?? "none");
+  if (
+    ![
+      "none",
+      "consume_current",
+      "runtime_rebind_available",
+      "resend_required",
+    ].includes(attachmentPolicy)
+  ) return null;
+  return {
+    clarification_id: String(row.clarification_id ?? row.id),
+    schema_version: "ai_chat_clarification.v2",
+    kind: row.kind,
+    question: typeof row.question === "string" ? row.question : "",
+    options,
+    missing_dimensions: Array.isArray(row.missing_dimensions)
+      ? row.missing_dimensions.filter((item): item is string =>
+        typeof item === "string"
+      )
+      : [],
+    attachment_policy:
+      attachmentPolicy as GatewayClarification["attachment_policy"],
+    attempt: typeof row.attempt === "number" ? row.attempt : 1,
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
+  };
 }
 
 async function updateDebugSummary(
@@ -1007,6 +1614,17 @@ async function updateDebugSummary(
             : "not_applicable",
           semantic_issue_codes_json: outputTelemetry.validationIssueCodes,
           final_action: evidence.user_final_action,
+          decision_version: outputTelemetry.decisionVersion,
+          decision_source: outputTelemetry.decisionSource,
+          decision_reason: outputTelemetry.decisionReason,
+          decision_shadow_mismatch: outputTelemetry.decisionShadowMismatch,
+          selected_capability: outputTelemetry.selectedCapability,
+          clarification_id: outputTelemetry.clarificationId,
+          clarification_state: outputTelemetry.clarificationState,
+          clarification_attempt: outputTelemetry.clarificationAttempt,
+          attachment_policy: outputTelemetry.attachmentPolicy,
+          failure_class: outputTelemetry.failureClass,
+          write_guard_reason: outputTelemetry.writeGuardReason,
         }),
       },
     );
@@ -1108,6 +1726,17 @@ async function writeGatewayFailureLog(
           : "not_applicable",
         semantic_issue_codes_json: params.telemetry.validationIssueCodes,
         final_action: "none",
+        decision_version: params.telemetry.decisionVersion,
+        decision_source: params.telemetry.decisionSource,
+        decision_reason: params.telemetry.decisionReason,
+        decision_shadow_mismatch: params.telemetry.decisionShadowMismatch,
+        selected_capability: params.telemetry.selectedCapability,
+        clarification_id: params.telemetry.clarificationId,
+        clarification_state: params.telemetry.clarificationState,
+        clarification_attempt: params.telemetry.clarificationAttempt,
+        attachment_policy: params.telemetry.attachmentPolicy,
+        failure_class: params.code,
+        write_guard_reason: params.telemetry.writeGuardReason,
         planner_latency_ms: params.stageTelemetry.plannerLatencyMs,
         retrieval_latency_ms: params.stageTelemetry.retrievalLatencyMs,
         correction_latency_ms: params.stageTelemetry.correctionLatencyMs,
@@ -1231,6 +1860,9 @@ function toGatewayHttpError(error: unknown): GatewayHttpError {
   if (error instanceof OutputContractError) {
     return new GatewayHttpError("provider_output_invalid", 502);
   }
+  if (error instanceof ChatDecisionPlanningError) {
+    return new GatewayHttpError(error.code, 502);
+  }
   return new GatewayHttpError("provider_failure", 502);
 }
 
@@ -1244,6 +1876,17 @@ function defaultOutputTelemetry(): OutputContractTelemetry {
     correctionAttemptCount: 0,
     finalValidationStatus: "not_attempted",
     providerCompletionStatus: "not_called",
+    decisionVersion: null,
+    decisionSource: null,
+    decisionReason: null,
+    decisionShadowMismatch: null,
+    selectedCapability: null,
+    clarificationId: null,
+    clarificationState: null,
+    clarificationAttempt: null,
+    attachmentPolicy: null,
+    failureClass: null,
+    writeGuardReason: null,
   };
 }
 
@@ -1285,6 +1928,7 @@ async function updateOutputContractTelemetry(
           correction_attempt_count: telemetry.correctionAttemptCount,
           final_validation_status: telemetry.finalValidationStatus,
           provider_completion_status: telemetry.providerCompletionStatus,
+          decision_shadow_mismatch: telemetry.decisionShadowMismatch,
         }),
       },
     );
@@ -1360,4 +2004,12 @@ function imageOnlyMessage(request: GatewayRequest): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim() !== ""))];
+}
+
+function optionalStringField(value: unknown, key: string): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const raw = (value as Record<string, unknown>)[key];
+  return typeof raw === "string" && raw.trim() !== "" ? raw : null;
 }

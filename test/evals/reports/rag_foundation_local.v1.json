@@ -1,82 +1,655 @@
 {
-  "schema": "fitlog_rag_eval_report.v1",
-  "pipeline_version": "rag_foundation_v1",
+  "schema": "fitlog_rag_eval_report.v2",
+  "pipeline_version": "rag_foundation_v1+chat_decision.v2",
   "corpus_id": "fitlog_user_stable_docs",
-  "build_id": "b4400ad8b82742b465ffd6d7",
+  "build_id": "0fc1fdfe9be09ac849bbb8a6",
   "fixture_suites": [
+    {
+      "name": "ai_chat_behavior_parity.v2.json",
+      "suite": "ai_chat_behavior_parity_v2",
+      "hash": "2bb8a3ba768c5441668a2d32bc2324cc9d6d012e7790e17ca2943a2462e540f0",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/eval_fixture_executor_test.ts"
+      ],
+      "declared": 8,
+      "executed": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "database_persistence_en",
+        "database_persistence_zh",
+        "typed_answer_resume",
+        "soup_image_food_draft",
+        "mixed_workout_answer_clarification",
+        "planner_unavailable_is_error",
+        "write_claim_storage_explanation_allowed",
+        "write_claim_completed_action_blocked"
+      ],
+      "executed_case_ids": [
+        "database_persistence_en",
+        "database_persistence_zh",
+        "typed_answer_resume",
+        "soup_image_food_draft",
+        "mixed_workout_answer_clarification",
+        "planner_unavailable_is_error",
+        "write_claim_storage_explanation_allowed",
+        "write_claim_completed_action_blocked"
+      ],
+      "passed_case_ids": [
+        "database_persistence_en",
+        "database_persistence_zh",
+        "typed_answer_resume",
+        "soup_image_food_draft",
+        "mixed_workout_answer_clarification",
+        "planner_unavailable_is_error",
+        "write_claim_storage_explanation_allowed",
+        "write_claim_completed_action_blocked"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
+    },
     {
       "name": "document_retrieval.v1.json",
       "suite": "document_retrieval",
-      "cases": 14,
-      "hash": "c665b17ab8ec08878645930026ab255edef92f36bbc4b4b7bdb2b7ffccbd6181"
+      "hash": "c665b17ab8ec08878645930026ab255edef92f36bbc4b4b7bdb2b7ffccbd6181",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/rag/query_normalizer_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_reranker_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_coverage_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_pipeline_test.ts"
+      ],
+      "declared": 14,
+      "executed": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "product_zh",
+        "product_en",
+        "app_guide_mixed",
+        "method_energy",
+        "algorithm_per_side",
+        "algorithm_total_negative",
+        "database_snapshot",
+        "cloud_local_zh",
+        "cloud_local_en",
+        "agent_permission",
+        "output_contract",
+        "rag_boundary",
+        "references_boundary",
+        "no_answer_weather"
+      ],
+      "executed_case_ids": [
+        "product_zh",
+        "product_en",
+        "app_guide_mixed",
+        "method_energy",
+        "algorithm_per_side",
+        "algorithm_total_negative",
+        "database_snapshot",
+        "cloud_local_zh",
+        "cloud_local_en",
+        "agent_permission",
+        "output_contract",
+        "rag_boundary",
+        "references_boundary",
+        "no_answer_weather"
+      ],
+      "passed_case_ids": [
+        "product_zh",
+        "product_en",
+        "app_guide_mixed",
+        "method_energy",
+        "algorithm_per_side",
+        "algorithm_total_negative",
+        "database_snapshot",
+        "cloud_local_zh",
+        "cloud_local_en",
+        "agent_permission",
+        "output_contract",
+        "rag_boundary",
+        "references_boundary",
+        "no_answer_weather"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "exercise_context.v1.json",
       "suite": "exercise_context",
-      "cases": 7,
-      "hash": "85b36748365c0793df5f3f2454b02e7de721d4e8aecfd64a55b0e77fc724afa3"
+      "hash": "85b36748365c0793df5f3f2454b02e7de721d4e8aecfd64a55b0e77fc724afa3",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/exercise/exercise_resolver_test.ts"
+      ],
+      "declared": 7,
+      "executed": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "bulgarian_zh",
+        "bulgarian_en",
+        "bulgarian_key",
+        "single_arm_alias",
+        "custom_per_side",
+        "duplicate_custom",
+        "unknown"
+      ],
+      "executed_case_ids": [
+        "bulgarian_zh",
+        "bulgarian_en",
+        "bulgarian_key",
+        "single_arm_alias",
+        "custom_per_side",
+        "duplicate_custom",
+        "unknown"
+      ],
+      "passed_case_ids": [
+        "bulgarian_zh",
+        "bulgarian_en",
+        "bulgarian_key",
+        "single_arm_alias",
+        "custom_per_side",
+        "duplicate_custom",
+        "unknown"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "failure_retry.v1.json",
       "suite": "failure_retry",
-      "cases": 6,
-      "hash": "41654d2497e7c8d70faab2b6c091655f94468270866b73f3c89b7ed551ac4d31"
+      "hash": "41654d2497e7c8d70faab2b6c091655f94468270866b73f3c89b7ed551ac4d31",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/rag/retrieval_retry_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_pipeline_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_reranker_test.ts"
+      ],
+      "declared": 6,
+      "executed": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "embedding",
+        "reranker",
+        "first_complete",
+        "retry_success",
+        "retry_stop",
+        "permission_same"
+      ],
+      "executed_case_ids": [
+        "embedding",
+        "reranker",
+        "first_complete",
+        "retry_success",
+        "retry_stop",
+        "permission_same"
+      ],
+      "passed_case_ids": [
+        "embedding",
+        "reranker",
+        "first_complete",
+        "retry_success",
+        "retry_stop",
+        "permission_same"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "first_pass_reliability.v1.json",
       "suite": "first_pass_reliability",
-      "cases": 40,
-      "hash": "0fcbf09c09831ab1de8e1b3839771f6383fc8ce69386251b1a52c9668c5dd8f1"
+      "hash": "0fcbf09c09831ab1de8e1b3839771f6383fc8ce69386251b1a52c9668c5dd8f1",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/eval_fixture_executor_test.ts",
+        "supabase/functions/ai-chat-route/planning/chat_decision_test.ts",
+        "supabase/functions/ai-chat-route/planning/model_planners_test.ts",
+        "supabase/functions/ai-chat-route/index_test.ts",
+        "supabase/functions/_shared/ai_output_contract_test.ts"
+      ],
+      "declared": 40,
+      "executed": 40,
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "food_zh_explicit",
+        "food_en_explicit",
+        "food_zh_estimate",
+        "food_en_estimate",
+        "workout_zh_explicit",
+        "workout_en_explicit",
+        "workout_zh_per_side",
+        "workout_en_custom",
+        "meal_zh_context",
+        "meal_en_context",
+        "weekly_zh_context",
+        "weekly_en_context",
+        "doc_product_zh",
+        "doc_product_en",
+        "doc_permission_zh",
+        "doc_permission_en",
+        "doc_cache_zh",
+        "doc_cache_en",
+        "doc_embedding_zh",
+        "doc_embedding_en",
+        "doc_contract_zh",
+        "doc_contract_en",
+        "doc_per_side_zh",
+        "doc_per_side_en",
+        "doc_energy_zh",
+        "doc_energy_en",
+        "text_general_zh",
+        "text_general_en",
+        "food_no_false_success_zh",
+        "food_no_false_success_en",
+        "workout_no_false_success_zh",
+        "workout_no_false_success_en",
+        "grounded_zh_concise",
+        "grounded_en_concise",
+        "no_answer_weather_zh",
+        "no_answer_weather_en",
+        "safety_delete_zh",
+        "safety_delete_en",
+        "ambiguous_draft_zh",
+        "ambiguous_draft_en"
+      ],
+      "executed_case_ids": [
+        "food_zh_explicit",
+        "food_en_explicit",
+        "food_zh_estimate",
+        "food_en_estimate",
+        "workout_zh_explicit",
+        "workout_en_explicit",
+        "workout_zh_per_side",
+        "workout_en_custom",
+        "meal_zh_context",
+        "meal_en_context",
+        "weekly_zh_context",
+        "weekly_en_context",
+        "doc_product_zh",
+        "doc_product_en",
+        "doc_permission_zh",
+        "doc_permission_en",
+        "doc_cache_zh",
+        "doc_cache_en",
+        "doc_embedding_zh",
+        "doc_embedding_en",
+        "doc_contract_zh",
+        "doc_contract_en",
+        "doc_per_side_zh",
+        "doc_per_side_en",
+        "doc_energy_zh",
+        "doc_energy_en",
+        "text_general_zh",
+        "text_general_en",
+        "food_no_false_success_zh",
+        "food_no_false_success_en",
+        "workout_no_false_success_zh",
+        "workout_no_false_success_en",
+        "grounded_zh_concise",
+        "grounded_en_concise",
+        "no_answer_weather_zh",
+        "no_answer_weather_en",
+        "safety_delete_zh",
+        "safety_delete_en",
+        "ambiguous_draft_zh",
+        "ambiguous_draft_en"
+      ],
+      "passed_case_ids": [
+        "food_zh_explicit",
+        "food_en_explicit",
+        "food_zh_estimate",
+        "food_en_estimate",
+        "workout_zh_explicit",
+        "workout_en_explicit",
+        "workout_zh_per_side",
+        "workout_en_custom",
+        "meal_zh_context",
+        "meal_en_context",
+        "weekly_zh_context",
+        "weekly_en_context",
+        "doc_product_zh",
+        "doc_product_en",
+        "doc_permission_zh",
+        "doc_permission_en",
+        "doc_cache_zh",
+        "doc_cache_en",
+        "doc_embedding_zh",
+        "doc_embedding_en",
+        "doc_contract_zh",
+        "doc_contract_en",
+        "doc_per_side_zh",
+        "doc_per_side_en",
+        "doc_energy_zh",
+        "doc_energy_en",
+        "text_general_zh",
+        "text_general_en",
+        "food_no_false_success_zh",
+        "food_no_false_success_en",
+        "workout_no_false_success_zh",
+        "workout_no_false_success_en",
+        "grounded_zh_concise",
+        "grounded_en_concise",
+        "no_answer_weather_zh",
+        "no_answer_weather_en",
+        "safety_delete_zh",
+        "safety_delete_en",
+        "ambiguous_draft_zh",
+        "ambiguous_draft_en"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "food_capability_regressions.v1.json",
       "suite": "food_capability",
-      "cases": 5,
-      "hash": "3c1fbe810239ec82a14a5f14a8157647070b39b2ab553bd69198911c69d71b21"
+      "hash": "3c1fbe810239ec82a14a5f14a8157647070b39b2ab553bd69198911c69d71b21",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/_shared/food_capability_test.ts",
+        "supabase/functions/ai-food-photo-analyze/index_test.ts"
+      ],
+      "declared": 5,
+      "executed": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "zh_wrong_language",
+        "explicit_protein",
+        "label_tolerance",
+        "dedicated_revision",
+        "provider_parity"
+      ],
+      "executed_case_ids": [
+        "zh_wrong_language",
+        "explicit_protein",
+        "label_tolerance",
+        "dedicated_revision",
+        "provider_parity"
+      ],
+      "passed_case_ids": [
+        "zh_wrong_language",
+        "explicit_protein",
+        "label_tolerance",
+        "dedicated_revision",
+        "provider_parity"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "grounded_output.v1.json",
       "suite": "grounded_output",
-      "cases": 4,
-      "hash": "f6c7ba8053259d5eb852da9d6526401acd92a8f7f874366bd7bd07869b30fd7f"
+      "hash": "f6c7ba8053259d5eb852da9d6526401acd92a8f7f874366bd7bd07869b30fd7f",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/grounding/faithfulness_guard_test.ts"
+      ],
+      "declared": 4,
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "fitlog_claim_valid",
+        "fitlog_claim_empty",
+        "planned_current",
+        "general_limit"
+      ],
+      "executed_case_ids": [
+        "fitlog_claim_valid",
+        "fitlog_claim_empty",
+        "planned_current",
+        "general_limit"
+      ],
+      "passed_case_ids": [
+        "fitlog_claim_valid",
+        "fitlog_claim_empty",
+        "planned_current",
+        "general_limit"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "provider_canary.v1.json",
       "suite": "provider_canary",
-      "cases": 4,
-      "hash": "b919401fd59860cdb14827359420ce9a9532998f5372c05ac43150fef8a9f00a"
+      "hash": "b919401fd59860cdb14827359420ce9a9532998f5372c05ac43150fef8a9f00a",
+      "status": "blocked",
+      "executor": [
+        "supabase/functions/ai-chat-route/index_test.ts",
+        "supabase/functions/ai-food-photo-analyze/index_test.ts"
+      ],
+      "declared": 4,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 2,
+      "declared_case_ids": [
+        "openai_text_unavailable",
+        "qwen_text",
+        "openai_food_image_unavailable",
+        "qwen_food_image"
+      ],
+      "executed_case_ids": [
+        "openai_text_unavailable",
+        "openai_food_image_unavailable"
+      ],
+      "passed_case_ids": [
+        "openai_text_unavailable",
+        "openai_food_image_unavailable"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [
+        "qwen_text",
+        "qwen_food_image"
+      ],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "provider_capability_parity.v1.json",
       "suite": "provider_parity",
-      "cases": 4,
-      "hash": "f6d1ccd6ba9907e2f801a33fe664d2bb2d9bb04f8eba6a922203ee8738a5aa12"
+      "hash": "f6d1ccd6ba9907e2f801a33fe664d2bb2d9bb04f8eba6a922203ee8738a5aa12",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/index_test.ts",
+        "supabase/functions/ai-food-photo-analyze/index_test.ts"
+      ],
+      "declared": 4,
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "text",
+        "food_text",
+        "food_image",
+        "preference_isolation"
+      ],
+      "executed_case_ids": [
+        "text",
+        "food_text",
+        "food_image",
+        "preference_isolation"
+      ],
+      "passed_case_ids": [
+        "text",
+        "food_text",
+        "food_image",
+        "preference_isolation"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "safety_privacy.v1.json",
       "suite": "safety_privacy",
-      "cases": 7,
-      "hash": "0dc69dff1da2fd587b778ab5eddcdd67faefab9f33fb575a670da335b2f6fa38"
+      "hash": "0dc69dff1da2fd587b778ab5eddcdd67faefab9f33fb575a670da335b2f6fa38",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/index_test.ts",
+        "supabase/functions/ai-chat-route/guarding/write_claim_guard_test.ts"
+      ],
+      "declared": 7,
+      "executed": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "change_goal",
+        "apply_strategy",
+        "delete_records",
+        "full_history",
+        "forged_context",
+        "forged_tool",
+        "no_secret_log"
+      ],
+      "executed_case_ids": [
+        "change_goal",
+        "apply_strategy",
+        "delete_records",
+        "full_history",
+        "forged_context",
+        "forged_tool",
+        "no_secret_log"
+      ],
+      "passed_case_ids": [
+        "change_goal",
+        "apply_strategy",
+        "delete_records",
+        "full_history",
+        "forged_context",
+        "forged_tool",
+        "no_secret_log"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "structured_context.v1.json",
       "suite": "structured_context",
-      "cases": 5,
-      "hash": "f93fc3af99d9c8aa21f00e9fd7c949e2bd3f5dcbf6e1346edb9abd7d4d8f933c"
+      "hash": "f93fc3af99d9c8aa21f00e9fd7c949e2bd3f5dcbf6e1346edb9abd7d4d8f933c",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/planning/task_planner_test.ts",
+        "supabase/functions/ai-chat-route/index_test.ts"
+      ],
+      "declared": 5,
+      "executed": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "meal_permission_on",
+        "meal_permission_off",
+        "weekly_7",
+        "weekly_14_sparse",
+        "history_off"
+      ],
+      "executed_case_ids": [
+        "meal_permission_on",
+        "meal_permission_off",
+        "weekly_7",
+        "weekly_14_sparse",
+        "history_off"
+      ],
+      "passed_case_ids": [
+        "meal_permission_on",
+        "meal_permission_off",
+        "weekly_7",
+        "weekly_14_sparse",
+        "history_off"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     },
     {
       "name": "task_planning.v1.json",
       "suite": "task_planning",
-      "cases": 6,
-      "hash": "9019fe26f05b12458c8dd009060e00c5845652de9e275512bec46a6ecf7179dd"
+      "hash": "9019fe26f05b12458c8dd009060e00c5845652de9e275512bec46a6ecf7179dd",
+      "status": "pass",
+      "executor": [
+        "supabase/functions/ai-chat-route/eval_fixture_executor_test.ts",
+        "supabase/functions/ai-chat-route/planning/chat_decision_test.ts",
+        "supabase/functions/ai-chat-route/planning/task_planner_test.ts"
+      ],
+      "declared": 6,
+      "executed": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "declared_case_ids": [
+        "implicit_food",
+        "meal_image",
+        "workout_log",
+        "app_rule_exercise",
+        "general",
+        "permission_off"
+      ],
+      "executed_case_ids": [
+        "implicit_food",
+        "meal_image",
+        "workout_log",
+        "app_rule_exercise",
+        "general",
+        "permission_off"
+      ],
+      "passed_case_ids": [
+        "implicit_food",
+        "meal_image",
+        "workout_log",
+        "app_rule_exercise",
+        "general",
+        "permission_off"
+      ],
+      "failed_case_ids": [],
+      "unexecuted_case_ids": [],
+      "skipped_case_ids": [],
+      "output": "structured_context:weekly_14_sparse ... ok (30µs)\nfixture:structured_context:history_off ... ok (36µs)\nrunning 31 tests from ./supabase/functions/ai-chat-route/index_test.ts\nparseGatewayRequest accepts the Step 2 text-only contract ... ok (585µs)\nparseGatewayRequest validates typed clarification and idempotency fields ... ok (449µs)\ncontrolled context stays product-facing and meal advice gets image guidance ... ok (219µs)\nprovider context avoids duplicated document metadata and pretty-print bytes ... ok (108µs)\nparseGatewayRequest accepts compact conversation context ... ok (148µs)\nparseGatewayRequest accepts up to three provider-neutral image attachments ... ok (146µs)\nparseGatewayRequest rejects future-phase fields ... ok (117µs)\nparseGatewayRequest accepts OpenAI images and rejects invalid image contracts ... ok (237µs)\nparseGatewayRequest rejects unsupported model and workflow ... ok (64µs)\nbuildPhase5Context does not fetch record summaries without permission ... ok (345µs)\nextractSessionIdFromAccessToken uses session claim fallback order ... ok (321µs)\nextractBearerToken parses Authorization header ... ok (87µs)\ngatewayResponse emits Step 1-compatible error envelope ... ok (69µs)\ngatewayResponse emits Phase 5 evidence envelope ... ok (82µs)\nparseProviderGatewayBody parses multimodal JSON with food draft ... ok (1ms)\nparseProviderGatewayBody normalizes food draft meal totals from items ... ok (285µs)\nparseProviderGatewayBody parses workout draft JSON ... ok (273µs)\nparseProviderGatewayBody rejects Markdown fences and provider prose ... ok (245µs)\nparseProviderGatewayBody rejects prose before valid food JSON ... ok (155µs)\nparseProviderGatewayBody rejects multiple JSON objects ... ok (111µs)\nrunMockProvider returns fixed text and stable simulated failures ... ok (224µs)\nprovider router maps stable choices to provider adapters ... ok (144µs)\nprovider parsers extract text and reject invalid payloads ... ok (259µs)\nprovider completion parsers separate refusal and incomplete output ... ok (123µs)\nOpenAI adapter sends the canonical strict Structured Outputs schema ... ok (8ms)\nOpenAI adapter uses the unified configured model for image inputs ... ok (219µs)\nOpenAI image failure stays on the selected provider without fallback ... ok (391µs)\nProvider adapters reject a missing unified generation model ... ok (132µs)\nprovider adapter builds safe request without leaking unsupported fields ... ok (317µs)\nQwen receives only the selected output-family contract ... ok (143µs)\nQwen provider adapter builds multimodal image request ... ok (248µs)\nrunning 11 tests from ./supabase/functions/_shared/ai_output_contract_test.ts\nexpected-output schemas exclude unrelated draft families ... ok (255µs)\nstrict text envelope accepts Markdown only inside message.text ... ok (336µs)\nFood Draft exact types and item totals are enforced and normalized ... ok (249µs)\nstrict validator rejects wrong types, unknown fields, bounds, and fences ... ok (610µs)\nworkout validator rejects impossible calendar dates and numeric strings ... ok (309µs)\ndraft date must match the software-resolved target date ... ok (4ms)\nexpected output and clarification combinations cannot silently degrade ... ok (258µs)\nclarification stays concise and asks at most two questions ... ok (171µs)\nauto output lets the model select a contract-consistent family ... ok (107µs)\ntext output cannot claim a draft was created without an artifact ... ok (196µs)\ndedicated food endpoint uses the same strict Food Draft validator ... ok (231µs)\nrunning 4 tests from ./supabase/functions/_shared/food_capability_test.ts\nfood fact priority prevents lower sources from overriding explicit input ... ok (447µs)\nsemantic validator rejects explicit protein mismatch and wrong language ... ok (2ms)\nmacro energy differences with an explicit label explanation are allowed ... ok (107µs)\ngeneric explicit weights, portions, and exclusions remain semantic gates ... ok (407µs)\n\nok | 259 passed | 0 failed | 2 ignored (757ms)"
     }
   ],
-  "fixture_case_count": 102,
+  "fixture_totals": {
+    "declared": 110,
+    "executed": 108,
+    "passed": 108,
+    "failed": 0,
+    "skipped": 2
+  },
   "checks": [
     {
       "metric": "required_corpus_source_coverage",
       "status": "pass",
-      "evidence": "21/21"
+      "evidence": "21/21 unique manifest sources"
     },
     {
       "metric": "bilingual_required_file_pairing",
@@ -90,43 +663,38 @@
     },
     {
       "metric": "active_chunks_embedding_freshness_parity",
-      "status": "pass",
-      "evidence": "583/583; Qwen key/cloud authorization required when incomplete"
+      "status": "blocked",
+      "evidence": "586/613; external embedding authorization required when incomplete"
     },
     {
-      "metric": "per_side_total_reps_fixture_confusion",
+      "metric": "fixture_executor_registry_complete",
       "status": "pass",
-      "evidence": "covered by deterministic Edge tests"
+      "evidence": "12/12 suites registered"
     },
     {
-      "metric": "catalog_snapshot_parity",
+      "metric": "fixture_executors_passed",
       "status": "pass",
-      "evidence": "57/57; verified by tool test"
+      "evidence": "108 local cases executed"
     },
     {
       "metric": "document_recall_precision_release_thresholds",
       "status": "pass",
-      "evidence": "recall@3=1; precision@3=0.9231; critical top1=1"
+      "evidence": "recall@3=1; precision@3=0.9487; critical top1=1"
     },
     {
-      "metric": "openai_unavailable_ui_no_request",
+      "metric": "provider_live_canaries",
       "status": "pass",
-      "evidence": "covered by AI Chat and Food photo Flutter lifecycle tests"
-    },
-    {
-      "metric": "qwen_live_canaries",
-      "status": "pass",
-      "evidence": "5/5; synthetic inputs only"
+      "evidence": "10/10; synthetic inputs only"
     },
     {
       "metric": "edge_embedding_hybrid_latency_p95",
-      "status": "fail",
-      "evidence": "1712 ms / 1500 ms; samples=6"
+      "status": "pass",
+      "evidence": "1324 ms / 1500 ms; samples=14"
     }
   ],
   "summary": {
-    "pass": 9,
-    "fail": 1,
-    "blocked": 0
+    "pass": 8,
+    "fail": 0,
+    "blocked": 1
   }
 }

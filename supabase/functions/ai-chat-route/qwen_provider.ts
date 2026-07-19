@@ -28,7 +28,7 @@ export function createQwenProvider(
   const model = params.model.trim();
   const baseUrl = params.baseUrl.trim();
   if (apiKey === "" || model === "" || baseUrl === "") {
-    throw new ProviderError("provider_failure");
+    throw new ProviderError("provider_unavailable");
   }
 
   return {
@@ -234,7 +234,8 @@ function multimodalUserPrompt(request: GatewayRequest): string {
     ...outputFamilyUserLines(request),
     "Use the image only as evidence for the selected output family; do not change output_type because an image is attached.",
     "If the user asks for meal decision support from a screenshot/photo, set output_type to text, keep draft null, and put the recommendation in message.text.",
-    "If the image is unclear, set output_type to clarification, needs_clarification true, draft null, and include short clarification_questions.",
+    "An unclear image alone is not a reason to clarify when the selected output family can be completed from clear user text. Use the text, preserve uncertainty in notes, and do not reopen intent selection.",
+    "Clarify only when required business fields are still missing after using both the text and image; then set output_type to clarification, needs_clarification true, draft null, and include short clarification_questions.",
     "Use finite non-negative numbers in drafts. Do not claim the draft was saved.",
     `Workflow hint: ${request.workflowType}`,
     `Default date: ${selectedDate}`,

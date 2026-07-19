@@ -1,6 +1,7 @@
 import 'package:supabase/supabase.dart' as supabase;
 
 import '../../domain/models/ai_chat_message.dart';
+import '../../domain/models/ai_chat_clarification.dart';
 import '../../domain/models/ai_chat_session.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/ai_gateway_response.dart';
@@ -18,6 +19,11 @@ abstract class AiChatRepository {
   });
 
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request);
+
+  Future<AiChatClarification?> loadActiveClarification({
+    required String accountId,
+    required String sessionId,
+  }) async => null;
 
   Future<void> archiveSession(String sessionId, {required bool archived});
 
@@ -127,6 +133,31 @@ class SupabaseAiChatRepository extends AiChatRepository {
   @override
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request) {
     return gatewayClient.send(request);
+  }
+
+  @override
+  Future<AiChatClarification?> loadActiveClarification({
+    required String accountId,
+    required String sessionId,
+  }) async {
+    if (accountId.isEmpty || sessionId.isEmpty) return null;
+    try {
+      final rows = await client
+          .from('ai_chat_clarifications')
+          .select()
+          .eq('account_id', accountId)
+          .eq('session_id', sessionId)
+          .inFilter('state', const <String>['pending', 'resolving'])
+          .order('created_at', ascending: false)
+          .limit(1);
+      if (rows.isEmpty) return null;
+      final clarification = AiChatClarification.fromJson(
+        Map<String, dynamic>.from(rows.first),
+      );
+      return clarification.isActive ? clarification : null;
+    } catch (error) {
+      throw _aiChatExceptionFor('ai_chat_clarification_load_failed', error);
+    }
   }
 
   @override

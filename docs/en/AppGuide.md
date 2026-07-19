@@ -134,6 +134,8 @@ Every accepted provider reply crosses the validated output boundary described in
 
 Ordinary AI Chat fixes text or draft only for high-confidence requests; when the Gateway cannot decide, the model uses natural language, images, and same-chat context to select a bounded result type. Explicit entries such as Add Food do not participate in this inference. Regardless of selection source, a structurally or semantically inconsistent response is never shown as success.
 
+When intent really needs clarification, the assistant shows typed option buttons. Tapping one continues the original turn once; it is not submitted as a new unrelated question. Free-text labels such as “answer the question” are interpreted as an option only while that session has a matching pending clarification. A planner/provider failure instead shows a retryable system error. If the pending task needs a prior image that is no longer available after history reload, restart, local-data clearing, logout, or account switch, the app asks the user to attach it again rather than looping or pretending to have seen it.
+
 When a valid Food Draft or Workout Draft is returned, the assistant shows a native artifact card with `Review and confirm` / `查看并确认`:
 
 - The artifact card shows the validated target date. A supported date written in the Chat request overrides the currently selected date; no date expression defaults to the selected date, while an ambiguous date asks for clarification instead of guessing.

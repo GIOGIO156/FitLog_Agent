@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fitlog_local/data/repositories/ai_chat_repository.dart';
 import 'package:fitlog_local/data/repositories/phase2_repository_exception.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
+import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
@@ -408,6 +409,329 @@ void main() {
 
     expect(replaced, isTrue);
   });
+
+  test('typed clarification consumes one runtime attachment lease', () async {
+    final repository = _FakeAiChatRepository();
+    var sendCount = 0;
+    const clarification = AiChatClarification(
+      id: '00000000-0000-4000-8000-000000000002',
+      kind: AiChatClarificationKind.intentSelection,
+      options: <AiChatClarificationOption>[
+        AiChatClarificationOption(
+          id: 'food_draft',
+          labelZh: '生成食物草稿',
+          labelEn: 'Create a food draft',
+        ),
+      ],
+      missingDimensions: <String>['requested_output_family'],
+      attachmentPolicy: AiChatAttachmentPolicy.runtimeRebindAvailable,
+    );
+    repository.sendHandler = (request) async {
+      sendCount += 1;
+      repository.sessions = <AiChatSession>[_session('session_1', 'Soup')];
+      if (sendCount == 1) {
+        repository.activeClarification = clarification;
+        repository.messages['session_1'] = <AiChatMessage>[
+          _message(
+            'u1',
+            'session_1',
+            1,
+            AiChatMessageRole.user,
+            request.messageText,
+          ),
+          _message(
+            'a1',
+            'session_1',
+            2,
+            AiChatMessageRole.assistant,
+            '请选择结果。',
+            finalAnswerJson: <String, dynamic>{
+              'clarification': clarification.toJson(),
+            },
+          ),
+        ];
+        return const AiGatewayResponse(
+          sessionId: 'session_1',
+          assistantMessageId: 'a1',
+          messageText: '请选择结果。',
+          outputType: AiGatewayOutputType.clarification,
+          needsClarification: true,
+          clarification: clarification,
+        );
+      }
+      repository.activeClarification = null;
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a2',
+        messageText: '请确认食物草稿。',
+      );
+    };
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+    await _flushAsync();
+
+    expect(
+      await controller.sendText(
+        text: '一锅排骨藕汤',
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'device-a',
+        attachments: const <AiGatewayImageAttachment>[
+          AiGatewayImageAttachment(
+            mimeType: 'image/jpeg',
+            base64Data: 'aW1hZ2U=',
+            byteLength: 5,
+          ),
+        ],
+      ),
+      isTrue,
+    );
+    expect(controller.activeClarification?.id, clarification.id);
+
+    expect(
+      await controller.sendClarificationOption(
+        option: clarification.options.single,
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'device-a',
+      ),
+      isTrue,
+    );
+    expect(repository.lastRequest?.clarificationReply?.optionId, 'food_draft');
+    expect(repository.lastRequest?.attachments, hasLength(1));
+    expect(repository.lastRequest?.clientRequestId, isNotEmpty);
+    expect(controller.activeClarification, isNull);
+
+    expect(
+      await controller.sendClarificationOption(
+        option: clarification.options.single,
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'device-a',
+      ),
+      isFalse,
+    );
+    expect(sendCount, 2);
+  });
+
+  test(
+    'typed clarification retry reuses request id and keeps the send error',
+    () async {
+      final repository = _FakeAiChatRepository();
+      final clarificationRequestIds = <String>[];
+      var sendCount = 0;
+      const clarification = AiChatClarification(
+        id: '00000000-0000-4000-8000-000000000004',
+        kind: AiChatClarificationKind.intentSelection,
+        options: <AiChatClarificationOption>[
+          AiChatClarificationOption(
+            id: 'answer',
+            labelZh: '回答问题',
+            labelEn: 'Answer the question',
+          ),
+        ],
+        missingDimensions: <String>['requested_output_family'],
+        attachmentPolicy: AiChatAttachmentPolicy.none,
+      );
+      repository.sendHandler = (request) async {
+        sendCount += 1;
+        repository.sessions = <AiChatSession>[
+          _session('session_1', 'Question'),
+        ];
+        if (sendCount == 1) {
+          repository.activeClarification = clarification;
+          repository.messages['session_1'] = <AiChatMessage>[
+            _message(
+              'u1',
+              'session_1',
+              1,
+              AiChatMessageRole.user,
+              request.messageText,
+            ),
+            _message(
+              'a1',
+              'session_1',
+              2,
+              AiChatMessageRole.assistant,
+              '请选择结果。',
+              finalAnswerJson: <String, dynamic>{
+                'clarification': clarification.toJson(),
+              },
+            ),
+          ];
+          return const AiGatewayResponse(
+            sessionId: 'session_1',
+            assistantMessageId: 'a1',
+            outputType: AiGatewayOutputType.clarification,
+            needsClarification: true,
+            clarification: clarification,
+          );
+        }
+        clarificationRequestIds.add(request.clientRequestId!);
+        if (sendCount == 2) {
+          return const AiGatewayResponse(
+            error: AiGatewayError(
+              code: AiGatewayErrorCode.providerFailure,
+              rawCode: 'provider_failure',
+            ),
+          );
+        }
+        repository.activeClarification = null;
+        return const AiGatewayResponse(
+          sessionId: 'session_1',
+          assistantMessageId: 'a2',
+          messageText: '答案。',
+        );
+      };
+      final controller = AiChatController(repository: repository)
+        ..syncAccount(accountId: 'acct_1', canUseAi: true);
+      await _flushAsync();
+      expect(
+        await controller.sendText(
+          text: '问题',
+          language: 'zh',
+          modelChoice: AiGatewayModelChoice.qwen,
+          deviceId: 'device-a',
+        ),
+        isTrue,
+      );
+
+      expect(
+        await controller.sendClarificationOption(
+          option: clarification.options.single,
+          language: 'zh',
+          modelChoice: AiGatewayModelChoice.qwen,
+          deviceId: 'device-a',
+        ),
+        isFalse,
+      );
+      expect(controller.lastError?.code, AiGatewayErrorCode.providerFailure);
+
+      expect(
+        await controller.sendClarificationOption(
+          option: clarification.options.single,
+          language: 'zh',
+          modelChoice: AiGatewayModelChoice.qwen,
+          deviceId: 'device-a',
+        ),
+        isTrue,
+      );
+      expect(clarificationRequestIds, hasLength(2));
+      expect(clarificationRequestIds.toSet(), hasLength(1));
+    },
+  );
+
+  test(
+    'history reload never pretends original clarification pixels exist',
+    () async {
+      final repository = _FakeAiChatRepository();
+      repository.sessions = <AiChatSession>[_session('session_1', 'Photo')];
+      repository.activeClarification = const AiChatClarification(
+        id: '00000000-0000-4000-8000-000000000003',
+        kind: AiChatClarificationKind.intentSelection,
+        options: <AiChatClarificationOption>[
+          AiChatClarificationOption(
+            id: 'answer',
+            labelZh: '回答问题',
+            labelEn: 'Answer the question',
+          ),
+        ],
+        missingDimensions: <String>[],
+        attachmentPolicy: AiChatAttachmentPolicy.runtimeRebindAvailable,
+      );
+      final controller = AiChatController(repository: repository)
+        ..syncAccount(accountId: 'acct_1', canUseAi: true);
+      await _flushAsync();
+      await controller.selectSession('session_1');
+
+      expect(
+        controller.activeClarification?.attachmentPolicy,
+        AiChatAttachmentPolicy.resendRequired,
+      );
+      final success = await controller.sendClarificationOption(
+        option: repository.activeClarification!.options.single,
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'device-a',
+      );
+      expect(success, isFalse);
+      expect(
+        controller.lastError?.code,
+        AiGatewayErrorCode.attachmentUnavailable,
+      );
+      expect(repository.lastRequest, isNull);
+    },
+  );
+
+  test(
+    'local data clearing invalidates runtime clarification pixels',
+    () async {
+      final repository = _FakeAiChatRepository();
+      const clarification = AiChatClarification(
+        id: '00000000-0000-4000-8000-000000000005',
+        kind: AiChatClarificationKind.intentSelection,
+        options: <AiChatClarificationOption>[
+          AiChatClarificationOption(
+            id: 'food_draft',
+            labelZh: '生成食物草稿',
+            labelEn: 'Create a food draft',
+          ),
+        ],
+        missingDimensions: <String>['requested_output_family'],
+        attachmentPolicy: AiChatAttachmentPolicy.runtimeRebindAvailable,
+      );
+      repository.sendHandler = (request) async {
+        repository.sessions = <AiChatSession>[_session('session_1', 'Photo')];
+        repository.activeClarification = clarification;
+        return const AiGatewayResponse(
+          sessionId: 'session_1',
+          assistantMessageId: 'a1',
+          outputType: AiGatewayOutputType.clarification,
+          needsClarification: true,
+          clarification: clarification,
+        );
+      };
+      final controller = AiChatController(repository: repository)
+        ..syncAccount(accountId: 'acct_1', canUseAi: true);
+      await _flushAsync();
+      expect(
+        await controller.sendText(
+          text: '看看这张图',
+          language: 'zh',
+          modelChoice: AiGatewayModelChoice.qwen,
+          deviceId: 'device-a',
+          attachments: const <AiGatewayImageAttachment>[
+            AiGatewayImageAttachment(
+              mimeType: 'image/jpeg',
+              base64Data: 'aW1hZ2U=',
+              byteLength: 5,
+            ),
+          ],
+        ),
+        isTrue,
+      );
+
+      controller.handleLocalDataCleared();
+
+      expect(
+        controller.activeClarification?.attachmentPolicy,
+        AiChatAttachmentPolicy.resendRequired,
+      );
+      expect(
+        await controller.sendClarificationOption(
+          option: clarification.options.single,
+          language: 'zh',
+          modelChoice: AiGatewayModelChoice.qwen,
+          deviceId: 'device-a',
+        ),
+        isFalse,
+      );
+      expect(
+        controller.lastError?.code,
+        AiGatewayErrorCode.attachmentUnavailable,
+      );
+    },
+  );
 }
 
 class _FakeAiChatRepository extends AiChatRepository {
@@ -422,6 +746,7 @@ class _FakeAiChatRepository extends AiChatRepository {
   String? listSessionsFailureCode;
   Completer<void>? deleteCompleter;
   int deleteCalls = 0;
+  AiChatClarification? activeClarification;
 
   @override
   Future<List<AiChatSession>> listSessions({required String accountId}) async {
@@ -441,6 +766,12 @@ class _FakeAiChatRepository extends AiChatRepository {
   }) async {
     return messages[sessionId] ?? const <AiChatMessage>[];
   }
+
+  @override
+  Future<AiChatClarification?> loadActiveClarification({
+    required String accountId,
+    required String sessionId,
+  }) async => activeClarification;
 
   @override
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request) {

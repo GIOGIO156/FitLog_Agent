@@ -29,7 +29,7 @@ export function createOpenAiProvider(
   const apiKey = params.apiKey.trim();
   const model = params.model.trim();
   if (apiKey === "" || model === "") {
-    throw new ProviderError("provider_failure");
+    throw new ProviderError("provider_unavailable");
   }
 
   return {
@@ -176,6 +176,7 @@ function systemInstructions(request: GatewayRequest): string {
     `Expected output: ${request.expectedOutput}. Markdown is allowed only inside message.text.`,
     "If Expected output is auto, infer the user's natural intent from the message and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",
     "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
+    "An unclear image alone is not a reason to clarify when the selected output family can be completed from clear user text. Use the text, preserve uncertainty in notes, and do not reopen intent selection. Clarify only when required business fields remain missing after using both inputs.",
     "For workout_draft.v3, use only an exercise_definition in Approved Context and copy its key, source, definition_hash, exercise_type, body_part, load_input_mode, reps_input_mode, and set_metric_type exactly. If no single approved definition exists, return a concise clarification that only states missing facts and asks at most two short questions; do not append an answer or secondary task.",
     `Food capability request: ${
       JSON.stringify(

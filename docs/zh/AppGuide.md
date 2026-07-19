@@ -134,6 +134,8 @@ Status pill 只表达 readiness；请求进行状态由发送按钮和 assistant
 
 普通 AI Chat 的高置信度请求由 Gateway 直接固定 text 或 draft；无法确定时由模型结合自然语言、图片和同会话上下文选择受限结果类型。Add Food 等明确入口不参与这层判断。无论由哪一层选择，结构与语义不一致的 response 都不会显示为成功。
 
+只有确实需要澄清意图时，assistant 才显示 typed option buttons。点击选项只消费一次并继续原始 turn，不会把选项当成新的无关问题。`回答问题` 等自由文本 label 仅在当前 session 存在匹配 pending clarification 时映射为 option；Planner/Provider 故障则显示可重试的系统错误。若 pending task 依赖的旧图片在历史重载、进程重启、清空本地数据、退出或切换账号后已不可用，App 会要求重新附图，而不是循环或假装仍看得到图片。
+
 返回合法 Food Draft 或 Workout Draft 时，assistant 显示原生 artifact 卡和 `Review and confirm` / `查看并确认`：
 
 - Artifact 卡显示通过校验的目标日期。Chat 请求中受支持的明确日期覆盖当前选中日期；没有日期表达时默认使用选中日期；无法确定的日期必须追问，不能猜测。

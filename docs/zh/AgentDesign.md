@@ -22,8 +22,9 @@ FitLog 不在设备端运行模型。远程调用统一通过使用服务端 pro
 ```text
 用户请求
   -> auth、subscription 和 active-device 校验
+  -> 恢复并消费匹配的 pending clarification
   -> 明确入口与确定性 safety rules
-  -> approved Task Plan 与服务端 Context Policy
+  -> 唯一 approved Chat Decision 与服务端 Context Policy
   -> 允许的同会话 / 动作 / Structured RAG / Document RAG context
   -> 已配置 provider call（当前发布为 Qwen）
   -> 共享 output 校验与归一化
@@ -32,6 +33,8 @@ FitLog 不在设备端运行模型。远程调用统一通过使用服务端 pro
 ```
 
 每条 AI 路径分离四层职责。Surface orchestration 负责入口、目标语言、本地 provider preference、允许的终态和 UI 确认；版本化 Capability Core 负责任务、Food/Workout 语义、事实优先级和 Context 需要；OpenAI/Qwen adapter 只把同一能力编码为 provider-specific 文字、图片、schema 和 tool protocol，不能重新定义产品规则；Shared validation 强制执行结构、领域语义、语言、grounding、安全和确认边界。更换 provider 不能扩大 Context、改变事实优先级、绕过校验或写正式数据。
+
+`chat_decision.v2` 是普通 Chat 唯一 active decision contract。它按固定优先级消费合法 clarification reply，应用 safety 与 fixed-entry constraints，接受少量中英对称的高置信结构规则，其余开放语义只进入一次有界 planner。输出共同固定 capability、允许/选中的 output family、授权 Context 请求、clarification 状态和附件策略。旧 decision 生产分支及其 runtime flags 已退场；对应 comparator 只保留在确定性的历史行为等价测试中，不能影响生产结果。Planner failure 是系统故障，不是用户歧义的证据。
 
 该运行层包含：
 
@@ -97,6 +100,8 @@ AI 页面必须让用户看见能力和权限边界，但不暴露 provider inte
 - 可用的 Qwen 选择保存在设备本地；具体模型和 provider credentials 留在服务端。不可用的 ChatGPT 选择只在短暂点击反馈期间进入当前 UI 状态，随后选择器自动滑回 Qwen，不会持久化为 active provider。
 - 支持最多三张 JPEG、PNG 或 WebP attachments；当前请求通过 Qwen 路由。在 AI Chat 或 Add Food AI 分析中选择未配置 ChatGPT 时，显示正常生命周期的“当前模型不可用”错误，保留输入，不发送 provider request，并以共享滑动选择器恢复 Qwen 选中态。该 UI 恢复不是 provider fallback，不会把原点击转换为 Qwen request；状态 pill 继续只反映订阅、设备和 Gateway readiness。
 - 小型本地 picker-recovery marker 可以在 Android activity 重建后恢复 composer text、provider、attachments 或 Add Food analysis。恢复不能排队/自动发送，也不能绕过真实账号或 Gateway readiness。
+- 意图澄清使用可持久化的 `ai_chat_clarification.v2` object，包含 opaque ID 与 allowlisted options。客户端以稳定 request ID 发送 typed option reply；服务端在任何新意图推断前幂等 claim 并消费。业务缺字段最多再追问一轮；重复的 no-progress signature 必须进入稳定错误。
+- 请求清晰时当前图片必须在同一 turn 使用。当清晰用户文字已经足以完成选中的回答或草稿时，图片不清晰不能重新触发 intent selection；不确定性应保留在结果中。Clarification 只能保留 account/session scoped 的 runtime attachment lease；数据库、history、logs 和 RAG corpus 都不保存像素。历史重载、进程重启、清空本地数据、退出或切换账号会让 lease 失效，并把可见状态改为需要重新附图。
 - 未发送 composer text 在当前运行期跨 tab 和临时禁用状态保留。Send start 把它清入 pending turn，失败再恢复；退出或切换账号清除。
 - 云端 history 支持新建、切换 session、行内重命名和确认删除；没有恢复 UI 时不暴露 archive。
 - Assistant text 使用维护中的 Markdown renderer 和可选中文本，不加载远程图片，也不执行 link action。
@@ -167,7 +172,7 @@ FitLog 使用三类明确分开的 context：
 
 Context 只在 auth、subscription 和 active-device 校验后由服务端构建。客户端不能提交服务端负责的 context objects、任意 SQL、tool calls、official-write payload 或 provider credentials。完整原始历史、历史图片、不受限 notes、export archives 和本地 workout drafts 默认排除。
 
-任何 Context Builder 运行前，版本化 `task_plan.v1` 会把 workflow/context planning 与 output-family selection 分开。明确入口与高置信度确定性规则优先规划；只有模糊请求进入受限模型 planner。Plan 携带服务端规划的 workflow、允许的 output family、有界 entities、requested Context、retrieval needs、clarification 状态、confidence 与 source。服务端 policy 再按 workflow、记录摘要授权和数据最小化逐项批准或拒绝 Context。因此公开 workflow 可以包含 `workout_logging`、`general_chat` 与 `safety_boundary`，而客户端只能提示允许的入口 workflow。
+任何 Context Builder 运行前，`chat_decision.v2` 选择 capability、output family、requested Context、clarification 和当前附件策略。明确入口与高置信度确定性规则优先决定；只有尚未解决的开放语义进入有界文字或多模态 planner。服务端随后派生兼容的 `task_plan.v1`，并按 workflow、记录摘要授权和数据最小化逐项批准或拒绝 Context。因此公开 workflow 可以包含 `workout_logging`、`general_chat` 与 `safety_boundary`，而客户端只能提示允许的入口 workflow。
 
 详细 object schemas、权限、retrieval、ingestion、evidence、injection handling、evaluation 和更新生命周期由 [RAGDesign.md](RAGDesign.md) 定义。
 

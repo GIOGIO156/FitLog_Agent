@@ -111,6 +111,8 @@ If local cache conflicts with the cloud source, AI context must use the cloud so
 
 ## Workflow Routing
 
+RAG is an evidence and Context layer, not the Chat controller. Before any retrieval or Context Builder runs, the active `chat_decision.v2` chooses one capability, output family, requested Context, clarification state, and attachment policy. The server derives the compatible Task Plan and applies Context Policy. Legacy router and expected-output rules survive only where v2 deliberately reuses them as deterministic helpers or historical-parity oracles; there is no separately activatable legacy production decision.
+
 The server router selects a bounded workflow and its required dimensions:
 
 | Workflow | Retrieval behavior |
@@ -218,6 +220,8 @@ Document retrieval:
 - classifies coverage as complete, partial, insufficient, or conflicting against the Task Plan's required dimensions;
 - allows `search_fitlog_docs` one strictly parsed server-normalized retry when coverage is not complete, for a hard maximum of two searches.
 
+Chat-orchestration rollout does not replace or weaken these retrieval branches. Exact keyword/term normalization, lexical and vector candidate generation, hybrid fusion, feature reranking, coverage classification, and the single agentic retrieval retry remain active under `rag_foundation_v1`; a decision implementation can only decide whether the authorized workflow requests Document RAG.
+
 Chinese questions place Chinese docs before cross-language fallback, and English questions do the same for English docs. Mixed queries may search both; cross-language results are secondary and do not change response language. Owning-document priors refine otherwise plausible candidates but never bypass corpus authority/status filters. Embedding failure degrades to lexical branches with an issue code. Reranker failure uses the fused order. Neither downgrade fabricates sources or turns incomplete coverage into a FitLog claim.
 
 Coverage-complete or conflicting first retrieval does not call a retry model. An unknown exact technical identifier and a normalized rewrite that is unchanged also stop without a second search. Only a genuine missing-evidence case with a materially changed, server-normalized rewrite may retry once; a second insufficient result stops with a limitation/general-knowledge boundary. Retrieval retry and output correction use separate counters and never expand context or permission.
@@ -247,6 +251,8 @@ The Gateway returns compact evidence describing:
 - final action such as read-only, artifact returned, or blocked
 
 The App presents this as an Answer basis panel. It uses human-readable labels for referenced documents, used data, missing information, and limited actions. Same-chat context is not displayed as authoritative evidence.
+
+Evidence keeps the exact source path, raw Markdown heading, identifiers, status, excerpt, and hashes used for grounding. Flutter derives a presentation-only label and removes only balanced inline-code delimiters around technical identifiers. It never mutates the raw evidence or corpus, so Database table headings and the same syntax in any other design file remain faithfully retrievable without displaying stray backticks.
 
 Evidence contains source metadata and bounded excerpts, not complete documents, database rows, images, secrets, or internal reasoning. Debug summaries store compact dimensions, not raw context payloads.
 

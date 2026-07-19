@@ -1,8 +1,10 @@
 import 'package:fitlog_local/core/constants/app_constants.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
+import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
+import 'package:fitlog_local/domain/models/ai_gateway_evidence.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_response.dart';
 import 'package:fitlog_local/domain/models/ai_workout_draft.dart';
@@ -72,6 +74,38 @@ void main() {
       expect(assistant.attachmentsMetadata, isEmpty);
       expect(assistant.gatewayEvidence?.documentSources.single.heading, 'AI');
     });
+
+    test(
+      'evidence presentation removes only balanced inline-code delimiters',
+      () {
+        const source = AiGatewayDocumentSource(
+          docPath: 'docs/en/Database.md',
+          heading:
+              'Database · `workout_records` / `workout_sessions` / `workout_sets`',
+          sectionId: 'records',
+          status: 'active',
+          score: 1,
+          excerpt: 'raw',
+        );
+
+        expect(
+          source.presentationLabel,
+          'Database · workout_records / workout_sessions / workout_sets',
+        );
+        expect(source.heading, contains('`workout_records`'));
+        expect(source.toJson()['heading'], source.heading);
+
+        const malformed = AiGatewayDocumentSource(
+          docPath: 'docs/en/Database.md',
+          heading: 'Database · `workout_records',
+          sectionId: 'records',
+          status: 'active',
+          score: 1,
+          excerpt: 'raw',
+        );
+        expect(malformed.presentationLabel, malformed.heading);
+      },
+    );
 
     test('AiChatMessage restores a v1 food artifact with its stored date', () {
       final message = AiChatMessage.fromMap(<String, dynamic>{
@@ -260,6 +294,30 @@ void main() {
       expect(json.containsKey('context_objects'), isFalse);
       expect(json.containsKey('rag_context'), isFalse);
     });
+
+    test('serializes a typed clarification reply with an idempotency key', () {
+      const request = AiGatewayRequest(
+        sessionId: '00000000-0000-4000-8000-000000000001',
+        messageText: '回答问题',
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'dev_1',
+        clientRequestId: 'ai_request_1',
+        clarificationReply: AiChatClarificationReply(
+          clarificationId: '00000000-0000-4000-8000-000000000002',
+          optionId: 'answer',
+          clientRequestId: 'ai_request_1',
+        ),
+      );
+
+      final json = request.toJson();
+      expect(json['client_request_id'], 'ai_request_1');
+      expect(json['clarification_reply'], <String, dynamic>{
+        'clarification_id': '00000000-0000-4000-8000-000000000002',
+        'option_id': 'answer',
+        'client_request_id': 'ai_request_1',
+      });
+    });
   });
 
   group('AI Gateway response contract', () {
@@ -313,6 +371,52 @@ void main() {
       expect(response.toJson()['draft'], isNull);
     });
 
+    test('parses typed clarification options and attachment policy', () {
+      final response = AiGatewayResponse.fromJson(<String, dynamic>{
+        'workflow': 'general_chat',
+        'output_type': 'clarification',
+        'message': <String, dynamic>{'text': '请选择需要的结果。'},
+        'needs_clarification': true,
+        'clarification_questions': <String>['请选择需要的结果。'],
+        'clarification': <String, dynamic>{
+          'clarification_id': '00000000-0000-4000-8000-000000000002',
+          'schema_version': 'ai_chat_clarification.v2',
+          'kind': 'intent_selection',
+          'options': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'answer',
+              'label_zh': '回答问题',
+              'label_en': 'Answer the question',
+              'resulting_output': 'text',
+            },
+            <String, dynamic>{
+              'id': 'food_draft',
+              'label_zh': '生成食物草稿',
+              'label_en': 'Create a food draft',
+              'resulting_output': 'food_draft',
+            },
+          ],
+          'missing_dimensions': <String>['requested_output_family'],
+          'attachment_policy': 'runtime_rebind_available',
+          'question': '请选择需要的结果。',
+          'attempt': 1,
+          'expires_at': '2026-07-20T00:00:00Z',
+        },
+        'draft': null,
+      });
+
+      expect(response.clarification?.options, hasLength(2));
+      expect(response.clarification?.options.first.id, 'answer');
+      expect(response.clarification?.needsRuntimeAttachment, isTrue);
+      expect(response.clarification?.question, '请选择需要的结果。');
+      expect(response.clarification?.attempt, 1);
+      expect(response.clarification?.options.last.resultingOutput, 'food_draft');
+      expect(
+        response.toJson()['clarification']['schema_version'],
+        'ai_chat_clarification.v2',
+      );
+    });
+
     test('parses a workout draft payload', () {
       final response = AiGatewayResponse.fromJson(<String, dynamic>{
         'workflow': 'auto',
@@ -340,6 +444,9 @@ void main() {
       final outputInvalid = AiGatewayResponse.fromJson(<String, dynamic>{
         'error': <String, dynamic>{'code': 'provider_output_invalid'},
       });
+      final unavailable = AiGatewayResponse.fromJson(<String, dynamic>{
+        'error': <String, dynamic>{'code': 'provider_unavailable'},
+      });
       final refusal = AiGatewayResponse.fromJson(<String, dynamic>{
         'error': <String, dynamic>{'code': 'provider_refusal'},
       });
@@ -355,6 +462,7 @@ void main() {
       expect(replaced.error?.isDeviceReplaced, isTrue);
       expect(unknown.error?.code, AiGatewayErrorCode.unknown);
       expect(unknown.error?.rawCode, 'provider_raw_500');
+      expect(unavailable.error?.code, AiGatewayErrorCode.providerUnavailable);
       expect(
         outputInvalid.error?.code,
         AiGatewayErrorCode.providerOutputInvalid,

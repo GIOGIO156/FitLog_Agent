@@ -72,6 +72,14 @@ class AiGatewayDocumentSource {
 
   String get label => heading.trim().isEmpty ? docPath : heading;
 
+  String get presentationLabel {
+    final raw = heading.trim().isEmpty ? docPath : heading;
+    return raw.replaceAllMapped(
+      RegExp(r'`([^`\r\n]+)`'),
+      (match) => match.group(1)!,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'doc_path': docPath,

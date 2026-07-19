@@ -407,6 +407,20 @@ class AppStrings {
     'AI response ended early. Your input was kept; try again.',
     'AI 响应未完整生成，输入已保留，请重试。',
   );
+  String get aiPlannerFailure => _t(
+    'AI could not plan this request. Your input was kept; try again.',
+    'AI 未能规划这次请求，输入已保留，请重试。',
+  );
+  String get aiClarificationConflict => _t(
+    'That choice was already used or replaced. Refresh the chat.',
+    '这个选项已被使用或替换，请刷新会话。',
+  );
+  String get aiClarificationExpired =>
+      _t('That choice expired. Send the request again.', '这个选项已过期，请重新发送原请求。');
+  String get aiAttachmentUnavailable => _t(
+    'The original image is no longer available. Attach it again.',
+    '原图片已不可用，请重新选择图片。',
+  );
   String get aiNetworkFailure =>
       _t('Network failed. Your input was kept.', '网络连接失败，输入已保留。');
   String get aiChatNetworkFailure => _t(

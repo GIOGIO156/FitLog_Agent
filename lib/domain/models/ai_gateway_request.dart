@@ -1,4 +1,5 @@
 import 'ai_exercise_reference.dart';
+import 'ai_chat_clarification.dart';
 
 const bool fitLogOpenAiProviderEnabled = bool.fromEnvironment(
   'FITLOG_OPENAI_ENABLED',
@@ -72,6 +73,8 @@ class AiGatewayRequest {
     this.client = const <String, dynamic>{},
     this.conversationContext,
     this.exerciseReferences = const <AiExerciseReference>[],
+    this.clientRequestId,
+    this.clarificationReply,
   });
 
   final String? sessionId;
@@ -87,10 +90,14 @@ class AiGatewayRequest {
   final Map<String, dynamic> client;
   final AiGatewayConversationContext? conversationContext;
   final List<AiExerciseReference> exerciseReferences;
+  final String? clientRequestId;
+  final AiChatClarificationReply? clarificationReply;
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       if (sessionId != null) 'session_id': sessionId,
+      if ((clientRequestId ?? '').isNotEmpty)
+        'client_request_id': clientRequestId,
       'message': <String, dynamic>{'text': messageText},
       'language': language,
       'model_choice': modelChoice.value,
@@ -110,6 +117,8 @@ class AiGatewayRequest {
         'exercise_references': exerciseReferences
             .map((reference) => reference.toJson())
             .toList(growable: false),
+      if (clarificationReply != null)
+        'clarification_reply': clarificationReply!.toJson(),
     };
   }
 }

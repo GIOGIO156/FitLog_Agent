@@ -13,6 +13,7 @@ import 'package:fitlog_local/data/repositories/cloud_profile_repository.dart';
 import 'package:fitlog_local/data/repositories/profile_repository.dart';
 import 'package:fitlog_local/data/repositories/subscription_repository.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
+import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
@@ -320,6 +321,65 @@ void main() {
     expect(find.textContaining('docs/zh/AppGuide.md'), findsNothing);
     expect(find.text('document_context'), findsNothing);
     expect(find.text('profile_context'), findsNothing);
+  });
+
+  testWidgets('typed clarification renders options and sends the option id', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    const clarification = AiChatClarification(
+      id: '00000000-0000-4000-8000-000000000020',
+      kind: AiChatClarificationKind.intentSelection,
+      options: <AiChatClarificationOption>[
+        AiChatClarificationOption(
+          id: 'answer',
+          labelZh: '回答问题',
+          labelEn: 'Answer the question',
+        ),
+      ],
+      missingDimensions: <String>['requested_output_family'],
+      attachmentPolicy: AiChatAttachmentPolicy.none,
+    );
+    harness.repository.sessions = <AiChatSession>[
+      _session('session_1', 'Clarification'),
+    ];
+    harness.repository.activeClarification = clarification;
+    harness.repository.messages['session_1'] = <AiChatMessage>[
+      _message(
+        'a1',
+        'session_1',
+        1,
+        AiChatMessageRole.assistant,
+        'Choose how I should continue.',
+        finalAnswerJson: <String, dynamic>{
+          'clarification': clarification.toJson(),
+        },
+      ),
+    ];
+    harness.repository.sendHandler = (request) async {
+      harness.repository.activeClarification = null;
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a2',
+        messageText: 'Answer.',
+      );
+    };
+    harness.chatController.syncAccount(accountId: 'acct_1', canUseAi: true);
+    await harness.chatController.selectSession('session_1');
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.pump();
+    expect(find.text('Answer the question'), findsOneWidget);
+
+    await tester.tap(find.text('Answer the question'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(
+      harness.repository.lastRequest?.clarificationReply?.optionId,
+      'answer',
+    );
   });
 
   testWidgets('conversation keeps top actions fixed while provider moves up', (
@@ -2356,6 +2416,7 @@ class _FakeAiChatRepository extends AiChatRepository {
   Map<String, List<AiChatMessage>> messages = <String, List<AiChatMessage>>{};
   Future<AiGatewayResponse> Function(AiGatewayRequest request)? sendHandler;
   AiGatewayRequest? lastRequest;
+  AiChatClarification? activeClarification;
   final Set<String> deletedSessionIds = <String>{};
   final Map<String, String> renamedSessions = <String, String>{};
 
@@ -2371,6 +2432,12 @@ class _FakeAiChatRepository extends AiChatRepository {
   }) async {
     return messages[sessionId] ?? const <AiChatMessage>[];
   }
+
+  @override
+  Future<AiChatClarification?> loadActiveClarification({
+    required String accountId,
+    required String sessionId,
+  }) async => activeClarification;
 
   @override
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request) {

@@ -111,6 +111,8 @@ RAG 不改变产品权威来源：
 
 ## Workflow Routing
 
+RAG 是 evidence/Context layer，不是 Chat controller。任何 retrieval 或 Context Builder 运行前，active `chat_decision.v2` 先选择唯一 capability、output family、requested Context、clarification 状态和附件策略；服务端再派生兼容 Task Plan 并执行 Context Policy。旧 router/expected-output 规则只在 v2 明确复用的确定性 helper 或历史行为等价 oracle 中保留，不再存在可单独激活的 legacy 生产决策。
+
 服务端 router 选择有界 workflow 和 required dimensions：
 
 | Workflow | 检索行为 |
@@ -218,6 +220,8 @@ Document retrieval：
 - 根据 Task Plan required dimensions 把 coverage 分类为 complete、partial、insufficient 或 conflicting；
 - Coverage 不完整时允许严格 parse、服务端重新 normalize 的 `search_fitlog_docs` 单次 retry，因此 search 最多两次。
 
+Chat orchestration rollout 不替换或弱化上述 retrieval branches。Exact keyword/term normalization、lexical/vector candidate generation、hybrid fusion、feature reranker、coverage classification 与单次 agentic retrieval retry 在 `rag_foundation_v1` 下继续 active；decision implementation 只能决定已授权 workflow 是否请求 Document RAG。
+
 中文问题先排列中文 docs，再使用跨语言 fallback；英文问题同理先排列英文 docs。混合 query 可以检索两种语言，跨语言结果为次级且不改变回答语言。Owning-document prior 只用于细化原本合理的 candidates，不能绕过 corpus authority/status filter。Embedding failure 携带 issue 并降级到 lexical branches；reranker failure 使用 fused order。任何降级都不能伪造 source 或把不完整 coverage 包装成 FitLog claim。
 
 首次 retrieval coverage complete 或 conflicting 时不调用 retry model。未知 exact technical identifier，以及 normalize 后没有变化的 rewrite，也会在第二次 search 前停止。只有真正缺少 evidence 且 rewrite 发生实质变化时才允许一次服务端 normalize 后的 retry；第二次仍不足则以 limitation/general-knowledge boundary 停止。Retrieval retry 与 output correction 使用独立 counter，不能扩大 Context 或权限。
@@ -247,6 +251,8 @@ Gateway 返回紧凑 evidence：
 - read-only、artifact returned 或 blocked 等 final action
 
 App 将其显示为“回答依据”面板，使用人类可读标签展示参考文档、使用数据、缺少信息和受限操作。同会话上下文不作为权威 evidence 显示。
+
+Evidence 保留 grounding 使用的精确 source path、raw Markdown heading、identifier、status、excerpt 和 hashes。Flutter 只派生 presentation label，并仅移除技术标识符外成对的 inline-code delimiter；它不修改 raw evidence/corpus。因此 Database 表标题以及其他设计文件中的相同语法都能保持精确检索，同时 UI 不显示多余反引号。
 
 Evidence 只包含 source metadata 和有界 excerpt，不包含完整文档、数据库行、图片、secret 或内部 reasoning。Debug summary 保存紧凑 dimensions，不保存 raw context payload。
 

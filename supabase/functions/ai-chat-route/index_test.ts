@@ -42,6 +42,43 @@ Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   assertEquals(parsed.phase5Context, null);
 });
 
+Deno.test("parseGatewayRequest validates typed clarification and idempotency fields", () => {
+  const parsed = parseGatewayRequest({
+    session_id: "00000000-0000-4000-8000-000000000001",
+    message: { text: "回答问题" },
+    language: "zh",
+    model_choice: "qwen",
+    workflow_hint: "auto",
+    device_id: "device-a",
+    client_request_id: "clarification_retry_1",
+    clarification_reply: {
+      clarification_id: "00000000-0000-4000-8000-000000000002",
+      option_id: "answer",
+    },
+  });
+  assertEquals(parsed.clientRequestId, "clarification_retry_1");
+  assertEquals(parsed.clarificationReply?.optionId, "answer");
+  assertEquals(
+    parsed.clarificationReply?.clientRequestId,
+    "clarification_retry_1",
+  );
+
+  assertThrowsGatewayRequest(() =>
+    parseGatewayRequest({
+      session_id: "00000000-0000-4000-8000-000000000001",
+      message: { text: "任意选项" },
+      language: "zh",
+      model_choice: "qwen",
+      workflow_hint: "auto",
+      device_id: "device-a",
+      clarification_reply: {
+        clarification_id: "00000000-0000-4000-8000-000000000002",
+        option_id: "untrusted_option",
+      },
+    })
+  );
+});
+
 Deno.test("controlled context stays product-facing and meal advice gets image guidance", () => {
   const base = parseGatewayRequest({
     message: { text: "晚饭怎么吃？" },
@@ -787,6 +824,11 @@ Deno.test("OpenAI adapter uses the unified configured model for image inputs", a
 
   const body = capturedBody as unknown as Record<string, unknown>;
   assertEquals(body.model, "openai-model");
+  assert(
+    String(body.instructions).includes(
+      "An unclear image alone is not a reason to clarify",
+    ),
+  );
   const input = body.input as Array<Record<string, unknown>>;
   const content = input[0].content as Array<Record<string, unknown>>;
   assertEquals(
@@ -836,7 +878,7 @@ Deno.test("OpenAI image failure stays on the selected provider without fallback"
 });
 
 Deno.test("Provider adapters reject a missing unified generation model", () => {
-  assertThrowsProviderFailure(() =>
+  assertThrowsProviderUnavailable(() =>
     providerForChoice("chatgpt", {
       openAiApiKey: "openai-key",
       openAiModel: "",
@@ -849,7 +891,7 @@ Deno.test("Provider adapters reject a missing unified generation model", () => {
       throw new Error("fetch must not be called");
     })
   );
-  assertThrowsProviderFailure(() =>
+  assertThrowsProviderUnavailable(() =>
     providerForChoice("qwen", {
       openAiApiKey: "openai-key",
       openAiModel: "openai-model",
@@ -992,6 +1034,9 @@ Deno.test("Qwen provider adapter builds multimodal image request", async () => {
   assert(json.includes("data:image/png;base64,second-image"));
   assertEquals(json.includes("official_record_write"), false);
   assertEquals(json.includes("rag_context"), false);
+  assert(
+    json.includes("An unclear image alone is not a reason to clarify"),
+  );
 });
 
 function assertThrowsGatewayRequest(action: () => void): void {
@@ -1016,6 +1061,16 @@ function assertThrowsProviderFailure(action: () => void): void {
     return;
   }
   throw new Error("Expected provider failure");
+}
+
+function assertThrowsProviderUnavailable(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    assertEquals((error as Error).message, "provider_unavailable");
+    return;
+  }
+  throw new Error("Expected provider unavailable");
 }
 
 function assertThrowsOutputContract(action: () => void): void {

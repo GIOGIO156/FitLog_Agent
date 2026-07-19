@@ -24,7 +24,7 @@ AI 只生成草稿、建议、复盘和解释。
 - 饮食记录：手动录入、AI 食物分析、Food Draft 预览编辑、复制到日期和删除。
 - 训练记录：训练草稿、正式训练记录、自定义动作、力量和有氧热量估算。
 - Profile 与目标：Cloud Profile、饮食阶段、`energy_ratio`、`gram_per_kg`、carb cycling、carb tapering 和身体指标记录。
-- AI Chat：底部导航正中间的 AI 页面；当前发布通过千问/Qwen 支持文本和最多三张图片，并保留 ChatGPT/OpenAI adapter 供未来合法配置。
+- AI Chat：底部导航正中间的 AI 页面；当前发布通过千问/Qwen 支持自然中英文本和最多三张当前图片，由单一 Chat decision 选择回答或可编辑草稿，并以可恢复的 typed clarification 推进真正需要补充的信息；同时保留 ChatGPT/OpenAI adapter 供未来合法配置。
 - 用餐决策：用户主动询问“今天还能吃什么”“这个外卖能点吗”等问题时，AI 使用必要的 Profile、summary 和上下文给建议。
 - 周复盘：AI 可以总结近期饮食、训练、体重趋势和数据缺口，但不能自动修改目标或策略。
 - App 规则问答：Document RAG 用于解释 FitLog 的算法、字段、隐私和 Agent 边界。
@@ -39,6 +39,7 @@ AI 只生成草稿、建议、复盘和解释。
 - AI 不会静默写入正式饮食、训练、Profile 或目标数据。
 - AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
 - 图片请求最多三张；默认不长期保存原图或 base64。
+- Clarification option 只在当前 session 的 pending state 内生效；planner/provider/validation 故障显示真实系统错误，不伪装为用户歧义。
 - V1 不做用户业务数据向量库、长期 embedding、semantic memory 或 GraphRAG。
 - V1 不是医疗诊断、治疗建议或儿童青少年治疗指导工具。
 
@@ -139,7 +140,8 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 工程阶段计划、执行步骤、验证方式和人工审查清单。 |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | RAG 可靠性与性能优化的专业工程报告：基线、根因、修改、被拒方案、速度/质量结果、限制和原始证据索引。 |
 | [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | 当前 RAG 基础工程整改的已确认范围、架构边界和完成定义。 |
-| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | 当前 RAG 基础工程整改的详细实施、测试、部署、回滚和验收计划。 |
+| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | 已落地 RAG 基础工程的实施、测试、部署、回滚和后续缺口记录。 |
+| [AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md](AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md) | 当前 AI Chat 编排、澄清状态、可靠性、行为兼容和灰度验收计划。 |
 | [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | 原始 Phase 5 controlled RAG 工程计划、部署和验收历史。 |
 | [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | AI Output Contract 的分阶段实施、验证、灰度和回滚计划。 |
 
@@ -178,7 +180,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - Food logging: manual entry, AI Food Analysis, Food Draft preview/edit, copy-to-date, and delete.
 - Workout logging: workout drafts, official workout records, custom exercises, and strength/cardio calorie estimates.
 - Profile and targets: Cloud Profile, diet phase, `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, and body metrics.
-- AI Chat: centered AI page; the current release uses Qwen for text and up to three images while retaining the ChatGPT/OpenAI adapter for a future legally configured release.
+- AI Chat: centered AI page; the current release uses Qwen for natural Chinese/English text and up to three current images, one Chat decision selects an answer or editable draft, and resumable typed clarification advances only genuinely missing information. The ChatGPT/OpenAI adapter remains available for a future legally configured release.
 - Meal decisions: when users ask what to eat next, AI uses the minimum needed Profile, summary, and context.
 - Weekly review: AI can summarize recent food, training, weight trends, and data gaps, but cannot automatically change goals or strategies.
 - App logic Q&A: Document RAG explains FitLog algorithms, fields, privacy, and Agent boundaries.
@@ -193,6 +195,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - AI does not silently write official food, workout, Profile, or goal data.
 - AI does not automatically apply carb tapering, delete records, or change diet goals.
 - Image requests are limited to three images; original images or base64 payloads are not stored long term by default.
+- Clarification options are valid only inside the current session's pending state; planner, provider, and validation failures remain truthful system errors rather than fake user ambiguity.
 - V1 does not create user-business-data vector databases, long-term embeddings, semantic memory, or GraphRAG.
 - V1 is not medical diagnosis, treatment advice, or pediatric treatment guidance.
 
@@ -293,7 +296,8 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Engineering phase plan, execution steps, validation, and manual review checklist. |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | Professional RAG reliability/performance report covering baseline, root cause, changes, rejected alternatives, speed/quality outcomes, limitations, and raw evidence. |
 | [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | Confirmed scope, architecture boundaries, and completion definition for the active RAG foundation remediation. |
-| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | Detailed implementation, testing, deployment, rollback, and acceptance plan for the active RAG foundation remediation. |
+| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | Implementation, testing, deployment, rollback, and follow-up-gap record for the delivered RAG foundation. |
+| [AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md](AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md) | Active AI Chat orchestration, clarification-state, reliability, behavior-parity, and rollout acceptance plan. |
 | [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | Historical original Phase 5 controlled-RAG engineering, deployment, and acceptance plan. |
 | [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | Staged AI Output Contract implementation, validation, canary, and rollback plan. |
 

@@ -76,3 +76,44 @@ test("RAG foundation migrations are additive, bounded, and service-role scoped",
   assert.match(parallelFusion, /from public, anon, authenticated[\s\S]+to service_role/i);
   assert.doesNotMatch(parallelFusion, /drop table|drop column|drop function/i);
 });
+
+test("Chat clarification migrations are account-bound, idempotent, and byte-free", async () => {
+  const clarification = await readFile(
+    "supabase/migrations/202607190001_ai_chat_clarification_state.sql",
+    "utf8",
+  );
+  const observability = await readFile(
+    "supabase/migrations/202607190002_ai_chat_orchestration_observability.sql",
+    "utf8",
+  );
+  const digestSearchPath = await readFile(
+    "supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql",
+    "utf8",
+  );
+
+  assert.match(clarification, /create table if not exists public\.ai_chat_clarifications/i);
+  assert.match(clarification, /where state in \('pending', 'resolving'\)/i);
+  assert.match(clarification, /auth\.uid\(\) = account_id/i);
+  assert.match(clarification, /claim_ai_chat_clarification[\s\S]+input_client_request_id/i);
+  assert.match(clarification, /state = 'resolved'[\s\S]+resolution_result_json/i);
+  assert.match(clarification, /resolution_in_progress/i);
+  assert.match(clarification, /record_ai_chat_turn_v2[\s\S]+input_pending_clarification_json/i);
+  assert.match(clarification, /pending_kind = 'intent_selection'[\s\S]+clarification_no_progress/i);
+  assert.match(clarification, /parent_kind = 'missing_business_fields'[\s\S]+pending_kind = 'missing_business_fields'/i);
+  assert.match(clarification, /runtime_rebind_available[\s\S]+resend_required/i);
+  assert.match(clarification, /from public, anon, authenticated[\s\S]+to service_role/i);
+  assert.doesNotMatch(
+    clarification,
+    /base64_data|image_bytes|attachment_bytes|raw_provider_output/i,
+  );
+  assert.match(observability, /add column if not exists decision_version/i);
+  assert.match(observability, /add column if not exists clarification_id uuid/i);
+  assert.match(observability, /add column if not exists decision_shadow_mismatch/i);
+  assert.match(observability, /never raw user or provider text/i);
+  assert.doesNotMatch(observability, /drop table|drop column/i);
+  assert.match(
+    digestSearchPath,
+    /alter function public\.record_ai_chat_turn_v2[\s\S]+set search_path = public, extensions/i,
+  );
+  assert.doesNotMatch(digestSearchPath, /drop table|drop column|drop function/i);
+});

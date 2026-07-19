@@ -1,13 +1,17 @@
 import type { Phase5ContextBundle, Phase5Evidence } from "./phase5_types.ts";
 import type { TaskPlanV1 } from "./planning/task_plan_contract.ts";
+import type {
+  ChatAttachmentPolicy,
+  ChatDecisionV2,
+} from "./planning/chat_decision_contract.ts";
 import { validateGroundedText } from "./grounding/faithfulness_guard.ts";
 import {
   type ExpectedOutput,
   type GatewayDraft,
-  type ParsedProviderGatewayBody,
-  type ProviderOutputType,
   OutputContractError,
+  type ParsedProviderGatewayBody,
   parseProviderGatewayEnvelope,
+  type ProviderOutputType,
 } from "../_shared/ai_output_contract.ts";
 import {
   explicitFoodFactsFromText,
@@ -35,11 +39,17 @@ export type AiGatewayErrorCode =
   | "subscription_required"
   | "device_replaced"
   | "gateway_timeout"
+  | "provider_unavailable"
   | "provider_failure"
   | "request_schema_mismatch"
   | "provider_output_invalid"
   | "provider_refusal"
   | "provider_incomplete"
+  | "planner_unavailable"
+  | "planner_output_invalid"
+  | "clarification_conflict"
+  | "clarification_expired"
+  | "attachment_unavailable"
   | "record_schema_mismatch";
 
 export type AiGatewayStatus = "ok" | "blocked" | "error" | "timeout";
@@ -59,6 +69,8 @@ export type WorkflowType =
 export interface GatewayRequest {
   sessionId: string | null;
   messageText: string;
+  submittedMessageText?: string;
+  clientRequestId?: string;
   language: "zh" | "en";
   modelChoice: ModelChoice;
   workflowType: WorkflowType;
@@ -73,8 +85,44 @@ export interface GatewayRequest {
   conversationContext: GatewayConversationContext | null;
   exerciseReferences?: GatewayExerciseReference[];
   phase5Context: Phase5ContextBundle | null;
+  clarificationReply?: GatewayClarificationReply | null;
+  resolvedClarification?: ResolvedClarification | null;
+  chatDecision?: ChatDecisionV2 | null;
   taskPlan?: TaskPlanV1 | null;
   expectedOutput: ExpectedOutput;
+}
+
+export interface GatewayClarificationReply {
+  clarificationId: string;
+  optionId: "answer" | "food_draft" | "workout_draft";
+  clientRequestId: string;
+}
+
+export interface ResolvedClarification {
+  clarificationId: string;
+  optionId: GatewayClarificationReply["optionId"] | "continue";
+  resultingOutput: Exclude<ExpectedOutput, "auto">;
+  resultingWorkflow: WorkflowType;
+  originMessageText: string;
+  attachmentPolicy: ChatAttachmentPolicy;
+}
+
+export interface GatewayClarification {
+  clarification_id: string;
+  schema_version: "ai_chat_clarification.v2";
+  kind: "intent_selection" | "missing_business_fields";
+  question: string;
+  options: Array<{
+    id: GatewayClarificationReply["optionId"];
+    label: string;
+    label_zh: string;
+    label_en: string;
+    resulting_output: "text" | "food_draft" | "workout_draft";
+  }>;
+  missing_dimensions: string[];
+  attachment_policy: ChatAttachmentPolicy;
+  attempt: number;
+  expires_at: string | null;
 }
 
 export interface GatewayImageAttachment {
@@ -93,7 +141,11 @@ export interface GatewayExerciseReference {
   bodyPart: string;
   strengthStructure: string;
   strengthProfile: string;
-  loadInputMode: "total_load" | "per_side_load" | "bodyweight_added" | "assistance_load";
+  loadInputMode:
+    | "total_load"
+    | "per_side_load"
+    | "bodyweight_added"
+    | "assistance_load";
   repsInputMode: "total_reps" | "per_side_reps";
   setMetricType: "reps" | "duration_seconds";
 }
@@ -119,6 +171,7 @@ export interface PersistedTurn {
   sessionId: string;
   assistantMessageId: string;
   debugSummaryId: string;
+  clarificationId: string | null;
 }
 
 export interface GatewayErrorBody {
@@ -209,6 +262,19 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     throw new GatewayRequestError("request_schema_mismatch");
   }
 
+  const requestedClientRequestId = nullableString(body.client_request_id);
+  if (
+    requestedClientRequestId !== null &&
+    !isClientRequestId(requestedClientRequestId)
+  ) {
+    throw new GatewayRequestError("request_schema_mismatch");
+  }
+  const clientRequestId = requestedClientRequestId ?? crypto.randomUUID();
+  const clarificationReply = parseClarificationReply(
+    body.clarification_reply,
+    clientRequestId,
+  );
+
   const selectedDate = nullableString(body.selected_date);
   if (selectedDate !== null && !isValidDateKey(selectedDate)) {
     throw new GatewayRequestError("request_schema_mismatch");
@@ -221,7 +287,8 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     client.draft_schema_version || "v1",
   ).trim();
   if (
-    clientDraftSchemaVersion !== "v1" && clientDraftSchemaVersion !== "v2" && clientDraftSchemaVersion !== "v3"
+    clientDraftSchemaVersion !== "v1" && clientDraftSchemaVersion !== "v2" &&
+    clientDraftSchemaVersion !== "v3"
   ) {
     throw new GatewayRequestError("request_schema_mismatch");
   }
@@ -229,6 +296,8 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
   return {
     sessionId,
     messageText,
+    submittedMessageText: messageText,
+    clientRequestId,
     language: language as "zh" | "en",
     modelChoice: modelChoice as ModelChoice,
     workflowType: workflowType as WorkflowType,
@@ -243,6 +312,8 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     conversationContext: parseConversationContext(body.conversation_context),
     exerciseReferences: parseExerciseReferences(body.exercise_references),
     phase5Context: null,
+    clarificationReply,
+    resolvedClarification: null,
     taskPlan: null,
     expectedOutput: "auto",
   };
@@ -250,7 +321,9 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
 
 function parseExerciseReferences(value: unknown): GatewayExerciseReference[] {
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.length > 4) throw new GatewayRequestError("request_schema_mismatch");
+  if (!Array.isArray(value) || value.length > 4) {
+    throw new GatewayRequestError("request_schema_mismatch");
+  }
   const keys = new Set<string>();
   return value.map((item) => {
     const row = objectOrThrow(item);
@@ -261,7 +334,15 @@ function parseExerciseReferences(value: unknown): GatewayExerciseReference[] {
     const loadInputMode = stringOrEmpty(row.load_input_mode).trim();
     const repsInputMode = stringOrEmpty(row.reps_input_mode).trim();
     const setMetricType = stringOrEmpty(row.set_metric_type).trim();
-    if (!/^[a-z0-9][a-z0-9_-]{0,79}$/i.test(key) || name === "" || name.length > 120 || !/^[a-f0-9]{8,64}$/i.test(definitionHash) || !["strength", "cardio"].includes(exerciseType) || !["total_load", "per_side_load", "bodyweight_added", "assistance_load"].includes(loadInputMode) || !["total_reps", "per_side_reps"].includes(repsInputMode) || !["reps", "duration_seconds"].includes(setMetricType) || keys.has(key)) {
+    if (
+      !/^[a-z0-9][a-z0-9_-]{0,79}$/i.test(key) || name === "" ||
+      name.length > 120 || !/^[a-f0-9]{8,64}$/i.test(definitionHash) ||
+      !["strength", "cardio"].includes(exerciseType) ||
+      !["total_load", "per_side_load", "bodyweight_added", "assistance_load"]
+        .includes(loadInputMode) ||
+      !["total_reps", "per_side_reps"].includes(repsInputMode) ||
+      !["reps", "duration_seconds"].includes(setMetricType) || keys.has(key)
+    ) {
       throw new GatewayRequestError("request_schema_mismatch");
     }
     keys.add(key);
@@ -271,7 +352,10 @@ function parseExerciseReferences(value: unknown): GatewayExerciseReference[] {
       definitionHash,
       exerciseType: exerciseType as GatewayExerciseReference["exerciseType"],
       bodyPart: stringOrEmpty(row.body_part).trim().slice(0, 80),
-      strengthStructure: stringOrEmpty(row.strength_structure).trim().slice(0, 80),
+      strengthStructure: stringOrEmpty(row.strength_structure).trim().slice(
+        0,
+        80,
+      ),
       strengthProfile: stringOrEmpty(row.strength_profile).trim().slice(0, 80),
       loadInputMode: loadInputMode as GatewayExerciseReference["loadInputMode"],
       repsInputMode: repsInputMode as GatewayExerciseReference["repsInputMode"],
@@ -319,6 +403,7 @@ export function gatewayResponse(params: {
   draft?: GatewayDraft | Record<string, unknown> | null;
   needsClarification?: boolean;
   clarificationQuestions?: string[];
+  clarification?: GatewayClarification | null;
   debugSummaryId?: string | null;
   evidence?: Phase5Evidence | null;
   error?: GatewayErrorBody | null;
@@ -336,6 +421,7 @@ export function gatewayResponse(params: {
     output_type: params.outputType ?? null,
     needs_clarification: params.needsClarification ?? false,
     clarification_questions: params.clarificationQuestions ?? [],
+    clarification: params.clarification ?? null,
     draft: params.draft ?? null,
     evidence: params.evidence ?? null,
     error: params.error ?? null,
@@ -353,7 +439,10 @@ export function parseProviderGatewayBody(
     request.targetDate,
   );
   validateWorkoutBindings(parsed, request);
-  if (parsed.outputType === "food_draft" && parsed.draft?.schema_version === "food_draft.v2") {
+  if (
+    parsed.outputType === "food_draft" &&
+    parsed.draft?.schema_version === "food_draft.v2"
+  ) {
     const issues = validateFoodSemantics({
       draft: parsed.draft,
       responseLanguage: request.language,
@@ -368,8 +457,14 @@ export function parseProviderGatewayBody(
   return parsed;
 }
 
-function validateWorkoutBindings(parsed: ParsedProviderGatewayBody, request: GatewayRequest): void {
-  if (parsed.outputType !== "workout_draft" || parsed.draft?.schema_version !== "workout_draft.v3") return;
+function validateWorkoutBindings(
+  parsed: ParsedProviderGatewayBody,
+  request: GatewayRequest,
+): void {
+  if (
+    parsed.outputType !== "workout_draft" ||
+    parsed.draft?.schema_version !== "workout_draft.v3"
+  ) return;
   const registry = new Map<string, Record<string, unknown>>();
   for (const context of request.phase5Context?.context_objects ?? []) {
     if (context.type !== "exercise_definition") continue;
@@ -382,19 +477,29 @@ function validateWorkoutBindings(parsed: ParsedProviderGatewayBody, request: Gat
     const definition = registry.get(exercise.exercise_key);
     const path = `$.draft.exercises[${index}]`;
     if (definition === undefined) {
-      issues.push({ path: `${path}.exercise_key`, reason: "exercise key is not in approved definition context" });
+      issues.push({
+        path: `${path}.exercise_key`,
+        reason: "exercise key is not in approved definition context",
+      });
       continue;
     }
-    for (const [field, expected] of [
-      ["definition_hash", exercise.definition_hash],
-      ["source", exercise.exercise_source],
-      ["exercise_type", exercise.exercise_type],
-      ["body_part", exercise.body_part],
-      ["load_input_mode", exercise.load_input_mode],
-      ["reps_input_mode", exercise.reps_input_mode],
-      ["set_metric_type", exercise.set_metric_type],
-    ] as const) {
-      if (definition[field] !== expected) issues.push({ path: `${path}.${field}`, reason: "does not match approved exercise definition" });
+    for (
+      const [field, expected] of [
+        ["definition_hash", exercise.definition_hash],
+        ["source", exercise.exercise_source],
+        ["exercise_type", exercise.exercise_type],
+        ["body_part", exercise.body_part],
+        ["load_input_mode", exercise.load_input_mode],
+        ["reps_input_mode", exercise.reps_input_mode],
+        ["set_metric_type", exercise.set_metric_type],
+      ] as const
+    ) {
+      if (definition[field] !== expected) {
+        issues.push({
+          path: `${path}.${field}`,
+          reason: "does not match approved exercise definition",
+        });
+      }
     }
   }
   if (issues.length > 0) throw new OutputContractError(issues);
@@ -487,6 +592,8 @@ export function errorMessageForCode(code: AiGatewayErrorCode): string {
       return "This device session is no longer active.";
     case "gateway_timeout":
       return "The AI Gateway timed out.";
+    case "provider_unavailable":
+      return "The selected AI provider is not configured or unavailable.";
     case "provider_failure":
       return "The AI Gateway could not complete the request.";
     case "request_schema_mismatch":
@@ -497,6 +604,16 @@ export function errorMessageForCode(code: AiGatewayErrorCode): string {
       return "The AI provider declined this request.";
     case "provider_incomplete":
       return "The AI response ended before it was complete. Please try again.";
+    case "planner_unavailable":
+      return "The AI request could not be planned. Please try again.";
+    case "planner_output_invalid":
+      return "The AI request plan could not be validated. Please try again.";
+    case "clarification_conflict":
+      return "This clarification has already been answered or replaced.";
+    case "clarification_expired":
+      return "This clarification has expired. Please send the request again.";
+    case "attachment_unavailable":
+      return "The original image is no longer available. Please attach it again.";
     case "record_schema_mismatch":
       return "The AI request is not supported by this version.";
   }
@@ -535,6 +652,34 @@ function nullableString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function parseClarificationReply(
+  value: unknown,
+  fallbackClientRequestId: string,
+): GatewayClarificationReply | null {
+  if (value === undefined || value === null) return null;
+  const reply = objectOrThrow(value);
+  const clarificationId = stringOrEmpty(reply.clarification_id).trim();
+  const optionId = stringOrEmpty(reply.option_id).trim();
+  const clientRequestId = nullableString(reply.client_request_id) ??
+    fallbackClientRequestId;
+  if (
+    !uuidPattern.test(clarificationId) ||
+    !["answer", "food_draft", "workout_draft"].includes(optionId) ||
+    !isClientRequestId(clientRequestId)
+  ) {
+    throw new GatewayRequestError("request_schema_mismatch");
+  }
+  return {
+    clarificationId,
+    optionId: optionId as GatewayClarificationReply["optionId"],
+    clientRequestId,
+  };
+}
+
+function isClientRequestId(value: string): boolean {
+  return value.length <= 120 && /^[a-z0-9][a-z0-9._:-]*$/i.test(value);
 }
 
 function parseAttachments(value: unknown): GatewayImageAttachment[] {

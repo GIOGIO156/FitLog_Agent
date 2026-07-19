@@ -36,6 +36,10 @@ import '../../domain/models/weight_log.dart';
 import '../../domain/services/carb_cycling_calculator.dart';
 import '../../domain/services/macro_target_calculator.dart';
 import '../account/account_controller.dart';
+import '../ai/ai_chat_controller.dart';
+import '../ai/ai_chat_image_recovery.dart';
+import '../food/photo_food_analysis_recovery.dart';
+import '../workout/workout_editor_resume.dart';
 import 'diet_plan_strategy_section.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -1762,10 +1766,17 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     await services.database.clearAllLocalData();
+    await Future.wait<void>(<Future<void>>[
+      AiChatImageRecoveryStore.clearPending().catchError((_) {}),
+      PhotoFoodAnalysisRecoveryStore.clearPending().catchError((_) {}),
+      WorkoutEditorResumeStore.clear().catchError((_) {}),
+    ]);
 
     if (!mounted) {
       return;
     }
+
+    context.read<AiChatController>().handleLocalDataCleared();
 
     refreshNotifier.markDataChanged();
     await _load();

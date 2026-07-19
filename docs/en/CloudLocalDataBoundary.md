@@ -282,6 +282,7 @@ Enter repair or reconciliation:
 - Profile's Clear All Local Data action deletes rows only from this device's SQLite business tables. It does not call a cloud-repository deletion path or delete the Supabase Auth session, SharedPreferences, exported files, or any cloud data.
 - The action covers both rebuildable account-bound confirmed cache and local workout drafts, custom exercises, calibration, and review state that have no cloud copy. It is therefore not cache eviction and cannot promise that everything removed is recoverable.
 - Cloud Profile, Cloud Records, cloud `daily_summaries`, AI chat history, and cloud AI logs remain unchanged. While signed in, page refreshes can rebuild local confirmed cache under the normal cloud-authoritative read rules.
+- The action also clears device-only Chat/Add Food picker recovery, the workout-editor resume marker, in-memory image leases, pending retry request IDs, and locally reconstructable AI draft handles. Cloud `ai_chat_clarifications` and message history remain, but any step that needed discarded pixels is shown as `resend_required`; it cannot silently revive attachments or a cleared local workout draft.
 - The action does not change the active account and is not sign-out, account switching, account deletion, or cloud official deletion. UI and documentation must state that cloud data can reappear while local-only data is permanently lost.
 - [Database.md](Database.md) owns the exact SQLite table scope and code references.
 

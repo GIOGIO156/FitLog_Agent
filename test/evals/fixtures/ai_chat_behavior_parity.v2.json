@@ -1,0 +1,177 @@
+{
+  "schema": "fitlog_eval_suite.v1",
+  "suite": "ai_chat_behavior_parity_v2",
+  "preserved_components": [
+    {
+      "component": "workout_record_drafts",
+      "disposition": "preserved",
+      "source_of_truth": "SQLite workout_record_drafts contains the single active unsaved new-workout editor draft",
+      "owner": "WorkoutDraftRepository and AddWorkoutPage",
+      "cleanup": "Ordered draft mutation clears only after confirmed save or explicit abandon; failures retain the same draft",
+      "best_effort_boundary": "Route restoration and notifications may fail without changing draft authority",
+      "executable_oracles": [
+        "test/workout_record_draft_test.dart",
+        "test/workout_draft_mutation_queue_test.dart",
+        "test/workout_draft_notification_test.dart"
+      ]
+    },
+    {
+      "component": "WorkoutEditorResumeStore",
+      "disposition": "preserved",
+      "source_of_truth": "SQLite draft presence remains authoritative; the preference marker is only a bounded route hint",
+      "owner": "WorkoutEditorResumeStore",
+      "cleanup": "Cleared on completed or abandoned draft and on local-data clearing",
+      "best_effort_boundary": "The 30-minute hint cannot create or reconstruct a draft",
+      "executable_oracles": ["test/workout_editor_resume_test.dart"]
+    },
+    {
+      "component": "workout_draft_notification",
+      "disposition": "preserved",
+      "source_of_truth": "Notification content is derived from the current SQLite draft",
+      "owner": "WorkoutDraftNotificationScheduler and WorkoutDraftNotificationSync",
+      "cleanup": "Cancelled after the authoritative draft is cleared",
+      "best_effort_boundary": "Scheduling, rendering, and tap routing never block or roll back draft mutations",
+      "executable_oracles": ["test/workout_draft_notification_test.dart"]
+    },
+    {
+      "component": "AiChatImageRecoveryStore",
+      "disposition": "preserved",
+      "source_of_truth": "The mounted AI surface owns picker delivery; the marker contains minimal metadata and never proves sent-turn pixels exist",
+      "owner": "AiChatImageRecoveryController with Root fallback only when the original owner is gone",
+      "cleanup": "Cleared after delivery, cancellation, account/session invalidation, or local-data clearing",
+      "best_effort_boundary": "Root recovery is single-flight and may restore an attachment only when the platform returns actual lost data",
+      "executable_oracles": ["test/ai_page_test.dart", "test/ai_chat_controller_test.dart"]
+    },
+    {
+      "component": "PhotoFoodAnalysisRecoveryCoordinator/Store",
+      "disposition": "preserved",
+      "source_of_truth": "The mounted Add Food surface owns picker delivery; the marker is not a food draft or durable image store",
+      "owner": "PhotoFoodAnalysisRecoveryCoordinator with Root fallback only after owner loss",
+      "cleanup": "Cleared after delivery, cancellation, lifecycle mismatch, or local-data clearing",
+      "best_effort_boundary": "Recovery is single-flight and cannot fabricate pixels or a Food Draft",
+      "executable_oracles": ["test/photo_food_analysis_recovery_test.dart"]
+    },
+    {
+      "component": "local_data_clear_recovery_boundary",
+      "disposition": "preserved",
+      "source_of_truth": "AppDatabase.clearAllLocalData atomically clears local business rows; cloud Chat history remains authoritative for history only",
+      "owner": "Profile clear action coordinates SQLite clearing and device-only recovery marker invalidation",
+      "cleanup": "Clears workout drafts, editor hint, picker markers, runtime attachment leases, retry IDs, and local draft handles",
+      "best_effort_boundary": "Cloud history may reload, but it cannot revive cleared local drafts or unavailable pixels",
+      "executable_oracles": ["test/user_profile_test.dart", "test/ai_chat_controller_test.dart"]
+    },
+    {
+      "component": "rag_foundation_v1",
+      "disposition": "preserved",
+      "source_of_truth": "Document RAG keyword/domain-term normalization, vector retrieval, hybrid fusion, reranking, coverage, and retry remain the evidence layer",
+      "owner": "rag retrieval pipeline selected by the existing RAG feature flags",
+      "cleanup": "No Chat orchestration change disables or replaces the active corpus or embedding rows",
+      "best_effort_boundary": "Retrieval downgrade is reported separately and never becomes a fabricated task-completion success",
+      "executable_oracles": [
+        "supabase/functions/ai-chat-route/rag/retrieval_pipeline_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_reranker_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_coverage_test.ts",
+        "supabase/functions/ai-chat-route/rag/retrieval_retry_test.ts"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "database_persistence_en",
+      "owning_requirement": "AgentDesign: answer FitLog app-logic questions with scoped Document RAG",
+      "historical_source": "2026-07 screenshot: English workout snapshot persistence question",
+      "current_route": "chat_decision.v2",
+      "input": "Where is the workout exercise snapshot persisted?",
+      "expected_workflow": "app_logic_answer",
+      "expected_output": "text",
+      "expected_context": ["document_context"],
+      "confirmation": "none",
+      "executable_oracle": "chat_decision_test:database persistence questions are symmetric app logic answers"
+    },
+    {
+      "case_id": "database_persistence_zh",
+      "owning_requirement": "Product: Chinese and English requests have symmetric capabilities",
+      "historical_source": "2026-07 screenshot: Chinese retry of database question",
+      "current_route": "chat_decision.v2",
+      "input": "锻炼快照保存在哪张数据库表？",
+      "expected_workflow": "app_logic_answer",
+      "expected_output": "text",
+      "expected_context": ["document_context"],
+      "confirmation": "none",
+      "executable_oracle": "chat_decision_test:database persistence questions are symmetric app logic answers"
+    },
+    {
+      "case_id": "typed_answer_resume",
+      "owning_requirement": "AIOutputContract: a clarification reply resumes the originating request exactly once",
+      "historical_source": "2026-07 screenshots: repeated 回答问题 loop",
+      "current_route": "clarification_reply -> chat_decision.v2",
+      "input": "回答问题",
+      "expected_workflow": "app_logic_answer",
+      "expected_output": "text",
+      "expected_context": ["document_context"],
+      "confirmation": "typed_option",
+      "executable_oracle": "chat_decision_test:typed answer selection restores the origin capability"
+    },
+    {
+      "case_id": "soup_image_food_draft",
+      "owning_requirement": "Product: clear consumed-food text plus current image produces an editable Food Draft",
+      "historical_source": "2026-07 screenshot: 一锅武汉排骨藕汤，喝了三碗 loop",
+      "current_route": "chat_decision.v2",
+      "input": "一锅武汉排骨藕汤，喝了三碗",
+      "image_count": 1,
+      "expected_workflow": "food_logging",
+      "expected_output": "food_draft",
+      "expected_context": [],
+      "confirmation": "draft_review",
+      "executable_oracle": "chat_decision_test:clear soup consumption with an image becomes a food draft"
+    },
+    {
+      "case_id": "mixed_workout_answer_clarification",
+      "owning_requirement": "AIOutputContract: genuinely competing output families use bounded typed options",
+      "historical_source": "Phase 5 planning parity requirement",
+      "current_route": "chat_decision.v2",
+      "input": "请记录深蹲80kg 3组10次，这个训练量怎么算？",
+      "expected_workflow": "general_chat",
+      "expected_output": "clarification",
+      "expected_context": [],
+      "confirmation": "answer_or_workout_draft",
+      "executable_oracle": "chat_decision_test:mixed answer and workout write intent returns bounded typed options"
+    },
+    {
+      "case_id": "planner_unavailable_is_error",
+      "owning_requirement": "Product: system failures are honest retryable errors, never user ambiguity",
+      "historical_source": "Root-cause audit of generic three-option loop",
+      "current_route": "chat_decision.v2",
+      "input": "帮我看看这个",
+      "expected_workflow": "error",
+      "expected_output": "planner_unavailable",
+      "expected_context": [],
+      "confirmation": "none",
+      "executable_oracle": "chat_decision_test:unclassified requests fail honestly when planner is unavailable"
+    },
+    {
+      "case_id": "write_claim_storage_explanation_allowed",
+      "owning_requirement": "AgentDesign: block false completed writes without blocking storage explanations",
+      "historical_source": "2026-07 English Database answer false-positive guard",
+      "current_route": "write_claim_guard.v2",
+      "input": "The record is saved in the workout_records table.",
+      "expected_workflow": "app_logic_answer",
+      "expected_output": "text",
+      "expected_context": ["document_context"],
+      "confirmation": "none",
+      "executable_oracle": "write_claim_guard_test:allows explanation or negation"
+    },
+    {
+      "case_id": "write_claim_completed_action_blocked",
+      "owning_requirement": "AgentDesign: AI never claims an unconfirmed official write completed",
+      "historical_source": "Agent write-authority invariant",
+      "current_route": "write_claim_guard.v2",
+      "input": "I saved your record.",
+      "expected_workflow": "safety_boundary",
+      "expected_output": "text",
+      "expected_context": [],
+      "confirmation": "blocked",
+      "executable_oracle": "write_claim_guard_test:blocks completed action"
+    }
+  ]
+}

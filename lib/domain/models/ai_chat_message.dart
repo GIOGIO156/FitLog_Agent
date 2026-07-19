@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../core/utils/number_utils.dart';
 import 'ai_food_photo_analysis.dart';
+import 'ai_chat_clarification.dart';
 import 'ai_gateway_evidence.dart';
 import 'ai_workout_draft.dart';
 
@@ -76,6 +77,8 @@ class AiChatMessage {
       _workoutArtifactFromFinalAnswer(finalAnswerJson);
   AiGatewayEvidence? get gatewayEvidence =>
       _evidenceFromFinalAnswer(finalAnswerJson);
+  AiChatClarification? get clarification =>
+      AiChatClarification.fromJsonOrNull(finalAnswerJson?['clarification']);
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{

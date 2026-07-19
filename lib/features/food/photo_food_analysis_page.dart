@@ -421,6 +421,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         return strings.phase2ErrorMessage('device_replaced');
       case AiGatewayErrorCode.gatewayTimeout:
         return strings.aiGatewayTimeout;
+      case AiGatewayErrorCode.providerUnavailable:
+        return strings.aiCurrentModelUnavailable;
       case AiGatewayErrorCode.providerFailure:
         return strings.aiProviderFailure;
       case AiGatewayErrorCode.requestSchemaMismatch:
@@ -432,6 +434,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         return strings.aiProviderRefusal;
       case AiGatewayErrorCode.providerIncomplete:
         return strings.aiProviderIncomplete;
+      case AiGatewayErrorCode.plannerUnavailable:
+      case AiGatewayErrorCode.plannerOutputInvalid:
+        return strings.aiPlannerFailure;
+      case AiGatewayErrorCode.clarificationConflict:
+        return strings.aiClarificationConflict;
+      case AiGatewayErrorCode.clarificationExpired:
+        return strings.aiClarificationExpired;
+      case AiGatewayErrorCode.attachmentUnavailable:
+        return strings.aiAttachmentUnavailable;
       case AiGatewayErrorCode.networkFailure:
         return strings.photoAiNetworkFailure;
       case AiGatewayErrorCode.unknown:

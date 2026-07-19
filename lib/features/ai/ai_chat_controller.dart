@@ -6,6 +6,7 @@ import '../../data/repositories/ai_chat_repository.dart';
 import '../../data/repositories/custom_exercise_repository.dart';
 import '../../data/repositories/phase2_repository_exception.dart';
 import '../../domain/models/ai_chat_message.dart';
+import '../../domain/models/ai_chat_clarification.dart';
 import '../../domain/models/ai_chat_session.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
 import '../../domain/models/ai_exercise_reference.dart';
@@ -42,6 +43,12 @@ class AiChatController extends ChangeNotifier {
       const <String, AiFoodDraft>{};
   Map<String, AiWorkoutDraft> _runtimeAssistantWorkoutDrafts =
       const <String, AiWorkoutDraft>{};
+  Map<String, _ClarificationAttachmentLease> _clarificationAttachmentLeases =
+      const <String, _ClarificationAttachmentLease>{};
+  Map<String, String> _clarificationRetryRequestIds = const <String, String>{};
+  AiChatClarification? _activeClarification;
+  int _clientRequestSequence = 0;
+  int _localDataEpoch = 0;
   AiGatewayError? _lastError;
   AiGatewayResponse? _lastSuccessfulResponse;
   final Set<String> _deletingSessionIds = <String>{};
@@ -58,6 +65,7 @@ class AiChatController extends ChangeNotifier {
       _pendingUserAttachments;
   AiGatewayError? get lastError => _lastError;
   AiGatewayResponse? get lastSuccessfulResponse => _lastSuccessfulResponse;
+  AiChatClarification? get activeClarification => _activeClarification;
   bool get deletingSession => _deletingSessionIds.isNotEmpty;
   bool isDeletingSession(String sessionId) =>
       _deletingSessionIds.contains(sessionId);
@@ -74,6 +82,13 @@ class AiChatController extends ChangeNotifier {
     }
     return _runtimeUserAttachments[message.id] ??
         const <AiGatewayImageAttachment>[];
+  }
+
+  AiChatClarification? clarificationFor(AiChatMessage message) {
+    if (!message.isAssistant) return null;
+    final clarification = message.clarification;
+    if (clarification?.id != _activeClarification?.id) return null;
+    return _activeClarification;
   }
 
   AiFoodDraft? foodDraftFor(AiChatMessage message) {
@@ -123,6 +138,10 @@ class AiChatController extends ChangeNotifier {
     _runtimeUserAttachments = const <String, List<AiGatewayImageAttachment>>{};
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _clarificationAttachmentLeases =
+        const <String, _ClarificationAttachmentLease>{};
+    _clarificationRetryRequestIds = const <String, String>{};
+    _activeClarification = null;
     _lastSuccessfulResponse = null;
     _deletingSessionIds.clear();
     _clearErrorState();
@@ -167,6 +186,10 @@ class AiChatController extends ChangeNotifier {
     _pendingUserAttachments = const <AiGatewayImageAttachment>[];
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _clarificationAttachmentLeases =
+        const <String, _ClarificationAttachmentLease>{};
+    _clarificationRetryRequestIds = const <String, String>{};
+    _activeClarification = null;
     _lastSuccessfulResponse = null;
     _clearErrorState();
     notifyListeners();
@@ -188,6 +211,18 @@ class AiChatController extends ChangeNotifier {
         accountId: activeAccountId!,
         sessionId: sessionId,
       );
+      final active = await repository.loadActiveClarification(
+        accountId: activeAccountId,
+        sessionId: sessionId,
+      );
+      _activeClarification =
+          active != null &&
+              active.needsRuntimeAttachment &&
+              !_clarificationAttachmentLeases.containsKey(active.id)
+          ? active.copyWith(
+              attachmentPolicy: AiChatAttachmentPolicy.resendRequired,
+            )
+          : active;
     } on Phase2RepositoryException catch (error) {
       _setTransientError(_errorFromCode(error.code));
     } catch (_) {
@@ -205,8 +240,31 @@ class AiChatController extends ChangeNotifier {
     _pendingUserAttachments = const <AiGatewayImageAttachment>[];
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _clarificationAttachmentLeases =
+        const <String, _ClarificationAttachmentLease>{};
+    _clarificationRetryRequestIds = const <String, String>{};
+    _activeClarification = null;
     _lastSuccessfulResponse = null;
     _clearErrorState();
+    notifyListeners();
+  }
+
+  void handleLocalDataCleared() {
+    _localDataEpoch += 1;
+    _pendingUserAttachments = const <AiGatewayImageAttachment>[];
+    _runtimeUserAttachments = const <String, List<AiGatewayImageAttachment>>{};
+    _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
+    _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _clarificationAttachmentLeases =
+        const <String, _ClarificationAttachmentLease>{};
+    _clarificationRetryRequestIds = const <String, String>{};
+    final active = _activeClarification;
+    if (active?.needsRuntimeAttachment == true) {
+      _activeClarification = active!.copyWith(
+        attachmentPolicy: AiChatAttachmentPolicy.resendRequired,
+      );
+    }
+    _lastSuccessfulResponse = null;
     notifyListeners();
   }
 
@@ -220,6 +278,7 @@ class AiChatController extends ChangeNotifier {
     bool allowRecordSummaryContext = false,
     List<AiGatewayImageAttachment> attachments =
         const <AiGatewayImageAttachment>[],
+    AiChatClarificationReply? clarificationReply,
   }) async {
     final trimmed = text.trim();
     final activeAccountId = _accountId;
@@ -232,10 +291,31 @@ class AiChatController extends ChangeNotifier {
       return false;
     }
 
+    var outboundAttachments = attachments;
+    final continuationClarification =
+        clarificationReply == null &&
+            _activeClarification?.isMissingBusinessFields == true
+        ? _activeClarification
+        : null;
+    final consumedClarificationId =
+        clarificationReply?.clarificationId ?? continuationClarification?.id;
+    if (continuationClarification?.needsRuntimeAttachment == true) {
+      final lease = _validClarificationLease(continuationClarification!.id);
+      if (lease == null) {
+        _setTransientError(
+          _errorFromCode(AiGatewayErrorCode.attachmentUnavailable.value),
+        );
+        notifyListeners();
+        return false;
+      }
+      outboundAttachments = lease.attachments;
+    }
+
     _sending = true;
+    final sendLocalDataEpoch = _localDataEpoch;
     _pendingUserText = trimmed;
     _pendingUserAttachments = List<AiGatewayImageAttachment>.unmodifiable(
-      attachments,
+      outboundAttachments,
     );
     _lastSuccessfulResponse = null;
     _clearErrorState();
@@ -256,7 +336,7 @@ class AiChatController extends ChangeNotifier {
       messageText: trimmed,
       language: language,
       modelChoice: modelChoice,
-      attachments: attachments,
+      attachments: outboundAttachments,
       selectedDate: selectedDate,
       profileVersion: profileVersion,
       deviceId: deviceId,
@@ -268,6 +348,12 @@ class AiChatController extends ChangeNotifier {
       },
       conversationContext: _buildConversationContext(),
       exerciseReferences: exerciseReferences,
+      clientRequestId:
+          clarificationReply?.clientRequestId ??
+          (continuationClarification == null
+              ? _nextClientRequestId()
+              : _requestIdForClarification(continuationClarification.id)),
+      clarificationReply: clarificationReply,
     );
 
     try {
@@ -289,12 +375,20 @@ class AiChatController extends ChangeNotifier {
       _lastSuccessfulResponse = response;
       await loadSessions();
       await loadMessages(nextSessionId!);
-      _rememberRuntimeAttachmentsForLatestUserMessage(
-        sessionId: nextSessionId,
-        text: trimmed,
-        attachments: attachments,
-      );
-      _rememberRuntimeDraftForAssistantMessage(response);
+      if (sendLocalDataEpoch == _localDataEpoch) {
+        _rememberRuntimeAttachmentsForLatestUserMessage(
+          sessionId: nextSessionId,
+          text: trimmed,
+          attachments: outboundAttachments,
+        );
+        _rememberRuntimeDraftForAssistantMessage(response);
+      }
+      if (consumedClarificationId != null) {
+        _consumeClarificationLease(consumedClarificationId);
+      }
+      if (sendLocalDataEpoch == _localDataEpoch) {
+        _rememberClarificationRuntime(response, outboundAttachments);
+      }
       _pendingUserText = null;
       _pendingUserAttachments = const <AiGatewayImageAttachment>[];
       return true;
@@ -310,6 +404,54 @@ class AiChatController extends ChangeNotifier {
       _pendingUserAttachments = const <AiGatewayImageAttachment>[];
       notifyListeners();
     }
+  }
+
+  Future<bool> sendClarificationOption({
+    required AiChatClarificationOption option,
+    required String language,
+    required AiGatewayModelChoice modelChoice,
+    required String deviceId,
+    String? selectedDate,
+    String? profileVersion,
+    bool allowRecordSummaryContext = false,
+  }) async {
+    final clarification = _activeClarification;
+    if (clarification == null ||
+        !clarification.options.any((candidate) => candidate.id == option.id)) {
+      _setTransientError(
+        _errorFromCode(AiGatewayErrorCode.clarificationConflict.value),
+      );
+      notifyListeners();
+      return false;
+    }
+    var attachments = const <AiGatewayImageAttachment>[];
+    if (clarification.needsRuntimeAttachment) {
+      final lease = _validClarificationLease(clarification.id);
+      if (lease == null) {
+        _setTransientError(
+          _errorFromCode(AiGatewayErrorCode.attachmentUnavailable.value),
+        );
+        notifyListeners();
+        return false;
+      }
+      attachments = lease.attachments;
+    }
+    final requestId = _requestIdForClarification(clarification.id);
+    return sendText(
+      text: option.labelFor(language),
+      language: language,
+      modelChoice: modelChoice,
+      deviceId: deviceId,
+      selectedDate: selectedDate,
+      profileVersion: profileVersion,
+      allowRecordSummaryContext: allowRecordSummaryContext,
+      attachments: attachments,
+      clarificationReply: AiChatClarificationReply(
+        clarificationId: clarification.id,
+        optionId: option.id,
+        clientRequestId: requestId,
+      ),
+    );
   }
 
   Future<void> archiveSelectedSession() async {
@@ -394,7 +536,11 @@ class AiChatController extends ChangeNotifier {
   Future<void> _refreshSelectedMessagesAfterFailure() async {
     final sessionId = _selectedSessionId;
     if ((sessionId ?? '').isNotEmpty) {
+      final sendError = _lastError;
       await loadMessages(sessionId!);
+      if (sendError != null) {
+        _lastError = sendError;
+      }
     }
   }
 
@@ -430,6 +576,86 @@ class AiChatController extends ChangeNotifier {
           ..._runtimeUserAttachments,
           selected.id: List<AiGatewayImageAttachment>.unmodifiable(attachments),
         });
+  }
+
+  void _rememberClarificationRuntime(
+    AiGatewayResponse response,
+    List<AiGatewayImageAttachment> attachments,
+  ) {
+    final clarification = response.clarification;
+    final accountId = _accountId;
+    final sessionId = response.sessionId ?? _selectedSessionId;
+    if (clarification == null ||
+        (accountId ?? '').isEmpty ||
+        (sessionId ?? '').isEmpty) {
+      return;
+    }
+    _activeClarification = clarification;
+    if (clarification.needsRuntimeAttachment && attachments.isNotEmpty) {
+      _clarificationAttachmentLeases =
+          Map<String, _ClarificationAttachmentLease>.unmodifiable(
+            <String, _ClarificationAttachmentLease>{
+              ..._clarificationAttachmentLeases,
+              clarification.id: _ClarificationAttachmentLease(
+                accountId: accountId!,
+                sessionId: sessionId!,
+                attachments: List<AiGatewayImageAttachment>.unmodifiable(
+                  attachments,
+                ),
+              ),
+            },
+          );
+    } else if (clarification.needsRuntimeAttachment) {
+      _activeClarification = clarification.copyWith(
+        attachmentPolicy: AiChatAttachmentPolicy.resendRequired,
+      );
+    }
+  }
+
+  _ClarificationAttachmentLease? _validClarificationLease(String id) {
+    final lease = _clarificationAttachmentLeases[id];
+    if (lease == null ||
+        lease.accountId != _accountId ||
+        lease.sessionId != _selectedSessionId ||
+        lease.attachments.isEmpty) {
+      return null;
+    }
+    return lease;
+  }
+
+  void _consumeClarificationLease(String id) {
+    if (_clarificationAttachmentLeases.containsKey(id)) {
+      final next = Map<String, _ClarificationAttachmentLease>.from(
+        _clarificationAttachmentLeases,
+      )..remove(id);
+      _clarificationAttachmentLeases = Map.unmodifiable(next);
+    }
+    if (_activeClarification?.id == id) {
+      _activeClarification = null;
+    }
+    if (_clarificationRetryRequestIds.containsKey(id)) {
+      final next = Map<String, String>.from(_clarificationRetryRequestIds)
+        ..remove(id);
+      _clarificationRetryRequestIds = Map.unmodifiable(next);
+    }
+  }
+
+  String _requestIdForClarification(String clarificationId) {
+    final existing = _clarificationRetryRequestIds[clarificationId];
+    if (existing != null) return existing;
+    final created = _nextClientRequestId();
+    _clarificationRetryRequestIds = Map<String, String>.unmodifiable(
+      <String, String>{
+        ..._clarificationRetryRequestIds,
+        clarificationId: created,
+      },
+    );
+    return created;
+  }
+
+  String _nextClientRequestId() {
+    _clientRequestSequence += 1;
+    return 'ai_${DateTime.now().toUtc().microsecondsSinceEpoch}_$_clientRequestSequence';
   }
 
   void _rememberRuntimeDraftForAssistantMessage(AiGatewayResponse response) {
@@ -581,4 +807,16 @@ AiChatSession _copySessionWithTitle(AiChatSession session, String title) {
     createdAt: session.createdAt,
     updatedAt: DateTime.now().toUtc(),
   );
+}
+
+class _ClarificationAttachmentLease {
+  const _ClarificationAttachmentLease({
+    required this.accountId,
+    required this.sessionId,
+    required this.attachments,
+  });
+
+  final String accountId;
+  final String sessionId;
+  final List<AiGatewayImageAttachment> attachments;
 }

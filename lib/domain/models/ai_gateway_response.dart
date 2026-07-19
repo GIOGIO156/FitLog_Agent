@@ -1,4 +1,5 @@
 import 'ai_gateway_error.dart';
+import 'ai_chat_clarification.dart';
 import 'ai_gateway_evidence.dart';
 import 'ai_gateway_request.dart';
 import 'ai_food_photo_analysis.dart';
@@ -27,6 +28,7 @@ class AiGatewayResponse {
     this.outputType,
     this.needsClarification = false,
     this.clarificationQuestions = const <String>[],
+    this.clarification,
     this.foodDraft,
     this.workoutDraft,
     this.evidence,
@@ -45,6 +47,7 @@ class AiGatewayResponse {
   final AiGatewayOutputType? outputType;
   final bool needsClarification;
   final List<String> clarificationQuestions;
+  final AiChatClarification? clarification;
   final AiFoodDraft? foodDraft;
   final AiWorkoutDraft? workoutDraft;
   final AiGatewayEvidence? evidence;
@@ -71,6 +74,7 @@ class AiGatewayResponse {
       if (outputType != null) 'output_type': outputType!.value,
       'needs_clarification': needsClarification,
       'clarification_questions': clarificationQuestions,
+      'clarification': clarification?.toJson(),
       'draft': foodDraft != null ? foodDraft!.toJson() : workoutDraft?.toJson(),
       'evidence': evidence?.toJson(),
       if (debugSummaryId != null) 'debug_summary_id': debugSummaryId,
@@ -140,6 +144,7 @@ class AiGatewayResponse {
       outputType: outputType,
       needsClarification: json['needs_clarification'] == true,
       clarificationQuestions: _stringList(json['clarification_questions']),
+      clarification: AiChatClarification.fromJsonOrNull(json['clarification']),
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
       evidence: AiGatewayEvidence.fromJsonOrNull(json['evidence']),

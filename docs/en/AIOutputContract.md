@@ -50,12 +50,7 @@ The following rules apply to every provider and model:
 
 Explicit product workflows and ordinary AI Chat select outputs differently. A dedicated entry such as Add Food photo analysis does not infer intent again: the entry fixes `food_draft`, and a successful terminal result must contain an editable Food Draft. Missing information may produce clarification, but ordinary prose is not a successful downgrade.
 
-Ordinary AI Chat uses two layers:
-
-1. The deterministic Gateway resolver accepts only high-confidence signals. For Workout intent, an explicit write-plus-question request becomes clarification, an explicit record request fixes the Workout Draft family, a direct FitLog rule question fixes `text`, and compact same-chat continuation requires a real retained Workout Draft artifact plus an edit/continue operation. Existing deterministic Food intent selection remains unchanged. A match fixes the expected output.
-2. If the resolver cannot decide, it returns `auto`, not `text`. The provider uses the natural-language request, current images, and authorized same-chat context to select one `output_type`: `text`, `food_draft`, `workout_draft`, or `clarification`.
-
-These layers do not vote. A first-layer match is authoritative; the second layer runs only after the first layer abstains. Flutter cannot submit or override `expected_output`.
+Ordinary AI Chat uses the provider-neutral `chat_decision.v2` contract. Its precedence is fixed: consume a matching typed clarification reply; enforce safety and fixed-entry constraints; accept only small, bilingual high-confidence structures; otherwise use one bounded text or multimodal planner. The decision selects capability, planned workflow, allowed and selected output family, requested/approved/rejected Context, clarification state, attachment policy, source, confidence, and compact reason codes. The compatible `task_plan.v1` is derived from that decision rather than competing with it. Flutter cannot submit or override the decision or `expected_output`.
 
 | Expected output | Valid provider result |
 | --- | --- |
@@ -65,6 +60,8 @@ These layers do not vote. A first-layer match is authoritative; the second layer
 | `workout_draft` | `output_type = workout_draft` with `workout_draft.v3`, or one bounded clarification. |
 
 Clarification uses `output_type = clarification`, `needs_clarification = true`, non-empty questions, and `draft = null`. Safety blocking is generated deterministically before the provider call. Workflow routing and output selection are independent: routing selects context, RAG, and permissions, while output selection chooses the result shape; validation proves the final payload satisfies both.
+
+The public response additionally carries `ai_chat_clarification.v2`: an opaque clarification ID, kind, visible question, allowlisted option IDs and their resulting output families, missing dimensions, attachment policy, attempt number, and expiry. A reply carries the clarification ID, option ID, and stable client request ID. The cloud state machine claims the reply idempotently before new intent inference, permits one active clarification per session, and terminates repeated no-progress or expired/conflicting transitions. Resolving an option restores the originating task and its required authorized Context, such as both document evidence and an exercise definition for a Workout rule question; it does not restore only an output enum. Natural-language option aliases are scoped to that pending state; they are never global intent keywords.
 
 ## Provider-Independent Chat Envelope
 
@@ -221,10 +218,16 @@ For correctable structured-output failures, the Gateway performs at most one ser
 The error taxonomy distinguishes:
 
 - `request_schema_mismatch`: the Flutter-to-Gateway request is invalid
+- `provider_unavailable`: the selected provider/model is not configured for this deployment
 - `provider_output_invalid`: provider output is not valid for the expected contract
 - `provider_refusal`: the provider explicitly refused
 - `provider_incomplete`: generation ended without a complete contract result
 - `provider_failure`: provider/service failure without a valid result
+- `planner_unavailable`: the bounded decision planner could not be reached or completed
+- `planner_output_invalid`: the planner returned an invalid decision contract
+- `clarification_conflict`: the reply is stale, already claimed, or does not match the active session state
+- `clarification_expired`: the pending clarification can no longer be consumed
+- `attachment_unavailable`: the task requires request-time pixels that are no longer present
 - `gateway_timeout`: the total Gateway/provider deadline expired
 
 The existing `record_schema_mismatch` remains readable for compatibility with older server/database paths. New output codes are additive and mapped in Flutter.
@@ -243,6 +246,7 @@ After final structured-output failure:
 Version these concepts independently:
 
 - Gateway HTTP response schema
+- Chat decision and clarification-state schemas
 - provider-facing envelope schema
 - Food Draft schema
 - Workout Draft schema
@@ -251,12 +255,15 @@ Version these concepts independently:
 
 A provider alias or model update is not allowed to silently change the accepted contract. Schema changes must remain additive when possible, include fixture coverage, and preserve stored artifact readability. New clients request the v2 draft shape; during mixed deployment, the Gateway can downgrade a validated v2 response for a v1 client, and Flutter can rebuild v1 history by using the artifact's stored target/selected date. New persisted artifact snapshots use `ai_chat_artifacts.v2` and keep `target_date` beside the canonical v2 draft. Old history artifacts that cannot be rebuilt safely remain visible as disabled summaries.
 
+Current AI Chat uses public response schema `ai_chat_response.v3`, prompt version `chat_orchestration_v2`, decision schema `chat_decision.v2`, and clarification schema `ai_chat_clarification.v2`. Clients continue to read older stored messages and artifacts additively; they do not reinterpret an old free-text prompt as a typed clarification.
+
 ## Logging And Evaluation
 
 Compact logs may include:
 
 - provider and configured model
 - workflow, expected output, intent-resolution source, and final `output_type`
+- decision version/source/reason, selected capability, clarification ID/state/attempt, attachment policy, and the nullable historical shadow-mismatch category retained for rollout evidence
 - prompt/schema/validator versions
 - first-pass validation result
 - correction attempt count
@@ -273,7 +280,7 @@ Required evaluation dimensions:
 - OpenAI and Qwen
 - text and image paths
 - Chinese and English
-- resolver match and abstention, model selection, normal answer, clarification, Food Draft, Workout Draft, false-success claims, refusal, truncation, malformed JSON, wrong type, missing field, extra field, and unsupported write claim
+- fixed/deterministic/model selection, typed clarification consumption and idempotency, current-image planning, normal answer, Food Draft, Workout Draft, false-success claims, refusal, truncation, malformed JSON, wrong type, missing field, extra field, passive storage wording, and unsupported write claims
 - first-pass success, correction recovery, final success, invalid-artifact escape count, latency, and cost
 
 FitLog must not claim a universal error rate such as less than 0.1% without a versioned project evaluation dataset and measured provider/model/schema results.
