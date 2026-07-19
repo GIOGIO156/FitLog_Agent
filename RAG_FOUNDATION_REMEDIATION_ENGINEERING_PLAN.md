@@ -1,6 +1,6 @@
 # FitLog_Agent RAG 基础工程整改详细落地计划
 
-> 状态：待实施（Execution Plan Ready）
+> 状态：`CLOSED_WITH_FOLLOW_UP_GAPS`。主体 RAG foundation、Food/Exercise capability、部署和 corpus 工作已落地；2026-07-18 复核发现 W6 的 Chat 决策/clarification/图片连续性没有被完整实现，W9/W10 的评测也没有逐条执行这些用户旅程。该结论不回退 Phase 5，后续整改统一由 [`AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md`](AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md) 承接。
 >
 > 制定日期：2026-07-13
 >

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/constants/prompt_templates.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
+import '../../core/widgets/fitlog_modal_backdrop.dart';
 import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/services/nutrition_calculator.dart';
@@ -18,17 +19,112 @@ class PasteAiResultPage extends StatefulWidget {
   State<PasteAiResultPage> createState() => _PasteAiResultPageState();
 }
 
-class _PasteAiResultPageState extends State<PasteAiResultPage> {
+class _PasteAiResultPageState extends State<PasteAiResultPage>
+    with WidgetsBindingObserver {
   final TextEditingController _jsonController = TextEditingController();
   final FocusNode _jsonFocusNode = FocusNode();
   final GlobalKey _jsonEditorKey = GlobalKey();
   bool _isParsing = false;
+  bool _openingExpandedEditor = false;
+  bool _expandAfterKeyboardCloses = false;
+  bool _expandedEditorScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _jsonController.dispose();
     _jsonFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!_expandAfterKeyboardCloses || !mounted) {
+      return;
+    }
+    if (_currentKeyboardInset() > 0.5) {
+      return;
+    }
+    _expandAfterKeyboardCloses = false;
+    _scheduleExpandedEditor();
+  }
+
+  double _currentKeyboardInset() {
+    final view = View.of(context);
+    return view.viewInsets.bottom / view.devicePixelRatio;
+  }
+
+  void _requestExpandedEditor() {
+    if (_openingExpandedEditor) {
+      return;
+    }
+    setState(() => _openingExpandedEditor = true);
+    _jsonFocusNode.unfocus();
+    if (_currentKeyboardInset() > 0.5) {
+      _expandAfterKeyboardCloses = true;
+      return;
+    }
+    _scheduleExpandedEditor();
+  }
+
+  void _scheduleExpandedEditor() {
+    if (_expandedEditorScheduled) {
+      return;
+    }
+    _expandedEditorScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _expandedEditorScheduled = false;
+      if (!mounted || !_openingExpandedEditor) {
+        return;
+      }
+      final value = await _showExpandedJsonEditor();
+      if (!mounted) {
+        return;
+      }
+      if (value != null) {
+        _jsonController.value = value.copyWith(composing: TextRange.empty);
+      }
+      setState(() => _openingExpandedEditor = false);
+    });
+  }
+
+  Future<TextEditingValue?> _showExpandedJsonEditor() {
+    final strings = context.stringsRead;
+    return showGeneralDialog<TextEditingValue>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      barrierLabel: strings.collapseJsonEditor,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return _ExpandedPasteJsonEditor(
+          initialValue: _jsonController.value,
+          title: strings.jsonEditorTitle,
+          closeTooltip: strings.collapseJsonEditor,
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _copyPrompt() async {
@@ -105,8 +201,9 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
           children: <Widget>[
             LayoutId(
               id: _PasteKeyboardLayoutChild.prompt,
-              child: _KeyboardSupportingContent(
+              child: _KeyboardGatedContent(
                 key: const ValueKey<String>('paste_prompt_supporting_slot'),
+                hideWhenKeyboardActive: true,
                 child: RepaintBoundary(
                   child: _ReusablePromptSetupCard(
                     title: strings.copyAiFoodPrompt,
@@ -123,23 +220,48 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
             LayoutId(
               id: _PasteKeyboardLayoutChild.editor,
               child: _KeyboardRigidEditor(
-                child: GlassPanel(
-                  key: _jsonEditorKey,
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    controller: _jsonController,
-                    focusNode: _jsonFocusNode,
-                    keyboardType: TextInputType.multiline,
-                    maxLines: null,
-                    expands: true,
-                    scrollPadding: const EdgeInsets.only(bottom: 12),
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: '{ "meal_name": "..." }',
-                      alignLabelWithHint: true,
+                child: RepaintBoundary(
+                  child: GlassPanel(
+                    key: _jsonEditorKey,
+                    padding: const EdgeInsets.all(12),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        TextField(
+                          key: const ValueKey<String>('paste_json_editor'),
+                          controller: _jsonController,
+                          focusNode: _jsonFocusNode,
+                          keyboardType: TextInputType.multiline,
+                          maxLines: null,
+                          expands: true,
+                          scrollPadding: const EdgeInsets.only(bottom: 12),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: '{ "meal_name": "..." }',
+                            alignLabelWithHint: true,
+                            contentPadding: EdgeInsets.fromLTRB(12, 16, 52, 16),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: IconButton(
+                            key: const ValueKey<String>(
+                              'paste_expand_json_editor',
+                            ),
+                            tooltip: strings.expandJsonEditor,
+                            iconSize: 21,
+                            style: _subtleEditorResizeButtonStyle(context),
+                            onPressed: _openingExpandedEditor
+                                ? null
+                                : _requestExpandedEditor,
+                            icon: const Icon(Icons.fullscreen_rounded),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -147,7 +269,7 @@ class _PasteAiResultPageState extends State<PasteAiResultPage> {
             ),
             LayoutId(
               id: _PasteKeyboardLayoutChild.action,
-              child: _KeyboardSupportingContent(
+              child: _KeyboardGatedContent(
                 key: const ValueKey<String>('paste_parse_supporting_slot'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -183,43 +305,209 @@ class _KeyboardRigidEditor extends StatelessWidget {
   const _KeyboardRigidEditor({required this.child});
 
   static const _actionExtent = 52.0;
+  static const _handoffHalfRange = 12.0;
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final translation = (keyboardInset - _actionExtent).clamp(
-      0.0,
-      double.infinity,
-    );
+    final translation = _translationForInset(keyboardInset);
     return Transform.translate(offset: Offset(0, -translation), child: child);
+  }
+
+  static double _translationForInset(double keyboardInset) {
+    final lowerBound = _actionExtent - _handoffHalfRange;
+    final upperBound = _actionExtent + _handoffHalfRange;
+    if (keyboardInset <= lowerBound) {
+      return 0;
+    }
+    if (keyboardInset >= upperBound) {
+      return keyboardInset - _actionExtent;
+    }
+    final progress = (keyboardInset - lowerBound) / (upperBound - lowerBound);
+    return _handoffHalfRange * progress * progress;
   }
 }
 
-class _KeyboardSupportingContent extends StatelessWidget {
-  const _KeyboardSupportingContent({super.key, required this.child});
-
-  static const _fadeTravel = 96.0;
+class _KeyboardGatedContent extends StatelessWidget {
+  const _KeyboardGatedContent({
+    super.key,
+    required this.child,
+    this.hideWhenKeyboardActive = false,
+  });
 
   final Widget child;
+  final bool hideWhenKeyboardActive;
+
+  static const _promptFadeExtent = 180.0;
 
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final opacity = (1 - keyboardInset / _fadeTravel)
+    final keyboardActive = keyboardInset > 0.5;
+    final gatedChild = ExcludeSemantics(
+      excluding: keyboardActive,
+      child: IgnorePointer(
+        key: ValueKey<String>(
+          hideWhenKeyboardActive
+              ? 'paste_prompt_keyboard_guard'
+              : 'paste_action_keyboard_guard',
+        ),
+        ignoring: keyboardActive,
+        child: child,
+      ),
+    );
+    if (!hideWhenKeyboardActive) {
+      return gatedChild;
+    }
+    final fadeProgress = (keyboardInset / _promptFadeExtent)
         .clamp(0.0, 1.0)
         .toDouble();
-    final hidden = opacity <= 0.01;
-    final keyboardActive = keyboardInset > 0.5;
-    return ExcludeSemantics(
-      excluding: hidden,
-      child: IgnorePointer(
-        ignoring: keyboardActive,
-        child: Opacity(opacity: opacity, child: child),
+    final opacity = 1 - Curves.easeInOutCubic.transform(fadeProgress);
+    return Opacity(
+      key: const ValueKey<String>('paste_prompt_keyboard_fade'),
+      opacity: opacity,
+      child: gatedChild,
+    );
+  }
+}
+
+class _ExpandedPasteJsonEditor extends StatefulWidget {
+  const _ExpandedPasteJsonEditor({
+    required this.initialValue,
+    required this.title,
+    required this.closeTooltip,
+  });
+
+  final TextEditingValue initialValue;
+  final String title;
+  final String closeTooltip;
+
+  @override
+  State<_ExpandedPasteJsonEditor> createState() =>
+      _ExpandedPasteJsonEditorState();
+}
+
+class _ExpandedPasteJsonEditorState extends State<_ExpandedPasteJsonEditor> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController.fromValue(widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close() {
+    Navigator.of(context).pop(_controller.value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopScope<TextEditingValue>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _close();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        resizeToAvoidBottomInset: true,
+        body: FitLogModalBackdrop(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: GlassPanel(
+                    key: const ValueKey<String>('paste_expanded_json_modal'),
+                    margin: EdgeInsets.zero,
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    opaque: true,
+                    child: Column(
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                widget.title,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey<String>(
+                                'paste_collapse_json_editor',
+                              ),
+                              tooltip: widget.closeTooltip,
+                              iconSize: 21,
+                              style: _subtleEditorResizeButtonStyle(context),
+                              onPressed: _close,
+                              icon: const Icon(Icons.fullscreen_exit_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: TextField(
+                            key: const ValueKey<String>(
+                              'paste_expanded_json_field',
+                            ),
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            autofocus: false,
+                            keyboardType: TextInputType.multiline,
+                            maxLines: null,
+                            expands: true,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 14,
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: '{ "meal_name": "..." }',
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
+}
+
+ButtonStyle _subtleEditorResizeButtonStyle(BuildContext context) {
+  final fitTheme = context.fitLogTheme;
+  return IconButton.styleFrom(
+    foregroundColor: fitTheme.textSecondary,
+    backgroundColor: fitTheme.surfaceVariant.withValues(
+      alpha: fitTheme.isDark ? 0.56 : 0.72,
+    ),
+    disabledForegroundColor: fitTheme.disabledText,
+    disabledBackgroundColor: fitTheme.surfaceVariant.withValues(alpha: 0.36),
+    minimumSize: const Size.square(40),
+    maximumSize: const Size.square(40),
+    padding: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
 }
 
 enum _PasteKeyboardLayoutChild { prompt, editor, action }

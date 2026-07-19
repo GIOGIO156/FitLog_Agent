@@ -10,6 +10,53 @@ class PhotoFoodAnalysisRecoveryDraft {
   final String note;
 }
 
+class PhotoFoodAnalysisRecoveryLease {
+  PhotoFoodAnalysisRecoveryLease._(this._coordinator);
+
+  PhotoFoodAnalysisRecoveryCoordinator? _coordinator;
+
+  void release() {
+    _coordinator?._releaseOwner();
+    _coordinator = null;
+  }
+}
+
+class PhotoFoodAnalysisRecoveryCoordinator {
+  PhotoFoodAnalysisRecoveryCoordinator();
+
+  static final PhotoFoodAnalysisRecoveryCoordinator instance =
+      PhotoFoodAnalysisRecoveryCoordinator();
+
+  int _ownerCount = 0;
+  bool _rootRecoveryInFlight = false;
+
+  bool get hasActiveOwner => _ownerCount > 0;
+
+  PhotoFoodAnalysisRecoveryLease acquireOwner() {
+    _ownerCount++;
+    return PhotoFoodAnalysisRecoveryLease._(this);
+  }
+
+  Future<bool> runRootRecovery(Future<void> Function() recovery) async {
+    if (hasActiveOwner || _rootRecoveryInFlight) {
+      return false;
+    }
+    _rootRecoveryInFlight = true;
+    try {
+      await recovery();
+      return true;
+    } finally {
+      _rootRecoveryInFlight = false;
+    }
+  }
+
+  void _releaseOwner() {
+    if (_ownerCount > 0) {
+      _ownerCount--;
+    }
+  }
+}
+
 class PhotoFoodAnalysisRecoveryStore {
   const PhotoFoodAnalysisRecoveryStore._();
 

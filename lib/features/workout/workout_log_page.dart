@@ -16,6 +16,7 @@ import '../../domain/models/workout_record_draft.dart';
 import '../../domain/models/workout_session.dart';
 import 'add_workout_page.dart';
 import 'workout_draft_notification.dart';
+import 'workout_editor_resume.dart';
 import 'workout_plan_page.dart';
 
 class WorkoutLogPage extends StatefulWidget {
@@ -126,6 +127,7 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
       return;
     }
     await services.workoutDraftRepository.deleteActiveDraft();
+    await WorkoutEditorResumeStore.clear();
     await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
     if (!context.mounted) {
       return;
@@ -288,6 +290,7 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
           .read<AppServices>()
           .workoutDraftRepository
           .deleteActiveDraft();
+      await WorkoutEditorResumeStore.clear();
       if (!context.mounted) {
         return;
       }

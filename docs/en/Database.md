@@ -304,6 +304,12 @@ Important fields:
 
 AI boundary: Weekly Review may explain these records, but it must not silently create or apply a diet adjustment review.
 
+## Local SQLite Clearing
+
+`AppDatabase.clearAllLocalData()` deletes all current business-table rows in one SQLite transaction: `food_items`, `food_records`, `workout_sets`, `workout_sessions`, `workout_record_drafts`, `custom_exercises`, `user_weight_logs`, `calorie_calibration_state`, `diet_adjustment_reviews`, `user_profile`, and `daily_summary_cache`. The database file, schema, and migration version remain intact.
+
+The method does not access Supabase or clear the Auth session, SharedPreferences, in-memory controller state, or local export files. Cloud official Profile/records/summaries remain available and can rebuild SQLite cache through normal reads; local workout drafts, custom exercises, calibration, and review state have no cloud recovery guarantee. [Product.md](Product.md) and [AppGuide.md](AppGuide.md) own the product meaning and UI communication, while [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md) owns authority and repopulation invariants.
+
 ## Runtime Aggregates
 
 `DailySummary` is not a table. It is assembled at runtime from:

@@ -367,12 +367,84 @@ class WorkoutDraftNotificationSync {
   }) async {
     final targetPlatform =
         platform ?? MethodChannelWorkoutDraftNotificationPlatform.instance;
-    final content = WorkoutDraftNotificationBuilder.fromDraft(draft, strings);
-    if (content == null) {
-      await targetPlatform.cancel();
-      return;
+    try {
+      final content = WorkoutDraftNotificationBuilder.fromDraft(draft, strings);
+      if (content == null) {
+        await targetPlatform.cancel();
+        return;
+      }
+      await targetPlatform.show(content);
+    } catch (_) {
+      // Notification rendering is best effort and must never fail draft writes.
     }
-    await targetPlatform.show(content);
+  }
+}
+
+class WorkoutDraftNotificationScheduler {
+  WorkoutDraftNotificationScheduler({
+    required this.strings,
+    this.platform,
+    this.delay = const Duration(seconds: 2),
+  });
+
+  final AppStrings strings;
+  final WorkoutDraftNotificationPlatform? platform;
+  final Duration delay;
+
+  Timer? _timer;
+  WorkoutRecordDraft? _pendingDraft;
+  bool _hasPendingDraft = false;
+  Future<void> _syncTail = Future<void>.value();
+
+  void schedule(WorkoutRecordDraft draft) {
+    _pendingDraft = draft;
+    _hasPendingDraft = true;
+    _timer?.cancel();
+    _timer = Timer(delay, () => unawaited(flush()));
+  }
+
+  Future<void> syncNow(WorkoutRecordDraft draft) {
+    _pendingDraft = draft;
+    _hasPendingDraft = true;
+    return flush();
+  }
+
+  Future<void> flush() {
+    _timer?.cancel();
+    _timer = null;
+    if (!_hasPendingDraft) {
+      return _syncTail;
+    }
+    final draft = _pendingDraft;
+    _pendingDraft = null;
+    _hasPendingDraft = false;
+    _syncTail = _syncTail.then(
+      (_) => WorkoutDraftNotificationSync.syncFromDraft(
+        draft,
+        strings,
+        platform: platform,
+      ),
+    );
+    return _syncTail;
+  }
+
+  Future<void> cancelNow() {
+    _timer?.cancel();
+    _timer = null;
+    _pendingDraft = null;
+    _hasPendingDraft = false;
+    _syncTail = _syncTail.then(
+      (_) => WorkoutDraftNotificationSync.syncFromDraft(
+        null,
+        strings,
+        platform: platform,
+      ),
+    );
+    return _syncTail;
+  }
+
+  void dispose() {
+    _timer?.cancel();
   }
 }
 

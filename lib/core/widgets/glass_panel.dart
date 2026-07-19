@@ -9,17 +9,21 @@ class GlassPanel extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.margin = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     this.borderRadius = 24,
+    this.opaque = false,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry margin;
   final double borderRadius;
+  final bool opaque;
 
   @override
   Widget build(BuildContext context) {
     final fitTheme = context.fitLogTheme;
-    final bgColor = fitTheme.isDark
+    final bgColor = opaque
+        ? fitTheme.surfaceElevated
+        : fitTheme.isDark
         ? fitTheme.surface.withValues(alpha: 0.88)
         : fitTheme.surface.withValues(alpha: 0.96);
     final borderColor = fitTheme.isDark

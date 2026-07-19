@@ -575,6 +575,10 @@ class AppStrings {
 
   String get parse => _t('Parse', '解析');
   String get parsing => _t('Parsing...', '解析中...');
+  String get expandJsonEditor => _t('Expand JSON editor', '放大 JSON 编辑器');
+  String get collapseJsonEditor =>
+      _t('Close expanded JSON editor', '关闭放大的 JSON 编辑器');
+  String get jsonEditorTitle => _t('JSON editor', 'JSON 编辑器');
 
   String get pleasePasteJson => _t('Please paste JSON first.', '请先粘贴 JSON 内容。');
 

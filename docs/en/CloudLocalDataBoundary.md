@@ -277,6 +277,14 @@ Enter repair or reconciliation:
 - Local child rows are orphaned after cache update or eviction.
 - A persisted auth session proves unrecoverable during background recovery and the app must return to the root auth gate.
 
+## User-Initiated Local Data Clearing
+
+- Profile's Clear All Local Data action deletes rows only from this device's SQLite business tables. It does not call a cloud-repository deletion path or delete the Supabase Auth session, SharedPreferences, exported files, or any cloud data.
+- The action covers both rebuildable account-bound confirmed cache and local workout drafts, custom exercises, calibration, and review state that have no cloud copy. It is therefore not cache eviction and cannot promise that everything removed is recoverable.
+- Cloud Profile, Cloud Records, cloud `daily_summaries`, AI chat history, and cloud AI logs remain unchanged. While signed in, page refreshes can rebuild local confirmed cache under the normal cloud-authoritative read rules.
+- The action does not change the active account and is not sign-out, account switching, account deletion, or cloud official deletion. UI and documentation must state that cloud data can reappear while local-only data is permanently lost.
+- [Database.md](Database.md) owns the exact SQLite table scope and code references.
+
 ## Conflict And Repair
 
 - Cloud official records are the conflict authority.

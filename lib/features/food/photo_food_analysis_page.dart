@@ -30,7 +30,6 @@ const int _maxPhotoAnalysisImageBytes = 4 * 1024 * 1024;
 const int _maxPhotoAnalysisImages = 3;
 const String _photoFoodModelPreferenceKey = 'photo_food_ai_model_choice_v1';
 const double _photoKeyboardGap = 12;
-const double _photoSubmitFadeTravel = 48;
 const Set<String> _supportedPhotoMimeTypes = <String>{
   'image/jpeg',
   'image/png',
@@ -63,6 +62,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _notePanelKey = GlobalKey();
   late final FoodImagePicker _imagePicker;
+  late final PhotoFoodAnalysisRecoveryLease _recoveryLease;
   List<PickedFoodImage> _images = const <PickedFoodImage>[];
   int _selectedImageIndex = 0;
   bool _analyzing = false;
@@ -72,6 +72,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   @override
   void initState() {
     super.initState();
+    _recoveryLease = PhotoFoodAnalysisRecoveryCoordinator.instance
+        .acquireOwner();
     _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
     _images = List<PickedFoodImage>.unmodifiable(
       widget.initialImages.take(_maxPhotoAnalysisImages),
@@ -86,6 +88,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   @override
   void dispose() {
     FitLogNotifications.dismiss();
+    _recoveryLease.release();
     _scrollController.dispose();
     _noteFocusNode.removeListener(_handleNoteFocusChanged);
     _noteFocusNode.dispose();
@@ -211,8 +214,11 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         source,
         limit: availableSlots,
       );
+      if (!mounted) {
+        return;
+      }
       await PhotoFoodAnalysisRecoveryStore.clearPending();
-      if (!mounted || pickedImages.isEmpty) {
+      if (pickedImages.isEmpty) {
         return;
       }
       if (pickedImages.length > availableSlots) {
@@ -234,16 +240,19 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
         _showError(validationError);
       }
     } on FoodImageSelectionLimitException {
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
       if (mounted) {
+        await PhotoFoodAnalysisRecoveryStore.clearPending();
         _showError(strings.photoAiSelectionLimitExceeded);
       }
     } catch (_) {
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
       if (!mounted) {
         return;
       }
-      FitLogNotifications.topError(context, context.strings.photoAiPickFailed);
+      final pickFailedMessage = context.strings.photoAiPickFailed;
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
+      if (mounted) {
+        FitLogNotifications.topError(context, pickFailedMessage);
+      }
     }
   }
 
@@ -442,7 +451,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     final strings = context.strings;
     final canSubmit = _hasAnalyzableInput && !_analyzing;
     final bottomPadding = math.max(
-      MediaQuery.paddingOf(context).bottom,
+      MediaQuery.viewPaddingOf(context).bottom,
       FitLogBottomNavBar.bottomInset,
     );
     final scrollBottomPadding =
@@ -521,7 +530,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
               ],
             ),
           ),
-          _PhotoKeyboardSubmitVisibility(
+          _PhotoKeyboardSubmitGuard(
             child: Align(
               alignment: Alignment.bottomCenter,
               child: _PhotoFoodSubmitOverlay(
@@ -617,24 +626,18 @@ class _PhotoKeyboardNoteFollower extends StatelessWidget {
   }
 }
 
-class _PhotoKeyboardSubmitVisibility extends StatelessWidget {
-  const _PhotoKeyboardSubmitVisibility({required this.child});
+class _PhotoKeyboardSubmitGuard extends StatelessWidget {
+  const _PhotoKeyboardSubmitGuard({required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
-    final opacity = (1 - keyboardInset / _photoSubmitFadeTravel)
-        .clamp(0.0, 1.0)
-        .toDouble();
     return IgnorePointer(
+      key: const ValueKey<String>('photo_food_submit_keyboard_guard'),
       ignoring: keyboardInset > 0.5,
-      child: Opacity(
-        key: const ValueKey<String>('photo_food_submit_visibility'),
-        opacity: opacity,
-        child: child,
-      ),
+      child: child,
     );
   }
 }
@@ -656,13 +659,14 @@ class _PhotoFoodSubmitOverlay extends StatelessWidget {
     final fitTheme = context.fitLogTheme;
     final theme = Theme.of(context);
     final bottomPadding = math.max(
-      MediaQuery.paddingOf(context).bottom,
+      MediaQuery.viewPaddingOf(context).bottom,
       FitLogBottomNavBar.bottomInset,
     );
     final shieldHeight =
         FitLogBottomNavBar.floatingControlHeight / 2 + bottomPadding + 1;
 
     return SafeArea(
+      maintainBottomViewPadding: true,
       minimum: const EdgeInsets.fromLTRB(
         FitLogBottomNavBar.horizontalInset,
         0,

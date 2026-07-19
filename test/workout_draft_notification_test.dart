@@ -416,6 +416,59 @@ void main() {
       expect(cancelCount, 0);
     },
   );
+
+  test('notification scheduler coalesces 320 rapid field updates', () async {
+    final platform = _FakeWorkoutDraftNotificationPlatform();
+    final scheduler = WorkoutDraftNotificationScheduler(
+      strings: en,
+      platform: platform,
+      delay: const Duration(milliseconds: 10),
+    );
+    addTearDown(scheduler.dispose);
+    for (var index = 0; index < 320; index++) {
+      scheduler.schedule(
+        _draft(<Map<String, Object?>>[
+          _exercise(
+            name: 'Bench Press',
+            sets: <Map<String, Object?>>[
+              _set(weight: '$index', reps: '${index + 1}'),
+            ],
+          ),
+        ]),
+      );
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(platform.showCount, 1);
+    expect(platform.lastContent?.body, 'Set 1 of 1 - 319 kg x 320 reps');
+  });
+
+  test(
+    'notification cancellation cannot be followed by a stale update',
+    () async {
+      final platform = _FakeWorkoutDraftNotificationPlatform();
+      final scheduler = WorkoutDraftNotificationScheduler(
+        strings: en,
+        platform: platform,
+        delay: const Duration(milliseconds: 10),
+      );
+      addTearDown(scheduler.dispose);
+
+      scheduler.schedule(
+        _draft(<Map<String, Object?>>[
+          _exercise(
+            name: 'Bench Press',
+            sets: <Map<String, Object?>>[_set(weight: '60', reps: '8')],
+          ),
+        ]),
+      );
+      await scheduler.cancelNow();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(platform.showCount, 0);
+      expect(platform.cancelCount, 1);
+    },
+  );
 }
 
 WorkoutRecordDraft _draft(List<Map<String, Object?>> exercises) {

@@ -24,6 +24,7 @@ import '../../domain/models/workout_set.dart';
 import '../../domain/services/workout_calorie_calculator.dart';
 import 'workout_draft_notification.dart';
 import 'workout_draft_mutation_queue.dart';
+import 'workout_editor_resume.dart';
 
 const String _customExerciseGroupKey = 'Custom';
 
@@ -101,6 +102,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   Timer? _draftSaveDebounce;
   final WorkoutDraftMutationQueue _draftMutationQueue =
       WorkoutDraftMutationQueue();
+  WorkoutDraftNotificationScheduler? _notificationScheduler;
 
   bool get _isEditing =>
       (_editingPlanId ?? '').trim().isNotEmpty || _editingSeedSessionId != null;
@@ -125,6 +127,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     WidgetsBinding.instance.removeObserver(this);
     WorkoutDraftNotificationTapCoordinator.instance.markEditorClosed();
     _draftSaveDebounce?.cancel();
+    _notificationScheduler?.dispose();
     _recordNameController.dispose();
     _notesController.dispose();
     for (final draft in _selectedPlans.values) {
@@ -160,11 +163,14 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       if (_saving) {
         return;
       }
-      unawaited(_persistDraftNow());
+      unawaited(_persistDraftNow(syncNotificationImmediately: true));
     }
   }
 
   Future<void> _loadInitialState() async {
+    _notificationScheduler ??= WorkoutDraftNotificationScheduler(
+      strings: context.stringsRead,
+    );
     final services = context.read<AppServices>();
     final profileFuture = services.profileRepository.getProfile();
     final draftFuture = services.workoutDraftRepository.getActiveDraft();
@@ -353,12 +359,19 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     });
   }
 
-  Future<void> _persistDraftNow() async {
+  Future<void> _persistDraftNow({
+    bool syncNotificationImmediately = false,
+  }) async {
     _draftSaveDebounce?.cancel();
-    await _saveOrClearDraft();
+    await _saveOrClearDraft(
+      syncNotificationImmediately: syncNotificationImmediately,
+    );
   }
 
-  Future<void> _saveOrClearDraft({bool notifyRefresh = false}) async {
+  Future<void> _saveOrClearDraft({
+    bool notifyRefresh = false,
+    bool syncNotificationImmediately = false,
+  }) async {
     if (!mounted || _loadingPage || _saving || _isEditing) {
       return;
     }
@@ -367,8 +380,13 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     if (!_shouldPersistDraft) {
       await _draftMutationQueue.run(() async {
         await services.workoutDraftRepository.deleteActiveDraft();
-        await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+        await WorkoutEditorResumeStore.clear();
       });
+      if (_notificationScheduler case final scheduler?) {
+        await scheduler.cancelNow();
+      } else {
+        await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+      }
       _draftCreatedAt = null;
       if (notifyRefresh && mounted) {
         context.read<RefreshNotifier>().markDataChanged();
@@ -391,8 +409,13 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     );
     await _draftMutationQueue.run(() async {
       await services.workoutDraftRepository.saveActiveDraft(draft);
-      await WorkoutDraftNotificationSync.syncFromDraft(draft, strings);
+      await WorkoutEditorResumeStore.markActive();
     });
+    if (syncNotificationImmediately) {
+      await _notificationScheduler?.syncNow(draft);
+    } else {
+      _notificationScheduler?.schedule(draft);
+    }
     if (notifyRefresh && mounted) {
       context.read<RefreshNotifier>().markDataChanged();
     }
@@ -401,18 +424,24 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   Future<void> _deleteActiveDraftBarrier(
     AppServices services,
     AppStrings strings,
-  ) {
-    return _draftMutationQueue.run(() async {
+  ) async {
+    await _draftMutationQueue.run(() async {
       await services.workoutDraftRepository.deleteActiveDraft();
-      await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+      await WorkoutEditorResumeStore.clear();
     });
+    if (_notificationScheduler case final scheduler?) {
+      await scheduler.cancelNow();
+    } else {
+      await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+    }
   }
 
   Future<void> _exitPage() async {
     if (_saving) {
       return;
     }
-    await _persistDraftNow();
+    await _persistDraftNow(syncNotificationImmediately: true);
+    await WorkoutEditorResumeStore.clear();
     if (!mounted) {
       return;
     }
@@ -507,7 +536,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       replaced?.dispose();
       _selectedPlans[draft.exerciseKey] = draft;
     });
-    unawaited(_persistDraftNow());
+    unawaited(_persistDraftNow(syncNotificationImmediately: true));
   }
 
   Future<void> _applyExerciseSelection(List<String> pickedKeysInOrder) async {
@@ -564,7 +593,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         ..addAll(reordered);
       _updatingExerciseSelection = false;
     });
-    await _persistDraftNow();
+    await _persistDraftNow(syncNotificationImmediately: true);
   }
 
   void _addSet(_ExercisePlanDraft draft) {
@@ -581,21 +610,21 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         _SetDraft(defaultWeight: defaultWeight, defaultReps: defaultReps),
       );
     });
-    unawaited(_persistDraftNow());
+    unawaited(_persistDraftNow(syncNotificationImmediately: true));
   }
 
   void _removeSet(_ExercisePlanDraft draft, int index) {
     final target = draft.sets.removeAt(index);
     target.dispose();
     setState(() {});
-    unawaited(_persistDraftNow());
+    unawaited(_persistDraftNow(syncNotificationImmediately: true));
   }
 
   void _removeExercise(_ExercisePlanDraft draft) {
     final target = _selectedPlans.remove(draft.exerciseKey);
     target?.dispose();
     setState(() {});
-    unawaited(_persistDraftNow());
+    unawaited(_persistDraftNow(syncNotificationImmediately: true));
   }
 
   void _toggleSetCompleted(_SetDraft draft) {
@@ -608,7 +637,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         draft.completedAt = DateTime.now().toIso8601String();
       }
     });
-    unawaited(_persistDraftNow());
+    unawaited(_persistDraftNow(syncNotificationImmediately: true));
   }
 
   int _durationForDraft(_ExercisePlanDraft draft) {

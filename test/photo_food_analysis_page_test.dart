@@ -122,11 +122,13 @@ void main() {
     );
   });
 
-  testWidgets('food note follows keyboard as a fixed-size mounted surface', (
+  testWidgets('food note follows keyboard while submit action stays fixed', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(bottom: 24);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 24);
     addTearDown(tester.view.reset);
     final harness = _PhotoHarness();
     addTearDown(harness.dispose);
@@ -147,22 +149,30 @@ void main() {
     await tester.tap(noteFinder);
     await tester.pump();
     final restingNoteRect = tester.getRect(noteFinder);
+    final submitFinder = find.byKey(
+      const ValueKey<String>('photo_food_submit_button'),
+    );
+    final restingSubmitRect = tester.getRect(submitFinder);
     final restingListOffset = tester
         .state<ScrollableState>(find.byType(Scrollable).first)
         .position
         .pixels;
 
+    tester.view.padding = FakeViewPadding.zero;
     tester.view.viewInsets = const FakeViewPadding(bottom: 80);
     await tester.pump();
     final noteAt80 = tester.getRect(noteFinder);
+    final submitAt80 = tester.getRect(submitFinder);
 
     tester.view.viewInsets = const FakeViewPadding(bottom: 180);
     await tester.pump();
     final noteAt180 = tester.getRect(noteFinder);
+    final submitAt180 = tester.getRect(submitFinder);
 
     tester.view.viewInsets = const FakeViewPadding(bottom: 336);
     await tester.pump();
     final noteAt336 = tester.getRect(noteFinder);
+    final submitAt336 = tester.getRect(submitFinder);
 
     expect(
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
@@ -172,14 +182,10 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_shield')),
       findsOneWidget,
     );
-    expect(
-      tester
-          .widget<Opacity>(
-            find.byKey(const ValueKey<String>('photo_food_submit_visibility')),
-          )
-          .opacity,
-      0,
+    final submitGuardFinder = find.byKey(
+      const ValueKey<String>('photo_food_submit_keyboard_guard'),
     );
+    expect(tester.widget<IgnorePointer>(submitGuardFinder).ignoring, isTrue);
     expect(
       tester.widget<ListView>(find.byType(ListView)).padding,
       initialListPadding,
@@ -193,6 +199,9 @@ void main() {
     expect(noteAt80.top, greaterThanOrEqualTo(noteAt180.top));
     expect(noteAt180.top, greaterThanOrEqualTo(noteAt336.top));
     expect(noteAt336.bottom, lessThanOrEqualTo(844 - 336 - 12 + 0.1));
+    expect(submitAt80, restingSubmitRect);
+    expect(submitAt180, restingSubmitRect);
+    expect(submitAt336, restingSubmitRect);
     expect(
       tester
           .state<ScrollableState>(find.byType(Scrollable).first)
@@ -205,20 +214,15 @@ void main() {
       initialListPadding,
     );
 
-    tester.view.viewInsets = const FakeViewPadding(bottom: 0);
+    tester.view.padding = const FakeViewPadding(bottom: 24);
+    tester.view.viewInsets = FakeViewPadding.zero;
     await tester.pump();
     expect(
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
       findsOneWidget,
     );
-    expect(
-      tester
-          .widget<Opacity>(
-            find.byKey(const ValueKey<String>('photo_food_submit_visibility')),
-          )
-          .opacity,
-      1,
-    );
+    expect(tester.getRect(submitFinder), restingSubmitRect);
+    expect(tester.widget<IgnorePointer>(submitGuardFinder).ignoring, isFalse);
     expect(tester.getRect(noteFinder), restingNoteRect);
     expect(tester.widget<TextField>(noteFinder).focusNode, same(noteFocusNode));
   });

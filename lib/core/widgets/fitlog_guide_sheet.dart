@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'fitlog_bottom_nav_bar.dart';
+import 'fitlog_modal_backdrop.dart';
 import 'glass_panel.dart';
 
 class FitLogGuideSheetGeometry {
@@ -62,54 +63,57 @@ Future<T?> showFitLogGuideSheet<T>({
     useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.42),
+    barrierColor: Colors.transparent,
     builder: (sheetContext) {
       final geometry = FitLogGuideSheetGeometry.resolve(sheetContext);
-      return Padding(
-        key: const ValueKey<String>('fitlog_guide_sheet_padding'),
-        padding: EdgeInsets.fromLTRB(
-          FitLogGuideSheetGeometry.outerGap,
-          geometry.topPadding,
-          FitLogGuideSheetGeometry.outerGap,
-          geometry.bottomPadding,
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: GlassPanel(
-            key: const ValueKey<String>('fitlog_guide_sheet_panel'),
-            margin: EdgeInsets.zero,
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    leading,
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: Theme.of(sheetContext).textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w800),
+      return FitLogModalBackdrop(
+        child: Padding(
+          key: const ValueKey<String>('fitlog_guide_sheet_padding'),
+          padding: EdgeInsets.fromLTRB(
+            FitLogGuideSheetGeometry.outerGap,
+            geometry.topPadding,
+            FitLogGuideSheetGeometry.outerGap,
+            geometry.bottomPadding,
+          ),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: GlassPanel(
+              key: const ValueKey<String>('fitlog_guide_sheet_panel'),
+              margin: EdgeInsets.zero,
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+              opaque: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      leading,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: Theme.of(sheetContext).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: MaterialLocalizations.of(
-                        sheetContext,
-                      ).closeButtonTooltip,
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  key: const ValueKey<String>('fitlog_guide_sheet_body'),
-                  height: geometry.bodyHeight,
-                  child: SingleChildScrollView(child: body),
-                ),
-              ],
+                      IconButton(
+                        tooltip: MaterialLocalizations.of(
+                          sheetContext,
+                        ).closeButtonTooltip,
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    key: const ValueKey<String>('fitlog_guide_sheet_body'),
+                    height: geometry.bodyHeight,
+                    child: SingleChildScrollView(child: body),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -25,6 +25,7 @@ import 'package:fitlog_local/domain/models/weight_log.dart';
 import 'package:fitlog_local/domain/models/workout_session.dart';
 import 'package:fitlog_local/core/widgets/fitlog_bottom_nav_bar.dart';
 import 'package:fitlog_local/core/widgets/fitlog_guide_sheet.dart';
+import 'package:fitlog_local/core/widgets/glass_panel.dart';
 import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/cloud_profile_mapper.dart';
@@ -1041,6 +1042,7 @@ void main() {
         profileRepository: profileRepository,
         withRootNavOverlay: true,
         rootTabController: rootTabController,
+        themeKey: FitLogThemeKey.blackOrange,
       ),
     );
     await tester.pumpAndSettle();
@@ -1051,6 +1053,18 @@ void main() {
 
     expect(find.text('Method Guide'), findsOneWidget);
     expect(find.byType(ModalBarrier), findsWidgets);
+    expect(
+      tester
+          .widget<GlassPanel>(
+            find.byKey(const ValueKey<String>('fitlog_guide_sheet_panel')),
+          )
+          .opaque,
+      isTrue,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('fitlog_modal_backdrop_filter')),
+      findsOneWidget,
+    );
 
     final sheetRect = tester.getRect(
       find.byKey(const ValueKey<String>('fitlog_guide_sheet_panel')),
@@ -2192,6 +2206,7 @@ Widget _buildProfileTestApp({
   bool withRootNavOverlay = false,
   bool resizeToAvoidBottomInset = true,
   RootTabController? rootTabController,
+  FitLogThemeKey themeKey = FitLogThemeKey.green,
 }) {
   final effectiveRootTabController = rootTabController ?? RootTabController();
   final rootInteractionLockController = RootInteractionLockController();
@@ -2270,7 +2285,7 @@ Widget _buildProfileTestApp({
       ),
     ],
     child: MaterialApp(
-      theme: buildFitLogTheme(Brightness.light),
+      theme: buildFitLogTheme(Brightness.light, themeKey: themeKey),
       home: Scaffold(
         extendBody: withRootNavOverlay,
         resizeToAvoidBottomInset: resizeToAvoidBottomInset,

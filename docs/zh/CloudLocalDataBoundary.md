@@ -277,6 +277,14 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - cache 更新或淘汰后出现本地孤立 child rows。
 - 持久化 auth session 在后台恢复时被证明不可恢复，App 必须回到 root auth gate。
 
+## 用户发起的本地数据清空
+
+- Profile 的“清空本地数据”只删除当前设备 SQLite 业务表中的 rows；它不调用 cloud repository 删除路径，也不删除 Supabase Auth session、SharedPreferences、已导出文件或任何云端数据。
+- 该操作同时覆盖可重建的账号绑定 confirmed cache 和没有云端副本的本地训练草稿、自定义动作、校准与复盘状态，因此它不是 cache eviction，也不能承诺所有删除内容都能恢复。
+- Cloud Profile、Cloud Records、cloud `daily_summaries`、AI chat history 和云端 AI logs 保持不变。登录状态下，页面刷新可以按照正常 cloud-authoritative 读取规则重新建立本地 confirmed cache。
+- 该操作不改变 active account，不等于退出登录、切换账号、删除账号或云端正式删除。UI 和文档必须明确提示：云端数据可能重新出现，本地独有数据会永久丢失。
+- 精确 SQLite 表范围和代码引用由 [Database.md](Database.md) 维护。
+
 ## 冲突与修复
 
 - 云端正式 records 是冲突权威。

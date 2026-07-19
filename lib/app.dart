@@ -51,6 +51,7 @@ import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/workout/add_workout_page.dart';
 import 'features/workout/workout_draft_notification.dart';
+import 'features/workout/workout_editor_resume.dart';
 import 'features/workout/workout_log_page.dart';
 
 final GlobalKey<NavigatorState> fitLogNavigatorKey =
@@ -640,6 +641,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   String? _lastRecordHydrationKey;
   bool _recordHydrationRefreshScheduled = false;
   bool _restoringLostPickerImages = false;
+  bool _checkedWorkoutEditorResume = false;
 
   @override
   void initState() {
@@ -648,6 +650,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_restoreLostPickerImagesIfNeeded());
+        unawaited(_restoreRecentWorkoutEditorIfNeeded());
         unawaited(_syncActiveWorkoutDraftNotification());
       }
     });
@@ -742,30 +745,46 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       if (photoDraft == null && chatDraft == null) {
         return;
       }
-      final images = await ImagePickerFoodImagePicker().retrieveLostImages(
-        limit: 3,
-      );
       if (photoDraft != null) {
-        await PhotoFoodAnalysisRecoveryStore.clearPending();
-      }
-      if (chatDraft != null) {
-        await AiChatImageRecoveryStore.clearPending();
-      }
-      if (!mounted) {
+        await PhotoFoodAnalysisRecoveryCoordinator.instance.runRootRecovery(
+          () => _retrieveAndRestoreLostPickerImages(
+            photoDraft: photoDraft,
+            chatDraft: chatDraft,
+          ),
+        );
         return;
       }
-      if (photoDraft != null) {
-        await _restoreLostPhotoAnalysis(photoDraft, images);
-        return;
-      }
-      if (chatDraft != null) {
-        _restoreLostAiChatImages(chatDraft, images);
-      }
+      await _retrieveAndRestoreLostPickerImages(chatDraft: chatDraft);
     } catch (_) {
       await PhotoFoodAnalysisRecoveryStore.clearPending();
       await AiChatImageRecoveryStore.clearPending();
     } finally {
       _restoringLostPickerImages = false;
+    }
+  }
+
+  Future<void> _retrieveAndRestoreLostPickerImages({
+    PhotoFoodAnalysisRecoveryDraft? photoDraft,
+    AiChatImageRecoveryDraft? chatDraft,
+  }) async {
+    final images = await ImagePickerFoodImagePicker().retrieveLostImages(
+      limit: 3,
+    );
+    if (photoDraft != null) {
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
+    }
+    if (chatDraft != null) {
+      await AiChatImageRecoveryStore.clearPending();
+    }
+    if (!mounted) {
+      return;
+    }
+    if (photoDraft != null) {
+      await _restoreLostPhotoAnalysis(photoDraft, images);
+      return;
+    }
+    if (chatDraft != null) {
+      _restoreLostAiChatImages(chatDraft, images);
     }
   }
 
@@ -820,6 +839,41 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       draft,
       context.stringsRead,
     );
+  }
+
+  Future<void> _restoreRecentWorkoutEditorIfNeeded() async {
+    if (_checkedWorkoutEditorResume ||
+        WorkoutDraftNotificationTapCoordinator.instance.editorOpen) {
+      return;
+    }
+    _checkedWorkoutEditorResume = true;
+    final draft = await context
+        .read<AppServices>()
+        .workoutDraftRepository
+        .getActiveDraft();
+    final shouldResume = await WorkoutEditorResumeStore.shouldAutoResume(draft);
+    if (!mounted || !shouldResume || draft == null) {
+      if (!shouldResume) {
+        await WorkoutEditorResumeStore.clear();
+      }
+      return;
+    }
+
+    WorkoutDraftNotificationTapCoordinator.instance.markEditorOpen();
+    context.read<RootTabController>().setIndex(RootTabIndex.workout);
+    try {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => AddWorkoutPage(initialDate: draft.date),
+        ),
+      );
+    } catch (_) {
+      WorkoutDraftNotificationTapCoordinator.instance.markEditorClosed();
+      return;
+    }
+    if (mounted) {
+      context.read<RefreshNotifier>().markDataChanged();
+    }
   }
 
   @override

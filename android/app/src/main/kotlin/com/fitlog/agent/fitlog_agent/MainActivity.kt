@@ -23,6 +23,9 @@ class MainActivity : FlutterActivity() {
     private var pendingNotificationTitle: String? = null
     private var pendingNotificationBody: String? = null
     private var pendingNotificationImageAsset: String? = null
+    private var cachedNotificationImageAsset: String? = null
+    private var cachedNotificationBitmap: Bitmap? = null
+    private var cachedNotificationBitmapFailed = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -227,14 +230,24 @@ class MainActivity : FlutterActivity() {
 
     private fun loadFlutterAssetBitmap(assetPath: String?): Bitmap? {
         val path = assetPath?.takeIf { it.isNotBlank() } ?: return null
+        if (path == cachedNotificationImageAsset) {
+            return if (cachedNotificationBitmapFailed) null else cachedNotificationBitmap
+        }
+        cachedNotificationImageAsset = path
+        cachedNotificationBitmap = null
+        cachedNotificationBitmapFailed = false
         return try {
             val assetKey = FlutterInjector.instance()
                 .flutterLoader()
                 .getLookupKeyForAsset(path)
             assets.open(assetKey).use { input ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input).also { bitmap ->
+                    cachedNotificationBitmap = bitmap
+                    cachedNotificationBitmapFailed = bitmap == null
+                }
             }
         } catch (_: Exception) {
+            cachedNotificationBitmapFailed = true
             null
         }
     }

@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-07-19 Photo Picker And Workout Draft Recovery
+
+### Changed
+
+- Restored an active new-workout editor after an Android process rebuild when its authoritative SQLite draft was updated within 30 minutes. Surviving processes keep the existing route, older drafts remain manual through the Workout resume bar, and explicit back, discard, or successful save clears the lightweight route hint without adding a background timer or keepalive.
+- Kept draft persistence ordered and critical while making workout notification rendering best effort. Rapid field edits now receive one trailing notification update, semantic actions and backgrounding sync immediately, and Android reuses the current decoded notification bitmap.
+
+### Fixed
+
+- Gave a mounted AI Food Analysis page exclusive ownership of its camera/gallery result and made root lost-data recovery single-flight only when that page is absent. Returning from Camera can no longer stack a second incomplete analysis page, expose the original page after Save, or enable a duplicate save sequence.
+- Prevented a pending workout-notification update from reappearing after the draft was saved, discarded, or emptied.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 251 Flutter tests passed. Focused recovery/notification tests also passed, including live-page picker ownership, single-flight lost-data recovery, recent-versus-expired workout route restoration, explicit-exit clearing, cancellation ordering, and a 320-update notification pressure case that rendered only the latest state once.
+- Regenerated 595 chunks from 21 stable bilingual sources as local corpus build `0529595f175827fc3255df44`; all 10 deterministic corpus and embedding-sync checks passed. No cloud upload or corpus activation was performed.
+- Rebuilt the configured split debug APKs: `arm64-v8a` SHA-256 `0125195648ed57ed755e464503678dec0a98d543ef28838e138a50e3faa9a4f8`, `armeabi-v7a` `a1df4dac9f755d02838c85130695a4761050e3f3338a62c2f0787469cc2f3002`, and `x86_64` `de5f9fcfc8abf3973aa84bd0da30877ae405660b301eb7e08336e824c6b0d7d9`.
+
+## 2026-07-19 Paste JSON Editor And Modal Surfaces
+
+### Added
+
+- Added a top-right expand action to Paste AI Result. Its neutral four-corner expand/collapse controls stay visually quiet, and it waits for an open keyboard to close before presenting a root modal containing only a larger JSON editor, preserving text and selection and writing edits back on close.
+
+### Fixed
+
+- Smoothed the JSON editor's keyboard-motion handoff and made the state-preserving setup card fade progressively with the opening keyboard instead of disappearing in one frame. The fixed Parse control remains input-gated and naturally covered, while the live inset stays the sole editor-motion owner.
+- Added a fixed blurred modal backdrop and opaque elevated guide surface so Profile method information and other shared guide sheets no longer reveal page content through the Black Orange panel.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 244 Flutter tests passed, including continuous 40/52/64 px JSON-editor handoff coverage, progressive Prompt opacity at 40/80/180 px, low-emphasis Black Orange resize controls, keyboard-close-before-modal sequencing, expanded-editor value/selection return, and the Black Orange Profile guide surface.
+- Regenerated 588 chunks from 21 stable bilingual sources as local corpus build `9e6ff8f97b77ffccadd68444`; all 10 deterministic corpus and embedding-sync checks passed.
+- Rebuilt the configured split debug APKs: `arm64-v8a` SHA-256 `dab467b8971ba7b2cce925fc56ec4e2e056c5bb3ed905b3161081c895b4eb08a`, `armeabi-v7a` `c4c20ef9e9c385dcaff0b801be317320898c6912a1abc060d136680890517f3b`, and `x86_64` `de2fb0df24fab5b15e7827d2c6d4d135e0234ac291f60d8548ecbbb42fdfa6b1`.
+
+## 2026-07-19 AI Food Analysis Keyboard Dismissal
+
+### Fixed
+
+- Kept the floating AI Food Analysis action, its lower shield, and matching list clearance at their closed-keyboard screen geometry throughout keyboard travel. The system keyboard now covers and reveals the action without an inset-driven fade or safe-area return jump, while input remains gated until the keyboard is fully closed.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 243 Flutter tests passed, including regression coverage that holds the analysis-action rectangle constant at 0, 80, 180, and 336 px keyboard insets while checking keyboard-time input gating.
+- Regenerated 586 chunks from 21 stable bilingual sources as local corpus build `dae128f72cc9711943d88d66`; all 10 deterministic corpus and embedding-sync checks passed.
+- Rebuilt the configured split debug APKs: `arm64-v8a` SHA-256 `dda5289feac440f2a1d154b7ceccca64a270c99ab2272e8aed214fc08e28ec5a`, `armeabi-v7a` `f5eb13075e31de6bba3cdf10a491dcb0472f98b5afd663833a7a25b417c2df2f`, and `x86_64` `b08704cdc977896451b1dbdd9abaf89d6b8c932bff236de9c6273be4f7766395`.
+
 ## 2026-07-18 Profile Body Precision
 
 ### Fixed
