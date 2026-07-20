@@ -23,6 +23,7 @@ import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/cloud_runtime_context.dart';
 import '../account/account_controller.dart';
 import 'food_image_picker.dart';
+import 'food_image_source_sheet.dart';
 import 'food_preview_page.dart';
 import 'photo_food_analysis_recovery.dart';
 
@@ -61,11 +62,14 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   final FocusNode _noteFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _notePanelKey = GlobalKey();
+  final GlobalKey _noteAnchorKey = GlobalKey();
+  final LayerLink _noteLayerLink = LayerLink();
   late final FoodImagePicker _imagePicker;
   late final PhotoFoodAnalysisRecoveryLease _recoveryLease;
   List<PickedFoodImage> _images = const <PickedFoodImage>[];
   int _selectedImageIndex = 0;
   bool _analyzing = false;
+  double _notePanelHeight = 160;
   double? _noteRestingBottom;
   AiGatewayModelChoice _modelChoice = AiGatewayModelChoice.qwen;
 
@@ -83,6 +87,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     _noteController.addListener(_handleNoteChanged);
     _noteFocusNode.addListener(_handleNoteFocusChanged);
     _loadModelChoice();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncNoteGeometry());
   }
 
   @override
@@ -105,6 +110,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   void _handleNoteChanged() {
     if (mounted) {
       setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncNoteGeometry());
     }
   }
 
@@ -112,21 +118,30 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     if (!_noteFocusNode.hasFocus || !mounted) {
       return;
     }
-    final view = View.of(context);
-    if (view.viewInsets.bottom / view.devicePixelRatio > 0.5) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncNoteGeometry());
+  }
+
+  void _syncNoteGeometry() {
+    if (!mounted) {
       return;
     }
     final noteBox = _notePanelKey.currentContext?.findRenderObject();
-    if (noteBox is! RenderBox) {
+    final anchorBox = _noteAnchorKey.currentContext?.findRenderObject();
+    if (noteBox is! RenderBox || anchorBox is! RenderBox) {
       return;
     }
-    final restingBottom = noteBox
-        .localToGlobal(Offset(0, noteBox.size.height))
-        .dy;
-    if (_noteRestingBottom == restingBottom) {
+    final notePanelHeight = noteBox.size.height;
+    final restingBottom =
+        anchorBox.localToGlobal(Offset.zero).dy + notePanelHeight;
+    if ((_notePanelHeight - notePanelHeight).abs() < 0.1 &&
+        _noteRestingBottom != null &&
+        (_noteRestingBottom! - restingBottom).abs() < 0.1) {
       return;
     }
-    setState(() => _noteRestingBottom = restingBottom);
+    setState(() {
+      _notePanelHeight = notePanelHeight;
+      _noteRestingBottom = restingBottom;
+    });
   }
 
   Future<void> _loadModelChoice() async {
@@ -178,14 +193,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
       return;
     }
     final replaceSelected = _images.length >= _maxPhotoAnalysisImages;
-    final source = await showModalBottomSheet<FoodImageSource>(
+    final strings = context.stringsRead;
+    final source = await showFoodImageSourceSheet(
       context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (sheetContext) => _PhotoImageSourceSheet(
-        imageCount: _images.length,
-        replaceSelected: replaceSelected,
-      ),
+      title: replaceSelected
+          ? strings.photoAiReplaceImageTitle
+          : strings.photoAiAddImageTitle,
+      subtitle: strings.photoAiImageCount(_images.length),
+      cameraButtonKey: const ValueKey<String>('photo_food_camera_button'),
+      galleryButtonKey: const ValueKey<String>('photo_food_gallery_button'),
     );
     if (source == null || !mounted) {
       return;
@@ -477,67 +493,91 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
               controller: _scrollController,
               padding: EdgeInsets.only(bottom: scrollBottomPadding),
               children: <Widget>[
-                FitLogPageHeader(
-                  title: strings.photoAiAnalysis,
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 430),
-                      child:
-                          FitLogSlidingSegmentedControl<AiGatewayModelChoice>(
-                            key: const ValueKey<String>(
-                              'photo_food_model_choice',
-                            ),
-                            indicatorKey: const ValueKey<String>(
-                              'photo_food_model_indicator',
-                            ),
-                            segments:
-                                <FitLogSlidingSegment<AiGatewayModelChoice>>[
-                                  FitLogSlidingSegment<AiGatewayModelChoice>(
-                                    value: AiGatewayModelChoice.chatgpt,
-                                    label: strings.aiProviderChatGpt,
-                                    key: const ValueKey<String>(
-                                      'photo_food_provider_chatgpt',
-                                    ),
+                _PhotoKeyboardBackdrop(
+                  child: Column(
+                    children: <Widget>[
+                      FitLogPageHeader(
+                        title: strings.photoAiAnalysis,
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 430),
+                            child:
+                                FitLogSlidingSegmentedControl<
+                                  AiGatewayModelChoice
+                                >(
+                                  key: const ValueKey<String>(
+                                    'photo_food_model_choice',
                                   ),
-                                  FitLogSlidingSegment<AiGatewayModelChoice>(
-                                    value: AiGatewayModelChoice.qwen,
-                                    label: strings.aiProviderQwen,
-                                    key: const ValueKey<String>(
-                                      'photo_food_provider_qwen',
-                                    ),
+                                  indicatorKey: const ValueKey<String>(
+                                    'photo_food_model_indicator',
                                   ),
-                                ],
-                            selected: _modelChoice,
-                            onChanged: _analyzing ? null : _setModelChoice,
-                            backgroundColor: context.fitLogTheme.navBackground
-                                .withValues(alpha: 0.54),
-                            borderColor: context.fitLogTheme.outline.withValues(
-                              alpha: 0.72,
-                            ),
-                            indicatorColor: context.fitLogTheme.navIndicator,
-                            selectedTextColor:
-                                context.fitLogTheme.navSelectedText,
-                            unselectedTextColor:
-                                context.fitLogTheme.navUnselectedText,
+                                  segments:
+                                      <
+                                        FitLogSlidingSegment<
+                                          AiGatewayModelChoice
+                                        >
+                                      >[
+                                        FitLogSlidingSegment<
+                                          AiGatewayModelChoice
+                                        >(
+                                          value: AiGatewayModelChoice.chatgpt,
+                                          label: strings.aiProviderChatGpt,
+                                          key: const ValueKey<String>(
+                                            'photo_food_provider_chatgpt',
+                                          ),
+                                        ),
+                                        FitLogSlidingSegment<
+                                          AiGatewayModelChoice
+                                        >(
+                                          value: AiGatewayModelChoice.qwen,
+                                          label: strings.aiProviderQwen,
+                                          key: const ValueKey<String>(
+                                            'photo_food_provider_qwen',
+                                          ),
+                                        ),
+                                      ],
+                                  selected: _modelChoice,
+                                  onChanged: _analyzing
+                                      ? null
+                                      : _setModelChoice,
+                                  backgroundColor: context
+                                      .fitLogTheme
+                                      .navBackground
+                                      .withValues(alpha: 0.54),
+                                  borderColor: context.fitLogTheme.outline
+                                      .withValues(alpha: 0.72),
+                                  indicatorColor:
+                                      context.fitLogTheme.navIndicator,
+                                  selectedTextColor:
+                                      context.fitLogTheme.navSelectedText,
+                                  unselectedTextColor:
+                                      context.fitLogTheme.navUnselectedText,
+                                ),
                           ),
-                    ),
+                        ),
+                      ),
+                      RepaintBoundary(
+                        child: _PhotoPickerPanel(
+                          images: _images,
+                          selectedIndex: _selectedImageIndex,
+                          onOpenPicker: _openImageSourceSheet,
+                          onSelect: (index) =>
+                              setState(() => _selectedImageIndex = index),
+                          onRemove: _removeImageAt,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                RepaintBoundary(
-                  child: _PhotoPickerPanel(
-                    images: _images,
-                    selectedIndex: _selectedImageIndex,
-                    onOpenPicker: _openImageSourceSheet,
-                    onSelect: (index) =>
-                        setState(() => _selectedImageIndex = index),
-                    onRemove: _removeImageAt,
-                  ),
+                CompositedTransformTarget(
+                  key: _noteAnchorKey,
+                  link: _noteLayerLink,
+                  child: SizedBox(height: _notePanelHeight),
                 ),
-                _buildNotePanel(strings),
               ],
             ),
           ),
@@ -551,6 +591,12 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
               ),
             ),
           ),
+          _PhotoKeyboardPageBackdrop(onDismiss: _noteFocusNode.unfocus),
+          _PhotoKeyboardNoteFollower(
+            link: _noteLayerLink,
+            restingBottom: _noteRestingBottom,
+            child: _buildNotePanel(strings),
+          ),
           if (_analyzing) const _PhotoFoodLoadingOverlay(),
         ],
       ),
@@ -558,26 +604,23 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   }
 
   Widget _buildNotePanel(AppStrings strings) {
-    return _PhotoKeyboardNoteFollower(
-      restingBottom: _noteRestingBottom,
-      child: GlassPanel(
-        key: _notePanelKey,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        padding: const EdgeInsets.all(14),
-        child: TextField(
-          key: const ValueKey<String>('photo_food_note_field'),
-          controller: _noteController,
-          focusNode: _noteFocusNode,
-          minLines: 3,
-          maxLines: 5,
-          textInputAction: TextInputAction.newline,
-          scrollPadding: EdgeInsets.zero,
-          onTapOutside: (_) => _noteFocusNode.unfocus(),
-          decoration: InputDecoration(
-            labelText: strings.photoAiNoteLabel,
-            hintText: strings.photoAiNoteHint,
-            alignLabelWithHint: true,
-          ),
+    return GlassPanel(
+      key: _notePanelKey,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.all(14),
+      child: TextField(
+        key: const ValueKey<String>('photo_food_note_field'),
+        controller: _noteController,
+        focusNode: _noteFocusNode,
+        minLines: 3,
+        maxLines: 5,
+        textInputAction: TextInputAction.newline,
+        scrollPadding: EdgeInsets.zero,
+        onTapOutside: (_) => _noteFocusNode.unfocus(),
+        decoration: InputDecoration(
+          labelText: strings.photoAiNoteLabel,
+          hintText: strings.photoAiNoteHint,
+          alignLabelWithHint: true,
         ),
       ),
     );
@@ -612,12 +655,65 @@ class _PhotoKeyboardScrollable extends StatelessWidget {
   }
 }
 
+class _PhotoKeyboardBackdrop extends StatelessWidget {
+  const _PhotoKeyboardBackdrop({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardActive = MediaQuery.viewInsetsOf(context).bottom > 0.5;
+    return IgnorePointer(
+      key: const ValueKey<String>('photo_food_keyboard_backdrop_guard'),
+      ignoring: keyboardActive,
+      child: child,
+    );
+  }
+}
+
+class _PhotoKeyboardPageBackdrop extends StatelessWidget {
+  const _PhotoKeyboardPageBackdrop({required this.onDismiss});
+
+  static const double _fadeExtent = 180;
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardActive = keyboardInset > 0.5;
+    final linearProgress = (keyboardInset / _fadeExtent)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final progress = Curves.easeInOutCubic.transform(linearProgress);
+    final fitTheme = context.fitLogTheme;
+    final targetAlpha = fitTheme.isDark ? 0.32 : 0.18;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !keyboardActive,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onDismiss,
+          onVerticalDragStart: (_) => onDismiss(),
+          child: ColoredBox(
+            key: const ValueKey<String>('photo_food_keyboard_backdrop_scrim'),
+            color: fitTheme.shadow.withValues(alpha: targetAlpha * progress),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PhotoKeyboardNoteFollower extends StatelessWidget {
   const _PhotoKeyboardNoteFollower({
+    required this.link,
     required this.restingBottom,
     required this.child,
   });
 
+  final LayerLink link;
   final double? restingBottom;
   final Widget child;
 
@@ -629,10 +725,17 @@ class _PhotoKeyboardNoteFollower extends StatelessWidget {
     final offsetY = restingBottom == null
         ? 0.0
         : math.min(0.0, availableBottom - restingBottom!);
-    return Transform.translate(
-      key: const ValueKey<String>('photo_food_note_keyboard_follower'),
-      offset: Offset(0, offsetY),
-      child: child,
+    return Positioned(
+      left: 0,
+      top: 0,
+      right: 0,
+      child: CompositedTransformFollower(
+        key: const ValueKey<String>('photo_food_note_keyboard_follower'),
+        link: link,
+        showWhenUnlinked: false,
+        offset: Offset(0, offsetY),
+        child: child,
+      ),
     );
   }
 }
@@ -732,116 +835,6 @@ class _PhotoFoodSubmitOverlay extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoImageSourceSheet extends StatelessWidget {
-  const _PhotoImageSourceSheet({
-    required this.imageCount,
-    required this.replaceSelected,
-  });
-
-  final int imageCount;
-  final bool replaceSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = context.strings;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              replaceSelected
-                  ? strings.photoAiReplaceImageTitle
-                  : strings.photoAiAddImageTitle,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              strings.photoAiImageCount(imageCount),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: context.fitLogTheme.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _PhotoSourceAction(
-                    key: const ValueKey<String>('photo_food_camera_button'),
-                    icon: Icons.photo_camera_outlined,
-                    label: strings.takePhoto,
-                    onTap: () =>
-                        Navigator.of(context).pop(FoodImageSource.camera),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PhotoSourceAction(
-                    key: const ValueKey<String>('photo_food_gallery_button'),
-                    icon: Icons.photo_library_outlined,
-                    label: strings.chooseFromGallery,
-                    onTap: () =>
-                        Navigator.of(context).pop(FoodImageSource.gallery),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoSourceAction extends StatelessWidget {
-  const _PhotoSourceAction({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final fitTheme = context.fitLogTheme;
-    return Material(
-      color: fitTheme.surfaceVariant,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: fitTheme.outline),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: 112,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(icon, size: 30, color: fitTheme.primaryBright),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
         ),
       ),
     );

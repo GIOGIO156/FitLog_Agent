@@ -227,6 +227,61 @@ void main() {
     expect(tester.widget<TextField>(noteFinder).focusNode, same(noteFocusNode));
   });
 
+  testWidgets(
+    'keyboard backdrop dims and blocks the photo picker without covering the note',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final harness = _PhotoHarness();
+      addTearDown(harness.dispose);
+
+      await tester.pumpWidget(_buildPhotoTestApp(harness));
+      final noteFinder = find.byKey(
+        const ValueKey<String>('photo_food_note_field'),
+      );
+      await _scrollUntilVisible(tester, noteFinder);
+      await tester.tap(noteFinder);
+      await tester.pump();
+      final focusNode = tester.widget<TextField>(noteFinder).focusNode!;
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 80);
+      await tester.pump();
+      final scrimFinder = find.byKey(
+        const ValueKey<String>('photo_food_keyboard_backdrop_scrim'),
+      );
+      final alphaAt80 = tester.widget<ColoredBox>(scrimFinder).color.a;
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 180);
+      await tester.pump();
+      final alphaAt180 = tester.widget<ColoredBox>(scrimFinder).color.a;
+      expect(alphaAt80, greaterThan(0));
+      expect(alphaAt180, greaterThan(alphaAt80));
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      await tester.pump();
+      await tester.tapAt(tester.getRect(noteFinder).center);
+      await tester.pump();
+      expect(focusNode.hasFocus, isTrue);
+
+      final previewRect = tester.getRect(
+        find.byKey(const ValueKey<String>('photo_food_preview_action')),
+      );
+      await tester.tapAt(Offset(previewRect.center.dx, previewRect.top + 20));
+      await tester.pump();
+
+      expect(focusNode.hasFocus, isFalse);
+      expect(
+        find.byKey(const ValueKey<String>('photo_food_camera_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('photo_food_gallery_button')),
+        findsNothing,
+      );
+    },
+  );
+
   testWidgets('first keyboard drag dismisses focus without moving the page', (
     tester,
   ) async {
@@ -253,7 +308,13 @@ void main() {
     final focusNode = tester.widget<TextField>(noteFinder).focusNode!;
     expect(focusNode.hasFocus, isTrue);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -180));
+    final previewRect = tester.getRect(
+      find.byKey(const ValueKey<String>('photo_food_preview_action')),
+    );
+    await tester.dragFrom(
+      Offset(previewRect.center.dx, previewRect.top + 20),
+      const Offset(0, -180),
+    );
     await tester.pump();
 
     expect(focusNode.hasFocus, isFalse);

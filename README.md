@@ -137,13 +137,9 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | 云端/本地权威、cache、写入、读取、异常、冲突和修复规则。 |
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | 当前 Flutter-to-service wire contract、字段约束、稳定错误和兼容边界；文件名保留历史 `DRAFT`。 |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 架构决策、实施背景和仍有维护价值的历史上下文。 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 工程阶段计划、执行步骤、验证方式和人工审查清单。 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 当前阶段状态、剩余工作、发布 Gate 和人工审查边界。 |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | RAG 可靠性与性能优化的专业工程报告：基线、根因、修改、被拒方案、速度/质量结果、限制和原始证据索引。 |
-| [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | 当前 RAG 基础工程整改的已确认范围、架构边界和完成定义。 |
-| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | 已落地 RAG 基础工程的实施、测试、部署、回滚和后续缺口记录。 |
-| [AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md](AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md) | 当前 AI Chat 编排、澄清状态、可靠性、行为兼容和灰度验收计划。 |
-| [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | 原始 Phase 5 controlled RAG 工程计划、部署和验收历史。 |
-| [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | AI Output Contract 的分阶段实施、验证、灰度和回滚计划。 |
+| [docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md](docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md) | Phase 5、Output Contract、RAG foundation 与 Chat reliability 的最终综合工程记录；不代表当前产品行为。 |
 
 Local 版本基线保留在 `docs/local/`。
 
@@ -293,13 +289,9 @@ flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabas
 | [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) | Cloud/local authority, cache, writes, reads, failures, conflicts, and repair rules. |
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Current Flutter-to-service wire contract, field constraints, stable errors, and compatibility boundaries; the legacy filename retains `DRAFT`. |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 architecture decisions, implementation background, and historical context that remains useful to maintainers. |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Engineering phase plan, execution steps, validation, and manual review checklist. |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Current phase status, remaining work, release gates, and manual-review boundaries. |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | Professional RAG reliability/performance report covering baseline, root cause, changes, rejected alternatives, speed/quality outcomes, limitations, and raw evidence. |
-| [RAG_FOUNDATION_REMEDIATION_SCOPE.md](RAG_FOUNDATION_REMEDIATION_SCOPE.md) | Confirmed scope, architecture boundaries, and completion definition for the active RAG foundation remediation. |
-| [RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md) | Implementation, testing, deployment, rollback, and follow-up-gap record for the delivered RAG foundation. |
-| [AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md](AI_CHAT_ORCHESTRATION_AND_RELIABILITY_REMEDIATION_ENGINEERING_PLAN.md) | Active AI Chat orchestration, clarification-state, reliability, behavior-parity, and rollout acceptance plan. |
-| [docs/history/phase5/PHASE5_ENGINEERING_PLAN.md](docs/history/phase5/PHASE5_ENGINEERING_PLAN.md) | Historical original Phase 5 controlled-RAG engineering, deployment, and acceptance plan. |
-| [AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md) | Staged AI Output Contract implementation, validation, canary, and rollback plan. |
+| [docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md](docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md) | Consolidated final engineering record for Phase 5, Output Contract, RAG foundation, and Chat reliability; it does not define current product behavior. |
 
 The Local version baseline remains under `docs/local/`.
 

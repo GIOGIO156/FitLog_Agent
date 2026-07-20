@@ -30,6 +30,7 @@ import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/subscription_status.dart';
 import '../account/account_controller.dart';
 import '../food/food_image_picker.dart';
+import '../food/food_image_source_sheet.dart';
 import '../food/food_preview_page.dart';
 import '../workout/add_workout_page.dart';
 import '../workout/workout_draft_notification.dart';
@@ -791,35 +792,15 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
       _showComposerNotice(context.stringsRead.aiImageLimitReached);
       return;
     }
-    final source = await showModalBottomSheet<FoodImageSource>(
+    final strings = context.stringsRead;
+    final source = await showFoodImageSourceSheet(
       context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (sheetContext) {
-        final strings = sheetContext.strings;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                ListTile(
-                  leading: const Icon(Icons.photo_camera_outlined),
-                  title: Text(strings.takePhoto),
-                  onTap: () =>
-                      Navigator.of(sheetContext).pop(FoodImageSource.camera),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.photo_library_outlined),
-                  title: Text(strings.chooseFromGallery),
-                  onTap: () =>
-                      Navigator.of(sheetContext).pop(FoodImageSource.gallery),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      title: strings.aiAddImageTitle,
+      subtitle: strings.aiAttachedImageCount(_attachedImages.length),
+      cameraButtonKey: const ValueKey<String>('ai_image_source_camera_button'),
+      galleryButtonKey: const ValueKey<String>(
+        'ai_image_source_gallery_button',
+      ),
     );
     if (source == null) {
       return;

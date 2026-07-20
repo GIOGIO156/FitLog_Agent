@@ -63,6 +63,9 @@ class AppStrings {
   String get aiComposerHint => _t('Ask away with FitLog', '快问问 FitLog');
   String get aiSendTooltip => _t('Send', '发送');
   String get aiAttachTooltip => _t('Attach image', '添加图片');
+  String get aiAddImageTitle => _t('Add images', '添加图片');
+  String aiAttachedImageCount(int count) =>
+      _t('$count of 3 selected', '已添加 $count/3');
   String get aiImageRequiresQwen =>
       _t('Image chat requires Qwen.', '图片对话需要使用千问。');
   String get aiImageOnlyMessage => _t('Please analyze this image.', '请分析这张图片。');

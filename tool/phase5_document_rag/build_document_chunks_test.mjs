@@ -13,6 +13,8 @@ test("canonical manifest exactly covers the stable bilingual corpus", () => {
   assert.equal(manifest.sources.length, 21);
   assert.ok(manifest.sources.includes("docs/en/CloudLocalDataBoundary.md"));
   assert.ok(manifest.sources.includes("docs/zh/CloudLocalDataBoundary.md"));
+  assert.ok(manifest.sources.every((source) => !source.startsWith("docs/history/")));
+  assert.ok(manifest.sources.every((source) => !source.endsWith("ENGINEERING_PLAN.md")));
   const unauthorized = structuredClone(manifest);
   unauthorized.sources.push("CHANGELOG.md");
   assert.ok(validateManifest({ repoRoot, manifest: unauthorized }).some((error) => error.includes("unauthorized")));

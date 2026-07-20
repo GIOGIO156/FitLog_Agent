@@ -4,7 +4,7 @@
 
 This document is the stable source of truth for model-output governance in FitLog_Agent. It defines what the AI providers may return, how the AI Gateway validates and normalizes that output, how failures are classified, and which outputs may become user-reviewable artifacts.
 
-It does not define retrieval inputs, document indexing, or context assembly; those belong to [RAGDesign.md](RAGDesign.md). It does not define HTTP transport fields between Flutter and the Gateway; those remain in [../API_CONTRACT_DRAFT.md](../API_CONTRACT_DRAFT.md). Implementation order, rollout gates, and acceptance checklists live in [../../AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](../../AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md).
+It does not define retrieval inputs, document indexing, or context assembly; those belong to [RAGDesign.md](RAGDesign.md). It does not define HTTP transport fields between Flutter and the Gateway; those remain in [../API_CONTRACT_DRAFT.md](../API_CONTRACT_DRAFT.md). Phase status and remaining provider-activation gates belong in the Roadmap; completed rollout evidence remains in the Phase 5 engineering history.
 
 The durable boundary is:
 
@@ -312,7 +312,6 @@ Successful model output only creates an editable proposal:
 - [Database.md](Database.md): persisted chat, log, debug, and document-index structures
 - [../API_CONTRACT_DRAFT.md](../API_CONTRACT_DRAFT.md): Flutter-to-Gateway transport contracts
 - [References.md](References.md): external evidence boundaries
-- [../../AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md](../../AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md): staged implementation and rollout plan
 
 ## Code References
 

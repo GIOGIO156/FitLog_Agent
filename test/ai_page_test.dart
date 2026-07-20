@@ -1138,6 +1138,46 @@ void main() {
     expect(textBubbleRect.width, greaterThan(attachmentMediaRect.width));
   });
 
+  testWidgets('chat attachment picker uses the shared dual-card layout', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    final picker = _FakeFoodImagePicker(_tinyPngImage());
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness, imagePicker: picker));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('ai_attach_image_button')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+
+    final cameraFinder = find.byKey(
+      const ValueKey<String>('ai_image_source_camera_button'),
+    );
+    final galleryFinder = find.byKey(
+      const ValueKey<String>('ai_image_source_gallery_button'),
+    );
+    expect(find.text('Add images'), findsOneWidget);
+    expect(find.text('0 of 3 selected'), findsOneWidget);
+    expect(cameraFinder, findsOneWidget);
+    expect(galleryFinder, findsOneWidget);
+    expect(tester.getRect(cameraFinder).top, tester.getRect(galleryFinder).top);
+    expect(
+      tester.getRect(cameraFinder).height,
+      tester.getRect(galleryFinder).height,
+    );
+    expect(
+      tester.getRect(cameraFinder).right,
+      lessThan(tester.getRect(galleryFinder).left),
+    );
+
+    await tester.tap(galleryFinder);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+    expect(picker.lastSource, FoodImageSource.gallery);
+  });
+
   testWidgets(
     'unconfigured ChatGPT reports unavailable and slides back to Qwen',
     (tester) async {
@@ -2345,7 +2385,9 @@ Future<void> _attachAiGalleryImage(WidgetTester tester) async {
   );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 260));
-  await tester.tap(find.text('Gallery'));
+  await tester.tap(
+    find.byKey(const ValueKey<String>('ai_image_source_gallery_button')),
+  );
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 260));
 }

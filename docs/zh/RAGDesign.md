@@ -319,9 +319,6 @@ RAG evaluation 必须覆盖：
 - [Database.md](Database.md)：`document_chunks`、logs、cloud records 和持久化
 - [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md)：云端/本地权威与 cache 行为
 - [References.md](References.md)：RAG、安全、隐私和 evidence sources
-- [../../RAG_FOUNDATION_REMEDIATION_SCOPE.md](../../RAG_FOUNDATION_REMEDIATION_SCOPE.md)：当前 RAG 基础工程整改的已确认范围；描述必须落地的目标，不代表当前已实现行为
-- [../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md)：当前详细实施、验证、部署和回滚计划
-- [../history/phase5/PHASE5_ENGINEERING_PLAN.md](../history/phase5/PHASE5_ENGINEERING_PLAN.md)：原始 Phase 5 controlled RAG 实施、部署与验收历史计划
 
 ## 代码引用
 

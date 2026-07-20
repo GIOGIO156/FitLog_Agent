@@ -300,9 +300,8 @@ The engineering lesson is specific: measure the whole request by stage, optimize
 - Candidate-count A/B: [24 candidates](../../test/evals/reports/rag_foundation_cloud_p5_v3_c24_ab.v1.md) / [30 candidates](../../test/evals/reports/rag_foundation_cloud_p5_v3_c30_ab.v1.md)
 - Production v3 final: [P5 final](../../test/evals/reports/rag_foundation_cloud_p5_final.v1.md)
 
-### Plans And Stable Contracts
+### Final Engineering Record And Stable Contracts
 
-- [Confirmed remediation scope](../../RAG_FOUNDATION_REMEDIATION_SCOPE.md)
-- [Engineering plan, deployment, and rollback record](../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md)
+- [Consolidated Phase 5 AI/RAG scope, deployment, rollback, and engineering record](../history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md)
 - [Current RAG architecture](../en/RAGDesign.md) / [当前 RAG 架构](../zh/RAGDesign.md)
 - [Current output contract](../en/AIOutputContract.md) / [当前输出协议](../zh/AIOutputContract.md)

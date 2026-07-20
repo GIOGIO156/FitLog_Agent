@@ -319,9 +319,6 @@ Useful metrics include source recall on a reviewed question set, top-result rele
 - [Database.md](Database.md): `document_chunks`, logs, cloud records, and persistence
 - [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md): cloud/local authority and cache behavior
 - [References.md](References.md): RAG, security, privacy, and evidence sources
-- [../../RAG_FOUNDATION_REMEDIATION_SCOPE.md](../../RAG_FOUNDATION_REMEDIATION_SCOPE.md): confirmed scope for the active RAG foundation remediation; it describes required future work, not current behavior
-- [../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md](../../RAG_FOUNDATION_REMEDIATION_ENGINEERING_PLAN.md): active implementation, validation, deployment, and rollback plan
-- [../history/phase5/PHASE5_ENGINEERING_PLAN.md](../history/phase5/PHASE5_ENGINEERING_PLAN.md): historical original Phase 5 controlled-RAG implementation, deployment, and acceptance plan
 
 ## Code References
 

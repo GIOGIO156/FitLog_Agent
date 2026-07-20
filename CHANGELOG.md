@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-07-20 Food Description Focus And Image Source Sheet
+
+### Changed
+
+- Unified AI Chat and AI Food Analysis image-source selection around the same side-by-side Photo and Gallery card sheet, while preserving each route's title and selected-image count.
+
+### Fixed
+
+- Kept the lifted AI Food Analysis description editor as the foreground hit target while the keyboard is open. The rest of the page now dims progressively and blocks background actions, so cursor or selection adjustment cannot accidentally open the image picker; tapping or dragging the dimmed area dismisses the keyboard.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 261 Flutter tests passed. Documentation checks passed 4/4, corpus and embedding checks passed 10/10, and build `4ebf00df876ce7cc62738c02` generated 17 missing plus 2 stale vectors while reusing 596 current vectors and pruning 15 obsolete local records. The 21-source/615-chunk build was atomically activated with 615 cloud rows and zero mismatch; identical Edge artifacts were redeployed as Chat v66 and Food photo v35 after type checks and 63/63 deterministic tests passed. Three completed production canaries each passed 30/33: retrieval held 13/13 source recall, 37/39 reviewed precision, 5/5 critical top-1, zero embedding fallback, and latest Edge retrieval p50/p95 968/1236 ms, while a repeated Qwen `provider_incomplete` on typed-clarification answer consumption left consumption, replay idempotency, and resolved-once gates open.
+
+## 2026-07-20 Phase 5 AI/RAG Documentation Consolidation
+
+### Added
+
+- Added one non-executable consolidated Phase 5 final engineering record covering the original controlled RAG, Output Contract, RAG Foundation, Chat orchestration lineage, confirmed Scope IDs, migration/deployment map, preserved capability matrix, rejected approaches, rollback evidence, acceptance snapshots, and open release gates.
+
+### Changed
+
+- Retired the original Phase 5 plan, RAG scope/plan/audit, Output Contract plan, and Chat reliability plan after consolidating their durable evidence into the final record. The remaining valid-device journey gate is owned only by the Roadmap; neither the repository root nor `docs/history/phase5/` presents an obsolete checklist as a current execution authority. The deleted source plans remain recoverable from Git `dc6d9e86bcf62cf9509a3c7919107729c16856c3` for forensic review.
+- Generated only the 118 missing/stale Qwen embeddings needed by local build `bbdd397f3d144e4ccea082e8`, reused 495 current vectors, pruned 79 obsolete local records, synchronized 613 chunks, and atomically activated the build with 613/613 cloud parity. Redeployed the current Edge source as ACTIVE `ai-chat-route` v65 and `ai-food-photo-analyze` v34; all 28 migrations were already aligned and were not reapplied.
+- Updated the Roadmap to mark Phase 5 complete and archived, Phase 6 substantially implemented with final evidence gates open, and Phase 7 current. Keyword/term normalization, vector retrieval, hybrid fusion, reranking, coverage/retry, validators, and existing record/draft/recovery owners remain explicit non-regression requirements.
+
+### Fixed
+
+- Corrected the `cm01_se` classification from an Android test device to the user's PC water-cooling controller. The unsuccessful ADB installation attempt remains historical evidence only; it does not satisfy device acceptance and no longer creates an impossible device-specific release gate.
+- Removed stale `active remediation` wording from the embedded bilingual RAG and output-contract documents and added corpus tests that reject history or engineering-plan sources.
+
+### Validation
+
+- Regenerated 613 chunks from the same 21 allowlisted stable sources as build `bbdd397f3d144e4ccea082e8`. Documentation/outline/link checks passed 4/4, corpus/chunker checks passed 4/4, embedding contract/sync unit checks passed 6/6, required Edge tests passed 63/63, and the full Edge suite passed 278/278 with two declared external fixtures ignored. The first activation canary passed 32/33 with the sole failure being a 1519 ms retrieval p95 against the unchanged 1500 ms gate; an identical recheck passed 33/33 with Edge retrieval p50/p95 926/1244 ms, 13/13 source recall, 37/39 reviewed precision, 5/5 critical top-1, zero embedding fallback, and zero transport retry.
+
 ## 2026-07-19 AI Chat Orchestration And Reliability
 
 ### Added
@@ -22,7 +57,7 @@
 ### Validation
 
 - Applied additive migrations `202607190001` through `202607190003` and kept `rag_foundation_v1`, Document RAG retry, vector retrieval, hybrid fusion, reranking, coverage, and retry enabled. A legacy rollback rehearsal kept Edge/RAG/data available while intentionally failing 8 v2 behavior gates; the final deployed code then retired the legacy branch and its two runtime secrets. The post-retirement real-Qwen `auto` cloud gate passed 33/33 checks, including both reported failures, typed create/consume/replay with `resolved` and `attempt_count = 1`, Food image completion, 13/13 source recall, 37/39 source precision, 5/5 critical top-1, production Edge embeddings with no issue codes, and the unchanged 1500 ms Edge retrieval p95 gate.
-- `flutter analyze` reported no issues; all 259 Flutter tests, 63 required Edge tests, 278 full Edge tests, 21 documentation/corpus/migration tests, and 108 local release fixtures passed. Configured split debug APKs were built and hashed. The attached custom Android 11 device accepted the complete APK bytes but did not finish PackageInstaller commit, so manual-device journeys remain open. The final 21-source/613-chunk local documentation build was not sent to the external embedding provider; cloud remains on the separately verified 586-chunk active build pending explicit data-externalization approval.
+- `flutter analyze` reported no issues; all 259 Flutter tests, 63 required Edge tests, 278 full Edge tests, 21 documentation/corpus/migration tests, and 108 local release fixtures passed. Configured split debug APKs were built and hashed. The ADB-exposed `cm01_se` target was later identified by the user as a PC water-cooling controller rather than an authorized test phone: the unsuccessful PackageInstaller session and temporary APK files were removed, no package was installed, and the attempt is not device-acceptance evidence. Manual journeys therefore remain open for a user-confirmed Android test device. The final 21-source/613-chunk local documentation build was not sent to the external embedding provider; cloud remains on the separately verified 586-chunk active build pending explicit data-externalization approval.
 
 ## 2026-07-19 Photo Picker And Workout Draft Recovery
 

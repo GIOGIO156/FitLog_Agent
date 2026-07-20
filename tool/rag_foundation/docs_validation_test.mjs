@@ -34,12 +34,14 @@ test("required stable documentation tree exists and bilingual outlines align", a
   }
 });
 
-test("stable docs have no replacement characters, dated update headings, or stale Phase 5 root link", async () => {
+test("stable docs have no replacement characters, dated update headings, or active-plan leakage", async () => {
   for (const file of stableFiles) {
     const text = await readFile(file, "utf8");
     assert.equal(text.includes("\uFFFD"), false, file);
     assert.equal(/^#{1,6}\s+.*20\d{2}[-/]\d{1,2}[-/]\d{1,2}.*$/m.test(text), false, file);
     assert.equal(text.includes("../../PHASE5_ENGINEERING_PLAN.md"), false, file);
+    assert.equal(text.includes("REMEDIATION_ENGINEERING_PLAN.md"), false, file);
+    assert.equal(text.includes("AI_OUTPUT_CONTRACT_ENGINEERING_PLAN.md"), false, file);
   }
 });
 
