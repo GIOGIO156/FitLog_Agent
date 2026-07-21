@@ -10,9 +10,10 @@ import '../../domain/models/food_record.dart';
 import 'food_form_support.dart';
 
 class FoodPreviewPage extends StatefulWidget {
-  const FoodPreviewPage({super.key, required this.initialRecord});
+  const FoodPreviewPage({super.key, required this.initialRecord, this.onSaved});
 
   final FoodRecord initialRecord;
+  final ValueChanged<FoodRecord>? onSaved;
 
   @override
   State<FoodPreviewPage> createState() => _FoodPreviewPageState();
@@ -172,6 +173,7 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
         return;
       }
 
+      widget.onSaved?.call(record);
       context.read<RefreshNotifier>().markDataChanged();
       context.refreshDailySummaryCacheForDate(_date);
       FitLogNotifications.successAfterNavigation(

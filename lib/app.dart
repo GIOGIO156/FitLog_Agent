@@ -642,6 +642,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   bool _recordHydrationRefreshScheduled = false;
   bool _restoringLostPickerImages = false;
   bool _checkedWorkoutEditorResume = false;
+  bool _initialPickerRecoveryComplete = false;
 
   @override
   void initState() {
@@ -649,8 +650,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(_restoreLostPickerImagesIfNeeded());
-        unawaited(_restoreRecentWorkoutEditorIfNeeded());
+        unawaited(_runInitialRecovery());
         unawaited(_syncActiveWorkoutDraftNotification());
       }
     });
@@ -734,6 +734,15 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _runInitialRecovery() async {
+    await _restoreLostPickerImagesIfNeeded();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _initialPickerRecoveryComplete = true);
+    await _restoreRecentWorkoutEditorIfNeeded();
+  }
+
   Future<void> _restoreLostPickerImagesIfNeeded() async {
     if (_restoringLostPickerImages) {
       return;
@@ -795,6 +804,9 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     if (images.isEmpty && draft.note.trim().isEmpty) {
       return;
     }
+    final restoredDate = draft.initialDate ?? DateUtilsX.todayKey();
+    context.read<SelectedDateNotifier>().setDate(restoredDate);
+    context.read<RootTabController>().setIndex(RootTabIndex.food);
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => PhotoFoodAnalysisPage(
@@ -912,6 +924,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         navController.index != RootTabIndex.ai &&
         navController.index != RootTabIndex.profile;
     final fitLogTheme = context.fitLogTheme;
+    final showInitialRecoveryGate = !_initialPickerRecoveryComplete;
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: resizeForKeyboard,
@@ -920,35 +933,51 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         child: Stack(
           children: <Widget>[
             Positioned.fill(
-              child: IndexedStack(index: navController.index, children: _pages),
+              child: showInitialRecoveryGate
+                  ? const _PickerRecoveryGate()
+                  : IndexedStack(index: navController.index, children: _pages),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: IgnorePointer(
-                ignoring: interactionLock.navigationLocked,
-                child: _RootLockedNavigationSurface(
-                  locked: interactionLock.navigationLocked,
-                  child: FitLogBottomNavBar(
-                    items: items,
-                    currentIndex: navController.index,
-                    onTap: (index) {
-                      FitLogNotifications.dismiss();
-                      if (index != RootTabIndex.ai) {
-                        context.read<AiChatController>().clearError();
-                      }
-                      navController.setIndex(index);
-                    },
-                    surface: navController.index == RootTabIndex.ai
-                        ? FitLogBottomNavSurface.glass
-                        : FitLogBottomNavSurface.solid,
+            if (!showInitialRecoveryGate)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  ignoring: interactionLock.navigationLocked,
+                  child: _RootLockedNavigationSurface(
+                    locked: interactionLock.navigationLocked,
+                    child: FitLogBottomNavBar(
+                      items: items,
+                      currentIndex: navController.index,
+                      onTap: (index) {
+                        FitLogNotifications.dismiss();
+                        if (index != RootTabIndex.ai) {
+                          context.read<AiChatController>().clearError();
+                        }
+                        navController.setIndex(index);
+                      },
+                      surface: navController.index == RootTabIndex.ai
+                          ? FitLogBottomNavSurface.glass
+                          : FitLogBottomNavSurface.solid,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PickerRecoveryGate extends StatelessWidget {
+  const _PickerRecoveryGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: CircularProgressIndicator(
+        valueColor: AlwaysStoppedAnimation<Color>(context.fitLogTheme.primary),
       ),
     );
   }

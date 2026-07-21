@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-21 Camera Picker Recovery And Photo Food Save Landing
+
+### Fixed
+
+- Kept root navigation behind a picker-recovery gate during startup lost-data recovery so returning from Android Camera no longer exposes the default Home loading state before AI Chat attachments or AI Food Analysis images are restored.
+- Restored recovered AI Food Analysis flows onto the Food tab and selected record date, and routed successful photo-analysis saves back to the Food log destination after the reviewed draft is written.
+- Replaced the Android light startup/window background with the FitLog dark launch surface to avoid a white native frame when Camera returns through an Activity rebuild.
+
+### Validation
+
+- `flutter analyze` reported no issues. `flutter test` passed 262/262, including focused photo-analysis and picker-recovery coverage. The configured split debug APK build completed for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
+
 ## 2026-07-20 Food Description Focus And Image Source Sheet
 
 ### Changed

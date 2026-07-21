@@ -371,13 +371,36 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
       modelProvider: response.modelProvider,
       userNote: userNote,
     );
+    var savedRecordDate = record.date;
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => FoodPreviewPage(initialRecord: record),
+        builder: (_) => FoodPreviewPage(
+          initialRecord: record,
+          onSaved: (savedRecord) => savedRecordDate = savedRecord.date,
+        ),
       ),
     );
     if (saved == true && mounted) {
+      _restoreFoodLogDestination(savedRecordDate);
       Navigator.of(context).pop(true);
+    }
+  }
+
+  void _restoreFoodLogDestination(String date) {
+    _readOptional<SelectedDateNotifier>()?.setDate(date);
+    _readOptional<RootTabController>()?.setIndex(RootTabIndex.food);
+    _readOptional<RefreshNotifier>()?.markDataChanged();
+    _readOptional<AppServices>()?.refreshDailySummaryCacheForDates(
+      days: <String>[date],
+      accountId: _readOptional<AccountController>()?.authSession.accountId,
+    );
+  }
+
+  T? _readOptional<T>() {
+    try {
+      return context.read<T>();
+    } catch (_) {
+      return null;
     }
   }
 

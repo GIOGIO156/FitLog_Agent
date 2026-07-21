@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:fitlog_local/app.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
 import 'package:fitlog_local/core/widgets/glass_panel.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
@@ -9,16 +10,30 @@ import 'package:fitlog_local/data/remote/ai_food_photo_analysis_client.dart';
 import 'package:fitlog_local/data/repositories/ai_local_context_permission_repository.dart';
 import 'package:fitlog_local/data/repositories/auth_repository.dart';
 import 'package:fitlog_local/data/repositories/cloud_profile_repository.dart';
+import 'package:fitlog_local/data/repositories/custom_exercise_repository.dart';
+import 'package:fitlog_local/data/repositories/daily_summary_cache_repository.dart';
+import 'package:fitlog_local/data/repositories/food_repository.dart';
 import 'package:fitlog_local/data/repositories/profile_repository.dart';
 import 'package:fitlog_local/data/repositories/subscription_repository.dart';
+import 'package:fitlog_local/data/repositories/workout_draft_repository.dart';
+import 'package:fitlog_local/data/repositories/workout_repository.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
 import 'package:fitlog_local/domain/models/auth_session.dart';
 import 'package:fitlog_local/domain/models/cloud_profile.dart';
 import 'package:fitlog_local/domain/models/cloud_runtime_context.dart';
+import 'package:fitlog_local/domain/models/food_record.dart';
 import 'package:fitlog_local/domain/models/subscription_status.dart';
 import 'package:fitlog_local/domain/models/user_profile.dart';
+import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
+import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
+import 'package:fitlog_local/domain/services/daily_summary_service.dart';
+import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
+import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
+import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
+import 'package:fitlog_local/export/csv_export_service.dart';
+import 'package:fitlog_local/export/xlsx_export_service.dart';
 import 'package:fitlog_local/features/account/account_controller.dart';
 import 'package:fitlog_local/features/food/food_image_picker.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_page.dart';
@@ -620,6 +635,52 @@ void main() {
     expect(find.text('Chicken rice'), findsOneWidget);
   });
 
+  testWidgets('saving a photo draft returns the root destination to Food', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final foodRepository = _CapturingFoodRepository(AppDatabase.instance);
+    final rootTabController = RootTabController();
+    final selectedDateNotifier = SelectedDateNotifier()..setDate('2026-06-30');
+    harness.client.handler = (_) async => _successResponse();
+    addTearDown(harness.dispose);
+    addTearDown(rootTabController.dispose);
+    addTearDown(selectedDateNotifier.dispose);
+
+    await tester.pumpWidget(
+      _buildPhotoFlowTestApp(
+        harness,
+        foodRepository: foodRepository,
+        rootTabController: rootTabController,
+        selectedDateNotifier: selectedDateNotifier,
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('open_photo_analysis_flow')),
+    );
+    await tester.pumpAndSettle();
+    await _pickFromGallery(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Preview AI Result'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(foodRepository.savedRecords.single.mealName, 'Chicken rice');
+    expect(rootTabController.index, RootTabIndex.food);
+    expect(selectedDateNotifier.selectedDate, '2026-07-01');
+    expect(
+      find.byKey(const ValueKey<String>('open_photo_analysis_flow')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('gallery selection can add up to three images in one pick', (
     tester,
   ) async {
@@ -892,6 +953,122 @@ Widget _buildPhotoTestApp(
   );
 }
 
+Widget _buildPhotoFlowTestApp(
+  _PhotoHarness harness, {
+  required _CapturingFoodRepository foodRepository,
+  required RootTabController rootTabController,
+  required SelectedDateNotifier selectedDateNotifier,
+}) {
+  final database = AppDatabase.instance;
+  final customExerciseRepository = CustomExerciseRepository(database);
+  final workoutRepository = WorkoutRepository(database);
+  final workoutDraftRepository = WorkoutDraftRepository(database);
+  final profileRepository = ProfileRepository(database);
+  final trainingFrequencySelfCheckService = TrainingFrequencySelfCheckService(
+    workoutRepository: workoutRepository,
+  );
+  final carbTaperReviewService = CarbTaperReviewService(
+    foodRepository: foodRepository,
+    workoutRepository: workoutRepository,
+    profileRepository: profileRepository,
+  );
+  final dietPlanStrategyService = DietPlanStrategyService(
+    carbTaperReviewService: carbTaperReviewService,
+  );
+  final dailySummaryService = DailySummaryService(
+    foodRepository: foodRepository,
+    workoutRepository: workoutRepository,
+    profileRepository: profileRepository,
+    trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
+    dietPlanStrategyService: dietPlanStrategyService,
+  );
+  final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
+
+  return ChangeNotifierProvider<LanguageController>(
+    create: (_) => LanguageController(),
+    child: MultiProvider(
+      providers: [
+        Provider<AppServices>.value(
+          value: AppServices(
+            foodRepository: foodRepository,
+            customExerciseRepository: customExerciseRepository,
+            workoutRepository: workoutRepository,
+            workoutDraftRepository: workoutDraftRepository,
+            profileRepository: profileRepository,
+            dailySummaryService: dailySummaryService,
+            xlsxExportService: XlsxExportService(
+              foodRepository: foodRepository,
+              customExerciseRepository: customExerciseRepository,
+              workoutRepository: workoutRepository,
+              profileRepository: profileRepository,
+              dailySummaryService: dailySummaryService,
+            ),
+            csvExportService: CsvExportService(
+              foodRepository: foodRepository,
+              customExerciseRepository: customExerciseRepository,
+              workoutRepository: workoutRepository,
+              profileRepository: profileRepository,
+              dailySummaryService: dailySummaryService,
+            ),
+            carbTaperReviewService: carbTaperReviewService,
+            dietPlanStrategyService: dietPlanStrategyService,
+            trainingFrequencySelfCheckService:
+                trainingFrequencySelfCheckService,
+            warmCacheCoordinator: WarmCacheCoordinator(
+              dailySummaryService: dailySummaryService,
+            ),
+            cacheMaintenanceService: CacheMaintenanceService(
+              database: database,
+              dailySummaryCacheRepository: dailySummaryCacheRepository,
+            ),
+            database: database,
+          ),
+        ),
+        ChangeNotifierProvider<CloudRuntimeContext>.value(
+          value: harness.runtimeContext,
+        ),
+        ChangeNotifierProvider<AccountController>.value(
+          value: harness.accountController,
+        ),
+        ChangeNotifierProvider<RootTabController>.value(
+          value: rootTabController,
+        ),
+        ChangeNotifierProvider<SelectedDateNotifier>.value(
+          value: selectedDateNotifier,
+        ),
+        ChangeNotifierProvider<RefreshNotifier>(
+          create: (_) => RefreshNotifier(),
+        ),
+      ],
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: Center(
+                child: FilledButton(
+                  key: const ValueKey<String>('open_photo_analysis_flow'),
+                  onPressed: () {
+                    Navigator.of(context).push<bool>(
+                      MaterialPageRoute<bool>(
+                        builder: (_) => PhotoFoodAnalysisPage(
+                          initialDate: '2026-07-01',
+                          imagePicker: harness.picker,
+                          analysisClient: harness.client,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Open'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
 class _PhotoHarness {
   _PhotoHarness() {
     runtimeContext.bind(
@@ -967,6 +1144,36 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     }
     final images = multiImages ?? <PickedFoodImage>[image];
     return images;
+  }
+}
+
+class _CapturingFoodRepository extends FoodRepository {
+  _CapturingFoodRepository(super.database);
+
+  final List<FoodRecord> savedRecords = <FoodRecord>[];
+
+  @override
+  Future<int> insertFoodRecord(FoodRecord record) async {
+    savedRecords.add(record);
+    return savedRecords.length;
+  }
+
+  @override
+  Future<List<FoodRecord>> getFoodRecordsByDate(String day) async {
+    return savedRecords.where((record) => record.date == day).toList();
+  }
+
+  @override
+  Future<Map<String, double>> getDailyCaloriesBetween({
+    required String startDate,
+    required String endDate,
+  }) async {
+    return <String, double>{
+      for (final record in savedRecords)
+        if (record.date.compareTo(startDate) >= 0 &&
+            record.date.compareTo(endDate) <= 0)
+          record.date: record.caloriesKcal,
+    };
   }
 }
 
