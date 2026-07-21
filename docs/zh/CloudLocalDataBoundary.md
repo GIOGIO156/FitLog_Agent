@@ -114,7 +114,10 @@
 - 云端写入失败时，保留原正式数据，并把用户草稿/编辑留在可重试的非正式状态。
 - AI 不得静默修改饮食目标、应用 carb tapering、删除记录或写正式记录；必须用户确认并走正式写入路径。
 - 当前没有离线正式写入队列。离线编辑只能作为草稿，直到用户在线显式保存成功。
-- Workout 生命周期 autosave 与正式保存是同一份本地草稿的有序 mutation。正式保存开始后禁止新的生命周期 autosave；云端成功后，最终草稿删除会排在所有更早草稿写入之后执行，因此切到后台也不能覆盖这个 cloud-confirmed 终态。正式保存失败时不执行最终删除，并保留可重试草稿。
+- Workout 生命周期 autosave 与正式保存是同一份本地草稿的有序 mutation。正式调用前，App 先持久化 `committing`、唯一 mutation id、目标 plan、payload hash、保存时间和计算体重；该状态禁止生命周期 autosave、编辑、自动恢复编辑器和“训练进行中”通知。
+- `commit_workout_plan_v1` 校验 active device，并在同一 PostgreSQL transaction 内完成替换/新建、全部 sessions、全部 sets 和只含 hash 的 mutation ledger。账号/mutation key 保证幂等：相同 hash 返回原结果，不同 hash 视为冲突。SQLite 兼容路径也在同一 transaction 内提交正式本地 rows 与只含 hash 的本地 ledger。
+- 原进程仍存活时只使用 `get_workout_plan_commit_v1` 查询未知结果，查询不到 row 也不能授权第二个 mutation。新进程使用受保护的 `abandon_workout_plan_commit_v1`；它与 commit 共用 mutation advisory lock，要么返回已提交结果，要么原子写入只含 hash 的 `abandoned` tombstone，并拒绝旧提交的延迟副本。已提交恢复会清理草稿，已放弃恢复会在不重发的情况下回到 `editing`，状态服务不可用则继续锁定 `commit_unknown`；只有用户手动重试才会再次提交。
+- 确认成功后，最终草稿删除排在更早的 queued draft write 之后；这个确认终态优先于切后台和进程重建。
 
 ## 用户操作反馈规则
 
@@ -412,7 +415,7 @@ AI：
 - 前台新增、编辑、删除失败时有可读错误和重试/恢复路径，不出现点击无反应。
 - 旧设备不能在 `device_replaced` 后继续新增、编辑、删除或发送 AI；该错误不能被展示成普通 upload failure。
 - 云端写入成功会更新本地 read models 和受影响 summaries。
-- 新建训练正式保存成功过程中切到后台不能重新创建已清理的本地草稿；新建记录保存失败则保留草稿。
+- 新建训练正式保存成功过程中切到后台不能重新创建已清理的本地草稿。结果不确定时保留锁定的确认条目，直到原 mutation 被确认或重试；只有明确发生在提交前的失败才恢复可编辑状态。
 - 后台刷新结果一致时，不会出现可见 loading 闪烁。
 - 后台刷新受 freshness、可见窗口和失败退避限制，不出现持续轮询或用户眼前反复整页刷新。
 - cache 淘汰不会删除云端正式数据。

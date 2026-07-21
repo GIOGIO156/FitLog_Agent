@@ -48,7 +48,7 @@ On Android, an active unsaved new-workout draft with at least one selected exerc
 
 - It points to the next incomplete strength set, follows the most recently completed set while that exercise remains active, then falls back to the first unfinished strength exercise.
 - After all strength sets are complete it enters a return-to-save state. Cardio-only or setless drafts use a short return-to-continue message.
-- Tapping resumes the same draft; save, discard, or removing every exercise cancels it.
+- It appears only after the app leaves the foreground. Tapping cancels it before resuming exactly one copy of the same draft; returning to the app, save, discard, or removing every exercise also cancels it.
 - Android 13+ requests permission when the notification is first needed, and denial does not affect the draft itself.
 
 ## Home
@@ -176,7 +176,7 @@ AI may explain bounded recent patterns and may return a Workout Draft artifact. 
 
 The Android workout-in-progress notification described above resumes the same unsaved local draft and never creates a second draft or record.
 
-Once the user starts the official workout save, lifecycle autosave stops. The final cloud-confirmed save clears the local draft only after older queued draft writes have finished, so switching to another app during save cannot resurrect a stale duplicate draft. A failed official save keeps the editable draft for retry.
+Once the user starts the official workout save, lifecycle autosave stops and the item becomes read-only while FitLog confirms one stable save mutation. Switching to another app cannot create a second editable draft. If the response is lost, Workout shows a save-confirmation item instead of presenting the data as an unsaved workout; opening it manually retries with the same mutation, while a surviving process only checks the recorded result. After a forced process end, the next launch confirms or abandons the old mutation without automatically resubmitting it. Confirmed success removes the item, confirmed abandonment restores normal editing, and an unavailable status keeps the item locked.
 
 Read more: [Algorithm.md](Algorithm.md), [Database.md](Database.md), and [AgentDesign.md](AgentDesign.md).
 

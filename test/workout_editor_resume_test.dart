@@ -53,6 +53,22 @@ void main() {
       );
     },
   );
+
+  test('pending commit never auto resumes as an editable workout', () async {
+    final now = DateTime.parse('2026-07-19T12:00:00.000');
+    await WorkoutEditorResumeStore.markActive();
+
+    expect(
+      await WorkoutEditorResumeStore.shouldAutoResume(
+        _draft(updatedAt: now).copyWith(
+          saveState: WorkoutRecordDraft.saveStateCommitUnknown,
+          saveMutationId: 'mutation-1',
+        ),
+        now: now,
+      ),
+      isFalse,
+    );
+  });
 }
 
 WorkoutRecordDraft _draft({required DateTime updatedAt}) {

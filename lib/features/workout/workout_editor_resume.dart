@@ -30,7 +30,7 @@ class WorkoutEditorResumeStore {
     WorkoutRecordDraft? draft, {
     DateTime? now,
   }) async {
-    if (draft == null) {
+    if (draft == null || !draft.canAutosave) {
       return false;
     }
     late final SharedPreferences preferences;

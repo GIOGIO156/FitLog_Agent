@@ -62,4 +62,58 @@ void main() {
 
     await expectLater(repository.saveActiveDraft(draft), throwsArgumentError);
   });
+
+  test('pending commit metadata round-trips without becoming editable', () {
+    final draft = _draft().copyWith(
+      saveState: WorkoutRecordDraft.saveStateCommitUnknown,
+      saveMutationId: 'mutation-1',
+      targetPlanId: 'plan-1',
+      savePayloadHash: 'hash-1',
+      saveStartedAt: '2026-07-22T10:00:00.000Z',
+      saveBodyWeightKg: 72.5,
+    );
+
+    final restored = WorkoutRecordDraft.fromMap(draft.toMap());
+
+    expect(restored.hasPendingCommit, isTrue);
+    expect(restored.canAutosave, isFalse);
+    expect(restored.saveMutationId, 'mutation-1');
+    expect(restored.targetPlanId, 'plan-1');
+    expect(restored.saveBodyWeightKg, 72.5);
+  });
+
+  test(
+    'confirmed abandonment unlocks the same draft and clears save intent',
+    () {
+      final pending = _draft().copyWith(
+        saveState: WorkoutRecordDraft.saveStateCommitUnknown,
+        saveMutationId: 'mutation-1',
+        targetPlanId: 'plan-1',
+        savePayloadHash: List<String>.filled(64, 'a').join(),
+      );
+
+      final recovered = pending.copyWith(
+        saveState: WorkoutRecordDraft.saveStateEditing,
+        clearCommitMetadata: true,
+      );
+
+      expect(recovered.canAutosave, isTrue);
+      expect(recovered.saveMutationId, isNull);
+      expect(recovered.targetPlanId, isNull);
+      expect(recovered.savePayloadHash, isNull);
+    },
+  );
+}
+
+WorkoutRecordDraft _draft() {
+  return const WorkoutRecordDraft(
+    id: WorkoutRecordDraft.activeDraftId,
+    kind: WorkoutRecordDraft.kindNewRecord,
+    date: '2026-07-22',
+    recordName: 'Pending workout',
+    notes: '',
+    payloadJson: '{"exercises":[]}',
+    createdAt: '2026-07-22T09:00:00.000Z',
+    updatedAt: '2026-07-22T10:00:00.000Z',
+  );
 }

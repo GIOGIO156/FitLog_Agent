@@ -144,7 +144,7 @@ class MainActivity : FlutterActivity() {
             .setContentIntent(tapPendingIntent)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
-            .setAutoCancel(false)
+            .setAutoCancel(true)
             .setOngoing(false)
             .setCategory(Notification.CATEGORY_STATUS)
             .setPriority(Notification.PRIORITY_DEFAULT)

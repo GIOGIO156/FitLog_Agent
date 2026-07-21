@@ -31,6 +31,7 @@ import 'data/repositories/workout_draft_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'domain/models/auth_session.dart';
 import 'domain/models/cloud_runtime_context.dart';
+import 'domain/models/workout_record_draft.dart';
 import 'domain/services/cache_maintenance_service.dart';
 import 'domain/services/daily_summary_service.dart';
 import 'domain/services/diet_plan_strategy_service.dart';
@@ -642,6 +643,9 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   bool _recordHydrationRefreshScheduled = false;
   bool _restoringLostPickerImages = false;
   bool _checkedWorkoutEditorResume = false;
+  bool _reconcilingWorkoutCommit = false;
+  bool _initialWorkoutCommitRecoveryComplete = false;
+  bool _needsWorkoutCommitProcessRecovery = true;
   bool _initialFirstFrameDeferred = false;
 
   @override
@@ -653,7 +657,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_runInitialRecoveryThenAllowFirstFrame());
-        unawaited(_syncActiveWorkoutDraftNotification());
+        unawaited(_syncActiveWorkoutDraftNotification(appInForeground: true));
       }
     });
   }
@@ -668,12 +672,23 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     FitLogNotifications.handleAppLifecycleState(state);
-    if (state != AppLifecycleState.resumed || !mounted) {
+    if (!mounted) {
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_syncActiveWorkoutDraftNotification(appInForeground: false));
+      return;
+    }
+    if (state != AppLifecycleState.resumed) {
       return;
     }
     _scheduleSelectedDateHydrationRefresh();
     unawaited(_restoreLostPickerImagesIfNeeded());
-    unawaited(_syncActiveWorkoutDraftNotification());
+    if (_initialWorkoutCommitRecoveryComplete) {
+      _scheduleWorkoutCommitRecovery();
+    }
+    unawaited(_syncActiveWorkoutDraftNotification(appInForeground: true));
   }
 
   @override
@@ -683,6 +698,11 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     final runtimeContext = context.watch<CloudRuntimeContext>();
     final accountId = accountController.authSession.accountId;
     _bindLocalRecordAccount(accountId);
+    if (_initialWorkoutCommitRecoveryComplete &&
+        (accountId ?? '').isNotEmpty &&
+        runtimeContext.canUseOfficialCloud) {
+      _scheduleWorkoutCommitRecovery();
+    }
     _scheduleHydrationRefreshWhenContextChanges(
       accountId: accountId,
       runtimeContext: runtimeContext,
@@ -749,6 +769,10 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     if (!mounted) {
       return;
     }
+    _needsWorkoutCommitProcessRecovery = !await _reconcilePendingWorkoutCommit(
+      abandonIfUncommitted: true,
+    );
+    _initialWorkoutCommitRecoveryComplete = true;
     if (restoredPickerRoute) {
       return;
     }
@@ -877,7 +901,9 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _syncActiveWorkoutDraftNotification() async {
+  Future<void> _syncActiveWorkoutDraftNotification({
+    required bool appInForeground,
+  }) async {
     final draft = await context
         .read<AppServices>()
         .workoutDraftRepository
@@ -886,9 +912,98 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       return;
     }
     await WorkoutDraftNotificationSync.syncFromDraft(
-      draft,
+      appInForeground ? null : draft,
       context.stringsRead,
     );
+  }
+
+  void _scheduleWorkoutCommitRecovery() {
+    if (_needsWorkoutCommitProcessRecovery) {
+      unawaited(_continueWorkoutCommitProcessRecovery());
+    } else {
+      unawaited(_checkPendingWorkoutCommit());
+    }
+  }
+
+  Future<void> _continueWorkoutCommitProcessRecovery() async {
+    final resolved = await _reconcilePendingWorkoutCommit(
+      abandonIfUncommitted: true,
+    );
+    if (resolved) {
+      _needsWorkoutCommitProcessRecovery = false;
+    }
+  }
+
+  Future<void> _checkPendingWorkoutCommit() async {
+    await _reconcilePendingWorkoutCommit();
+  }
+
+  Future<bool> _reconcilePendingWorkoutCommit({
+    bool abandonIfUncommitted = false,
+  }) async {
+    if (_reconcilingWorkoutCommit || !mounted) {
+      return false;
+    }
+    _reconcilingWorkoutCommit = true;
+    try {
+      final services = context.read<AppServices>();
+      final draft = await services.workoutDraftRepository.getActiveDraft();
+      final mutationId = draft?.saveMutationId;
+      if (draft == null ||
+          !draft.hasPendingCommit ||
+          (mutationId ?? '').isEmpty) {
+        return true;
+      }
+      if (abandonIfUncommitted &&
+          ((draft.targetPlanId ?? '').isEmpty ||
+              (draft.savePayloadHash ?? '').isEmpty)) {
+        return false;
+      }
+      final result = abandonIfUncommitted
+          ? await services.workoutRepository.abandonWorkoutPlanCommit(
+              mutationId: mutationId!,
+              targetPlanId: draft.targetPlanId!,
+              payloadHash: draft.savePayloadHash!,
+            )
+          : await services.workoutRepository.getWorkoutPlanCommit(mutationId!);
+      if (result.abandoned) {
+        final recoveredDraft = draft.copyWith(
+          saveState: WorkoutRecordDraft.saveStateEditing,
+          clearCommitMetadata: true,
+          updatedAt: DateTime.now().toIso8601String(),
+        );
+        await services.workoutDraftRepository.saveActiveDraft(recoveredDraft);
+        await WorkoutEditorResumeStore.clear();
+        if (mounted) {
+          final strings = context.stringsRead;
+          final refreshNotifier = context.read<RefreshNotifier>();
+          await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+          refreshNotifier.markDataChanged();
+        }
+        return true;
+      }
+      if (!result.committed) {
+        return !abandonIfUncommitted;
+      }
+      await services.workoutDraftRepository.deleteActiveDraft();
+      await WorkoutEditorResumeStore.clear();
+      if (!mounted) {
+        return true;
+      }
+      await WorkoutDraftNotificationSync.syncFromDraft(
+        null,
+        context.stringsRead,
+      );
+      if (mounted) {
+        context.read<RefreshNotifier>().markDataChanged();
+      }
+      return true;
+    } catch (_) {
+      // An unknown commit remains frozen and retryable with the same mutation.
+      return false;
+    } finally {
+      _reconcilingWorkoutCommit = false;
+    }
   }
 
   Future<void> _restoreRecentWorkoutEditorIfNeeded() async {

@@ -47,6 +47,12 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
     WorkoutRecordDraft draft,
     AppStrings strings,
   ) {
+    if (draft.hasPendingCommit) {
+      return _WorkoutDraftDisplay(
+        title: strings.workoutSaveStatusPendingTitle,
+        subtitle: strings.workoutSaveStatusPendingMessage,
+      );
+    }
     final recordName = draft.recordName.trim();
     final title = recordName.isNotEmpty
         ? recordName
@@ -88,6 +94,9 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
     BuildContext context,
     WorkoutRecordDraft draft,
   ) async {
+    if (draft.hasPendingCommit) {
+      return;
+    }
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => AddWorkoutPage(initialDate: draft.date),
@@ -223,7 +232,9 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
                   color: theme.colorScheme.surface.withValues(alpha: 0.75),
                   shape: const CircleBorder(),
                   child: IconButton(
-                    onPressed: () => _discardDraft(context, draft),
+                    onPressed: draft.hasPendingCommit
+                        ? null
+                        : () => _discardDraft(context, draft),
                     icon: const Icon(Icons.delete_outline_rounded),
                     tooltip: strings.delete,
                   ),
@@ -245,6 +256,10 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
       return;
     }
     if (activeDraft != null) {
+      if (activeDraft.hasPendingCommit) {
+        await _resumeDraft(context, activeDraft);
+        return;
+      }
       final strings = context.stringsRead;
       final decision =
           await showDialog<_DraftConflictAction>(

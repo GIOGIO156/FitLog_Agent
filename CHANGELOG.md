@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-22 Idempotent Workout Save Recovery
+
+### Added
+
+- Added a stable workout-save mutation contract, local SQLite v18 commit metadata/ledger, and an account-scoped Supabase workout commit ledger with guarded commit/status/abandon RPCs.
+- Added recovery coverage for payload-hash stability, pending-draft serialization, editor auto-resume/notification suppression, lifecycle background races, and local/cloud migration contracts.
+
+### Changed
+
+- Workout plan create and replacement now commit all sessions and sets atomically with an idempotency key. App resume reconciles an unknown save outcome by mutation id, and retry reuses the original target plan, payload, calculation weight, and timestamp.
+- A new-workout draft enters a locked save-confirmation state before the official write. Lifecycle autosave, automatic editor restoration, draft deletion, and the Android workout-in-progress notification remain disabled until the original mutation is confirmed or definitively rejected.
+- A surviving process performs read-only save confirmation. A new process atomically confirms or abandons the old mutation without automatically resubmitting workout data; abandonment unlocks the ordinary draft and prevents a late old request from creating an official record.
+- The Android workout-in-progress notification now appears only outside the foreground and is canceled before a notification tap restores exactly one editor route.
+
+### Fixed
+
+- Prevented backgrounding or process loss during Save Workout Record from leaving both a cloud-confirmed official record and a stale editable draft, including the response-loss window after the server or local SQLite transaction has already committed.
+- Prevented notification-tap and automatic process restoration from stacking two workout editors, and replaced raw workout-save repository exceptions with the existing readable cloud error mapping.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 278 Flutter tests passed. Twelve documentation/corpus/embedding/migration checks passed, including 625/625 local `text-embedding-v4` parity for build `8981d9a2f7b1923324f42c93`.
+- Supabase migration `202607220001` was applied to the linked project; a PostgREST probe confirmed the new RPC schema-cache entry and authenticated-only boundary. Remote lint reported no issue in the new functions but still reports the pre-existing `redeem_internal_subscription_code` missing-`crypt` error.
+- The configured split debug APK build completed for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. The regenerated document corpus remains local and was not uploaded or activated.
+
 ## 2026-07-21 Camera Picker Recovery And Photo Food Save Landing
 
 ### Fixed

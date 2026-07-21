@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:fitlog_local/core/constants/exercise_catalog.dart';
@@ -349,6 +350,29 @@ void main() {
     },
   );
 
+  test('pending commit cancels the editable workout notification', () async {
+    final platform = _FakeWorkoutDraftNotificationPlatform();
+    final draft =
+        _draft(<Map<String, Object?>>[
+          _exercise(
+            name: 'Bench Press',
+            sets: <Map<String, Object?>>[_set(weight: '80', reps: '8')],
+          ),
+        ]).copyWith(
+          saveState: WorkoutRecordDraft.saveStateCommitUnknown,
+          saveMutationId: 'mutation-1',
+        );
+
+    await WorkoutDraftNotificationSync.syncFromDraft(
+      draft,
+      en,
+      platform: platform,
+    );
+
+    expect(platform.cancelCount, 1);
+    expect(platform.showCount, 0);
+  });
+
   test('cardio-only draft still starts a continue notification', () async {
     final platform = _FakeWorkoutDraftNotificationPlatform();
 
@@ -385,7 +409,7 @@ void main() {
   });
 
   test(
-    'notification tap opens the active draft and skips duplicate editor push',
+    'notification tap cancels the notification and skips duplicate editor push',
     () async {
       final coordinator = WorkoutDraftNotificationTapCoordinator();
       final draft = _draft(<Map<String, Object?>>[
@@ -413,9 +437,69 @@ void main() {
       );
 
       expect(openCount, 1);
-      expect(cancelCount, 0);
+      expect(cancelCount, 2);
     },
   );
+
+  test('concurrent notification taps open only one editor', () async {
+    final coordinator = WorkoutDraftNotificationTapCoordinator();
+    final draft = _draft(<Map<String, Object?>>[
+      _exercise(
+        name: 'Bench Press',
+        sets: <Map<String, Object?>>[_set(weight: '60', reps: '8')],
+      ),
+    ]);
+    final loadStarted = Completer<void>();
+    final releaseLoad = Completer<void>();
+    var openCount = 0;
+    var cancelCount = 0;
+
+    Future<void> handleTap() => coordinator.handleTap(
+      loadActiveDraft: () async {
+        if (!loadStarted.isCompleted) {
+          loadStarted.complete();
+        }
+        await releaseLoad.future;
+        return draft;
+      },
+      openDraft: (_) async => openCount++,
+      cancelNotification: () async => cancelCount++,
+    );
+
+    final firstTap = handleTap();
+    await loadStarted.future;
+    final secondTap = handleTap();
+    releaseLoad.complete();
+    await Future.wait(<Future<void>>[firstTap, secondTap]);
+
+    expect(openCount, 1);
+    expect(cancelCount, 2);
+  });
+
+  test('stale notification cannot open a pending commit draft', () async {
+    final coordinator = WorkoutDraftNotificationTapCoordinator();
+    final draft =
+        _draft(<Map<String, Object?>>[
+          _exercise(
+            name: 'Bench Press',
+            sets: <Map<String, Object?>>[_set(weight: '60', reps: '8')],
+          ),
+        ]).copyWith(
+          saveState: WorkoutRecordDraft.saveStateCommitUnknown,
+          saveMutationId: 'mutation-1',
+        );
+    var openCount = 0;
+    var cancelCount = 0;
+
+    await coordinator.handleTap(
+      loadActiveDraft: () async => draft,
+      openDraft: (_) async => openCount++,
+      cancelNotification: () async => cancelCount++,
+    );
+
+    expect(openCount, 0);
+    expect(cancelCount, 1);
+  });
 
   test('notification scheduler coalesces 320 rapid field updates', () async {
     final platform = _FakeWorkoutDraftNotificationPlatform();

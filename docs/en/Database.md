@@ -10,8 +10,8 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 | Storage | Purpose | Authority and lifecycle |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v16. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
-| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
+| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, workout commit ledger, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v18. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
+| Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `workout_plan_commits`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
 | SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
 | Cloud account and AI storage | Supabase Auth identity, subscription entitlement, Cloud Profile, AI chat sessions/messages, request logs, compact debug summaries, evidence/artifact snapshots, and document chunks. | Account-bound or service-owned cloud data protected by RLS/RPC/service boundaries. |
@@ -20,7 +20,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `16`.
+Current local SQLite schema version: `18`.
 
 Foreign keys are enabled with:
 
@@ -50,6 +50,8 @@ Local migrations must remain additive and compatible.
 | 14 | Re-runs the idempotent cloud-cache column migration so devices that installed an intermediate v13 build receive the missing columns without clearing local data. |
 | 15 | Adds an idempotent `daily_summary_cache` repair for devices that installed an intermediate v14 build before the selected-day summary JSON cache columns, unique index, and cache-write downgrade were complete. |
 | 16 | Deletes legacy `edit_record` workout drafts so only manually or AI-created new workout records remain resumable. |
+| 17 | Adds workout save-state fields to `workout_record_drafts` and the hash-only `workout_plan_commits` ledger. The idempotent upgrade and open-time repair cover intermediate v17 test builds without clearing user data. |
+| 18 | Extends the local workout mutation ledger with the `abandoned` terminal state used by process-start recovery. The idempotent upgrade and open-time repair preserve existing committed rows. |
 
 Compatibility rules:
 
@@ -237,6 +239,12 @@ Important fields:
 | `source_plan_id`, `source_session_id` | Legacy nullable compatibility fields; current new-record drafts leave them empty. |
 | `date`, `record_name`, `notes` | Draft-visible metadata. |
 | `payload_json` | Serialized editor snapshot. |
+| `save_state` | `editing`, `committing`, or `commit_unknown`; only `editing` permits lifecycle autosave. |
+| `save_mutation_id` | Stable idempotency key reused until the official outcome is confirmed. |
+| `target_plan_id` | Stable plan id used by the official commit. |
+| `save_payload_hash` | SHA-256 of the canonical commit payload; raw official payload is not duplicated into the ledger. |
+| `save_started_at` | Stable official-save timestamp reused by retries. |
+| `save_body_weight_kg` | Calculation weight frozen for the saved payload. |
 | `created_at`, `updated_at` | ISO timestamps. |
 
 Rules:
@@ -245,7 +253,23 @@ Rules:
 - Drafts are not official workout history.
 - Editing a saved workout is page-local and never writes this table.
 - Explicit save validates editor state before writing official workout tables.
-- Draft strength-set entries may include draft-only `completed_at` timestamps inside `payload_json` so the Android workout-in-progress notification can identify the most recently checked set. This does not change the `workout_sets` SQLite schema or the official saved-record migration version.
+- Draft strength-set entries may include draft-only `completed_at` timestamps inside `payload_json` so the Android workout-in-progress notification can identify the most recently checked set. This field remains outside the official `workout_sets` SQLite schema.
+- `committing` and `commit_unknown` rows are locked confirmation state, not a second editable workout. They do not auto-resume the editor or produce the workout-in-progress notification.
+
+### `workout_plan_commits`
+
+Purpose: a local idempotency and recovery ledger for the SQLite compatibility save path.
+
+| Field | Meaning |
+| --- | --- |
+| `account_scope`, `mutation_id` | Composite primary key that prevents the same account/local mutation from being applied twice. |
+| `operation` | `create`, `replace_plan`, or `replace_session`. |
+| `target_plan_id` | Plan containing the committed local sessions. |
+| `payload_hash` | SHA-256 identity of the canonical request; no workout payload or notes are copied into this table. |
+| `status` | Atomic terminal value `committed` or `abandoned`. |
+| `committed_at` | ISO terminal-resolution timestamp; for `committed` rows it is the commit time. |
+
+The local workout rows and committed ledger row are written in one SQLite transaction. Process-start recovery either finds that committed mutation or writes an abandoned tombstone before returning the retained item to normal draft editing.
 
 ### `user_weight_logs`
 
@@ -306,7 +330,7 @@ AI boundary: Weekly Review may explain these records, but it must not silently c
 
 ## Local SQLite Clearing
 
-`AppDatabase.clearAllLocalData()` deletes all current business-table rows in one SQLite transaction: `food_items`, `food_records`, `workout_sets`, `workout_sessions`, `workout_record_drafts`, `custom_exercises`, `user_weight_logs`, `calorie_calibration_state`, `diet_adjustment_reviews`, `user_profile`, and `daily_summary_cache`. The database file, schema, and migration version remain intact.
+`AppDatabase.clearAllLocalData()` deletes all current business-table rows in one SQLite transaction: `food_items`, `food_records`, `workout_sets`, `workout_sessions`, `workout_record_drafts`, `workout_plan_commits`, `custom_exercises`, `user_weight_logs`, `calorie_calibration_state`, `diet_adjustment_reviews`, `user_profile`, and `daily_summary_cache`. The database file, schema, and migration version remain intact.
 
 The method does not access Supabase or clear the Auth session, SharedPreferences, in-memory controller state, or local export files. Cloud official Profile/records/summaries remain available and can rebuild SQLite cache through normal reads; local workout drafts, custom exercises, calibration, and review state have no cloud recovery guarantee. [Product.md](Product.md) and [AppGuide.md](AppGuide.md) own the product meaning and UI communication, while [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md) owns authority and repopulation invariants.
 
@@ -509,6 +533,12 @@ Rules:
 - `workout_sessions` and `workout_sets` belong to the parent record.
 - Saved rows preserve exercise metadata, input modes, and calculation snapshots.
 - Deletes are soft deletes by default and update summaries.
+
+### `workout_plan_commits`
+
+Purpose: account-scoped idempotency and result lookup for an official workout-plan save.
+
+The `(account_id, mutation_id)` primary key stores operation, target plan, canonical payload hash, status (`pending`, `committed`, or `abandoned`), result session IDs, and timestamps, but not the workout payload. `commit_workout_plan_v1` verifies the active device, soft-deletes the replacement target when applicable, inserts every new session and set, and marks the ledger committed in one PostgreSQL transaction. A retry with the same hash returns the recorded sessions; a different hash raises `idempotency_conflict`. `get_workout_plan_commit_v1` performs read-only foreground confirmation. On new-process recovery, `abandon_workout_plan_commit_v1` shares the mutation advisory lock and returns the committed result or records an abandoned tombstone that rejects a late old commit. Direct table access is revoked from authenticated clients; the guarded RPCs are the client boundary.
 
 ### `daily_summaries`
 
@@ -811,7 +841,8 @@ Export correctness comes from cloud official records, cloud summaries, or builde
 - Repositories: `lib/data/repositories/*`
 - Profile: `lib/domain/models/user_profile.dart`, `lib/data/repositories/profile_repository.dart`
 - Food: `lib/domain/models/food_record.dart`, `lib/data/repositories/food_repository.dart`
-- Workout: `lib/domain/models/workout_session.dart`, `lib/domain/models/workout_set.dart`, `lib/data/repositories/workout_repository.dart`
+- Workout: `lib/domain/models/workout_session.dart`, `lib/domain/models/workout_set.dart`, `lib/domain/models/workout_plan_commit.dart`, `lib/data/repositories/workout_repository.dart`
+- Workout commit schema: `supabase/migrations/202607220001_workout_plan_commit_protocol.sql`
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
 - AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`

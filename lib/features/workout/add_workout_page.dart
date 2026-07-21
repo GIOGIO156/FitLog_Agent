@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,9 +20,11 @@ import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/workout_record_draft.dart';
+import '../../domain/models/workout_plan_commit.dart';
 import '../../domain/models/workout_session.dart';
 import '../../domain/models/workout_set.dart';
 import '../../domain/services/workout_calorie_calculator.dart';
+import '../../data/repositories/phase2_repository_exception.dart';
 import 'workout_draft_notification.dart';
 import 'workout_draft_mutation_queue.dart';
 import 'workout_editor_resume.dart';
@@ -99,6 +102,13 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   String? _editingPlanId;
   int? _editingSeedSessionId;
   String? _draftCreatedAt;
+  String _draftSaveState = WorkoutRecordDraft.saveStateEditing;
+  String? _saveMutationId;
+  String? _targetPlanId;
+  String? _savePayloadHash;
+  String? _saveStartedAt;
+  double? _saveBodyWeightKg;
+  bool _saveTerminal = false;
   Timer? _draftSaveDebounce;
   final WorkoutDraftMutationQueue _draftMutationQueue =
       WorkoutDraftMutationQueue();
@@ -106,6 +116,12 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
   bool get _isEditing =>
       (_editingPlanId ?? '').trim().isNotEmpty || _editingSeedSessionId != null;
+  bool get _hasPendingCommit =>
+      _draftSaveState == WorkoutRecordDraft.saveStateCommitting ||
+      _draftSaveState == WorkoutRecordDraft.saveStateCommitUnknown;
+  bool get _draftAutosaveAllowed =>
+      !_saveTerminal && _draftSaveState == WorkoutRecordDraft.saveStateEditing;
+  bool get _editorLocked => _saving || _hasPendingCommit;
 
   @override
   void initState() {
@@ -157,21 +173,28 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
+    if (state == AppLifecycleState.inactive) {
+      if (_saving || !_draftAutosaveAllowed) {
+        return;
+      }
+      unawaited(_persistDraftNow());
+    } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      if (_saving) {
+      if (_saving || !_draftAutosaveAllowed) {
         return;
       }
       unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(_notificationScheduler?.cancelNow());
     }
   }
 
   Future<void> _loadInitialState() async {
+    final services = context.read<AppServices>();
     _notificationScheduler ??= WorkoutDraftNotificationScheduler(
       strings: context.stringsRead,
     );
-    final services = context.read<AppServices>();
+    await _notificationScheduler?.cancelNow();
     final profileFuture = services.profileRepository.getProfile();
     final draftFuture = services.workoutDraftRepository.getActiveDraft();
     final sessionsFuture = _loadSeedSessions(services);
@@ -246,6 +269,15 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
   String _createPlanId() => DateTime.now().microsecondsSinceEpoch.toString();
 
+  String _createSaveMutationId() {
+    final random = Random.secure();
+    final suffix = List<int>.generate(
+      16,
+      (_) => random.nextInt(256),
+    ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+    return 'workout-${DateTime.now().microsecondsSinceEpoch}-$suffix';
+  }
+
   String? _normalizePlanId(String? value) {
     final trimmed = (value ?? '').trim();
     return trimmed.isEmpty ? null : trimmed;
@@ -313,6 +345,12 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       }
     }
     _draftCreatedAt = draft.createdAt;
+    _draftSaveState = draft.saveState;
+    _saveMutationId = draft.saveMutationId;
+    _targetPlanId = draft.targetPlanId;
+    _savePayloadHash = draft.savePayloadHash;
+    _saveStartedAt = draft.saveStartedAt;
+    _saveBodyWeightKg = draft.saveBodyWeightKg;
     _date = draft.date;
     _recordNameController.text = draft.recordName;
     _notesController.text = draft.notes;
@@ -349,8 +387,65 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
   bool get _shouldPersistDraft => _hasMeaningfulDraftContent;
 
+  WorkoutRecordDraft _buildActiveDraft({
+    String? saveState,
+    String? saveMutationId,
+    String? targetPlanId,
+    String? savePayloadHash,
+    String? saveStartedAt,
+    double? saveBodyWeightKg,
+  }) {
+    final now = DateTime.now().toIso8601String();
+    final createdAt = _draftCreatedAt ?? now;
+    _draftCreatedAt = createdAt;
+    return WorkoutRecordDraft(
+      id: WorkoutRecordDraft.activeDraftId,
+      kind: WorkoutRecordDraft.kindNewRecord,
+      date: _date,
+      recordName: _recordNameController.text.trim(),
+      notes: _notesController.text.trim(),
+      payloadJson: jsonEncode(_buildDraftPayload()),
+      saveState: saveState ?? _draftSaveState,
+      saveMutationId: saveMutationId ?? _saveMutationId,
+      targetPlanId: targetPlanId ?? _targetPlanId,
+      savePayloadHash: savePayloadHash ?? _savePayloadHash,
+      saveStartedAt: saveStartedAt ?? _saveStartedAt,
+      saveBodyWeightKg: saveBodyWeightKg ?? _saveBodyWeightKg,
+      createdAt: createdAt,
+      updatedAt: now,
+    );
+  }
+
+  Future<void> _writeActiveDraft(
+    WorkoutRecordDraft draft, {
+    required bool markEditorActive,
+  }) async {
+    final services = context.read<AppServices>();
+    await _draftMutationQueue.run(() async {
+      await services.workoutDraftRepository.saveActiveDraft(draft);
+      if (markEditorActive) {
+        await WorkoutEditorResumeStore.markActive();
+      } else {
+        await WorkoutEditorResumeStore.clear();
+      }
+    });
+  }
+
+  Future<void> _persistCurrentSaveState(AppStrings strings) async {
+    if (_isEditing) {
+      return;
+    }
+    final draft = _buildActiveDraft();
+    await _writeActiveDraft(draft, markEditorActive: draft.canAutosave);
+    if (_notificationScheduler case final scheduler?) {
+      await scheduler.cancelNow();
+    } else {
+      await WorkoutDraftNotificationSync.syncFromDraft(null, strings);
+    }
+  }
+
   void _scheduleDraftSave() {
-    if (_loadingPage) {
+    if (_loadingPage || !_draftAutosaveAllowed) {
       return;
     }
     _draftSaveDebounce?.cancel();
@@ -372,7 +467,11 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     bool notifyRefresh = false,
     bool syncNotificationImmediately = false,
   }) async {
-    if (!mounted || _loadingPage || _saving || _isEditing) {
+    if (!mounted ||
+        _loadingPage ||
+        _saving ||
+        _isEditing ||
+        !_draftAutosaveAllowed) {
       return;
     }
     final services = context.read<AppServices>();
@@ -394,27 +493,10 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       return;
     }
 
-    final now = DateTime.now().toIso8601String();
-    final createdAt = _draftCreatedAt ?? now;
-    _draftCreatedAt = createdAt;
-    final draft = WorkoutRecordDraft(
-      id: WorkoutRecordDraft.activeDraftId,
-      kind: WorkoutRecordDraft.kindNewRecord,
-      date: _date,
-      recordName: _recordNameController.text.trim(),
-      notes: _notesController.text.trim(),
-      payloadJson: jsonEncode(_buildDraftPayload()),
-      createdAt: createdAt,
-      updatedAt: now,
-    );
-    await _draftMutationQueue.run(() async {
-      await services.workoutDraftRepository.saveActiveDraft(draft);
-      await WorkoutEditorResumeStore.markActive();
-    });
+    final draft = _buildActiveDraft();
+    await _writeActiveDraft(draft, markEditorActive: true);
     if (syncNotificationImmediately) {
       await _notificationScheduler?.syncNow(draft);
-    } else {
-      _notificationScheduler?.schedule(draft);
     }
     if (notifyRefresh && mounted) {
       context.read<RefreshNotifier>().markDataChanged();
@@ -440,7 +522,17 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     if (_saving) {
       return;
     }
-    await _persistDraftNow(syncNotificationImmediately: true);
+    if (_hasPendingCommit || _saveTerminal) {
+      await WorkoutEditorResumeStore.clear();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _allowPop = true);
+      Navigator.of(context).pop(false);
+      return;
+    }
+    await _persistDraftNow();
+    await _notificationScheduler?.cancelNow();
     await WorkoutEditorResumeStore.clear();
     if (!mounted) {
       return;
@@ -451,6 +543,9 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
   }
 
   Future<void> _discardCurrentDraft() async {
+    if (_hasPendingCommit) {
+      return;
+    }
     final strings = context.stringsRead;
     final refreshNotifier = context.read<RefreshNotifier>();
     final services = context.read<AppServices>();
@@ -536,7 +631,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       replaced?.dispose();
       _selectedPlans[draft.exerciseKey] = draft;
     });
-    unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    unawaited(_persistDraftNow());
   }
 
   Future<void> _applyExerciseSelection(List<String> pickedKeysInOrder) async {
@@ -593,7 +688,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         ..addAll(reordered);
       _updatingExerciseSelection = false;
     });
-    await _persistDraftNow(syncNotificationImmediately: true);
+    await _persistDraftNow();
   }
 
   void _addSet(_ExercisePlanDraft draft) {
@@ -610,21 +705,21 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         _SetDraft(defaultWeight: defaultWeight, defaultReps: defaultReps),
       );
     });
-    unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    unawaited(_persistDraftNow());
   }
 
   void _removeSet(_ExercisePlanDraft draft, int index) {
     final target = draft.sets.removeAt(index);
     target.dispose();
     setState(() {});
-    unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    unawaited(_persistDraftNow());
   }
 
   void _removeExercise(_ExercisePlanDraft draft) {
     final target = _selectedPlans.remove(draft.exerciseKey);
     target?.dispose();
     setState(() {});
-    unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    unawaited(_persistDraftNow());
   }
 
   void _toggleSetCompleted(_SetDraft draft) {
@@ -637,7 +732,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
         draft.completedAt = DateTime.now().toIso8601String();
       }
     });
-    unawaited(_persistDraftNow(syncNotificationImmediately: true));
+    unawaited(_persistDraftNow());
   }
 
   int _durationForDraft(_ExercisePlanDraft draft) {
@@ -885,6 +980,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     required String now,
     required String recordName,
     required String notes,
+    required double bodyWeightKg,
   }) {
     final sessions = <WorkoutSession>[];
     for (final draft in _selectedDrafts) {
@@ -941,12 +1037,12 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
               ? draft.cardioIntensityBasis
               : null,
           cardioActiveMinutes: activeMinutes,
-          bodyWeightKgAtCalculation: _profileWeightKg,
+          bodyWeightKgAtCalculation: bodyWeightKg,
           exerciseSnapshotJson: draft.snapshotJson(),
           estimatedCalories: draft.isCardio
               ? WorkoutCalorieCalculator.estimateCardioCalories(
                   exerciseName: draft.exerciseName,
-                  bodyWeightKg: _profileWeightKg,
+                  bodyWeightKg: bodyWeightKg,
                   durationMinutes: durationMinutes,
                   definition: draft.definition,
                   intensityBasis: draft.cardioIntensityBasis,
@@ -955,7 +1051,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                 )
               : WorkoutCalorieCalculator.estimateStrengthCalories(
                   exerciseName: draft.exerciseName,
-                  bodyWeightKg: _profileWeightKg,
+                  bodyWeightKg: bodyWeightKg,
                   sets: sets,
                   totalSessionDurationMinutes: durationMinutes,
                   definition: draft.definition,
@@ -1026,10 +1122,6 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
 
     _draftSaveDebounce?.cancel();
     setState(() => _saving = true);
-    final now = DateTime.now().toIso8601String();
-    final planId = (_editingPlanId ?? '').isNotEmpty
-        ? _editingPlanId!
-        : _createPlanId();
     final recordName = _recordNameController.text.trim();
     final notes = _notesController.text.trim();
     final services = context.read<AppServices>();
@@ -1041,32 +1133,66 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       if (!mounted) {
         return;
       }
+      final saveStartedAt =
+          _saveStartedAt ?? DateTime.now().toUtc().toIso8601String();
+      final planId =
+          _targetPlanId ??
+          ((_editingPlanId ?? '').isNotEmpty
+              ? _editingPlanId!
+              : _createPlanId());
+      final mutationId = _saveMutationId ?? _createSaveMutationId();
+      final bodyWeightKg = _saveBodyWeightKg ?? _profileWeightKg;
       sessions = _buildSessionsForCommit(
         planId: planId,
-        now: now,
+        now: saveStartedAt,
         recordName: recordName,
         notes: notes,
+        bodyWeightKg: bodyWeightKg,
       );
       if (sessions.isEmpty) {
         FitLogNotifications.error(context, strings.noCompletedSetsToSave);
         return;
       }
 
-      if ((_editingPlanId ?? '').isNotEmpty) {
-        await services.workoutRepository.replaceWorkoutPlan(
-          planId: _editingPlanId!,
-          sessions: sessions,
-        );
-      } else if (_editingSeedSessionId != null) {
-        await services.workoutRepository.replaceSingleWorkoutRecord(
-          sessionId: _editingSeedSessionId!,
-          sessions: sessions,
-        );
-      } else {
-        await services.workoutRepository.insertWorkoutPlan(sessions);
+      final operation = (_editingPlanId ?? '').isNotEmpty
+          ? WorkoutPlanCommitOperation.replacePlan
+          : _editingSeedSessionId != null
+          ? WorkoutPlanCommitOperation.replaceSession
+          : WorkoutPlanCommitOperation.create;
+      final request = WorkoutPlanCommitRequest(
+        mutationId: mutationId,
+        operation: operation,
+        targetPlanId: planId,
+        sourcePlanId: _editingPlanId,
+        sourceSessionId: _editingSeedSessionId,
+        sessions: sessions,
+      );
+      if (_savePayloadHash != null && _savePayloadHash != request.payloadHash) {
+        throw const Phase2RepositoryException('workout_commit_payload_changed');
       }
 
-      await _deleteActiveDraftBarrier(services, strings);
+      _draftSaveState = WorkoutRecordDraft.saveStateCommitting;
+      _saveMutationId = mutationId;
+      _targetPlanId = planId;
+      _savePayloadHash = request.payloadHash;
+      _saveStartedAt = saveStartedAt;
+      _saveBodyWeightKg = bodyWeightKg;
+      await _persistCurrentSaveState(strings);
+
+      final result = await services.workoutRepository.commitWorkoutPlan(
+        request,
+      );
+      if (!result.committed) {
+        throw const Phase2RepositoryException('workout_commit_not_confirmed');
+      }
+      if (result.sessions.isNotEmpty) {
+        sessions = result.sessions;
+      }
+
+      _saveTerminal = true;
+      if (!_isEditing) {
+        await _deleteActiveDraftBarrier(services, strings);
+      }
       _draftCreatedAt = null;
       if (!mounted) {
         return;
@@ -1078,7 +1204,32 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
       saved = true;
     } catch (error) {
       if (mounted) {
-        FitLogNotifications.error(context, strings.failedToLoadWorkout(error));
+        if (_isAmbiguousWorkoutCommitError(error)) {
+          _draftSaveState = WorkoutRecordDraft.saveStateCommitUnknown;
+          await _persistCurrentSaveState(strings);
+          if (mounted) {
+            FitLogNotifications.error(
+              context,
+              strings.workoutSaveStatusPendingMessage,
+            );
+          }
+        } else {
+          _draftSaveState = WorkoutRecordDraft.saveStateEditing;
+          _saveMutationId = null;
+          _targetPlanId = null;
+          _savePayloadHash = null;
+          _saveStartedAt = null;
+          _saveBodyWeightKg = null;
+          await _persistCurrentSaveState(strings);
+          if (mounted) {
+            FitLogNotifications.error(
+              context,
+              error is Phase2RepositoryException
+                  ? strings.phase2ErrorMessage(error.code)
+                  : strings.failedToSaveWorkout(error),
+            );
+          }
+        }
       }
       return;
     } finally {
@@ -1097,6 +1248,16 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
     setState(() => _allowPop = true);
     FitLogNotifications.successAfterNavigation(context, successMessage);
     navigator.pop(true);
+  }
+
+  bool _isAmbiguousWorkoutCommitError(Object error) {
+    if (error is! Phase2RepositoryException) {
+      return true;
+    }
+    return error.code == 'record_network_error' ||
+        error.code == 'workout_commit_failed' ||
+        error.code == 'workout_commit_status_failed' ||
+        error.code == 'workout_commit_not_confirmed';
   }
 
   @override
@@ -1140,6 +1301,17 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                   100,
             ),
             children: <Widget>[
+              if (_hasPendingCommit)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: GlassPanel(
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_sync_outlined),
+                      title: Text(strings.workoutSaveStatusPendingTitle),
+                      subtitle: Text(strings.workoutSaveStatusPendingMessage),
+                    ),
+                  ),
+                ),
               GlassPanel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1185,7 +1357,8 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                       children: <Widget>[
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: (_saving || _updatingExerciseSelection)
+                            onPressed:
+                                (_editorLocked || _updatingExerciseSelection)
                                 ? null
                                 : _openExerciseLibraryPicker,
                             icon: _updatingExerciseSelection
@@ -1203,7 +1376,9 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                         const SizedBox(width: 10),
                         Expanded(
                           child: OutlinedButton.icon(
-                            onPressed: _saving ? null : _openCustomExercise,
+                            onPressed: _editorLocked
+                                ? null
+                                : _openCustomExercise,
                             icon: const Icon(Icons.add_box_outlined),
                             label: Text(strings.customExercise),
                           ),
@@ -1301,7 +1476,9 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                       ),
                                     ),
                                     IconButton(
-                                      onPressed: () => _removeExercise(draft),
+                                      onPressed: _editorLocked
+                                          ? null
+                                          : () => _removeExercise(draft),
                                       icon: const Icon(Icons.close_rounded),
                                       tooltip: strings.removeExercise,
                                     ),
@@ -1324,7 +1501,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                         controller: draft.durationController,
                                         keyboardType: TextInputType.number,
                                         selectAllOnFocus: true,
-                                        enabled: !_saving,
+                                        enabled: !_editorLocked,
                                         decoration: InputDecoration(
                                           isDense: true,
                                           labelText:
@@ -1375,7 +1552,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                               ),
                                             )
                                             .toList(),
-                                        onChanged: _saving
+                                        onChanged: _editorLocked
                                             ? null
                                             : (value) {
                                                 if (value == null) {
@@ -1394,7 +1571,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                           controller:
                                               draft.activeDurationController,
                                           keyboardType: TextInputType.number,
-                                          enabled: !_saving,
+                                          enabled: !_editorLocked,
                                           decoration: InputDecoration(
                                             labelText:
                                                 strings.activeDurationLabel,
@@ -1414,7 +1591,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                     controller: draft.durationController,
                                     keyboardType: TextInputType.number,
                                     selectAllOnFocus: true,
-                                    enabled: !_saving,
+                                    enabled: !_editorLocked,
                                     decoration: InputDecoration(
                                       isDense: true,
                                       labelText: strings.durationMinutesLabel,
@@ -1551,7 +1728,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                                           .defaultWeightHint,
                                                       showAsDefaultValue: setDraft
                                                           .showWeightAsDefault,
-                                                      enabled: !_saving,
+                                                      enabled: !_editorLocked,
                                                       onInputTap: setDraft
                                                           .prepareWeightForEditing,
                                                       onValueChanged: setDraft
@@ -1575,7 +1752,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                                       showAsDefaultValue:
                                                           setDraft
                                                               .showRepsAsDefault,
-                                                      enabled: !_saving,
+                                                      enabled: !_editorLocked,
                                                       onInputTap: setDraft
                                                           .prepareRepsForEditing,
                                                       onValueChanged: setDraft
@@ -1584,7 +1761,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                                   ),
                                                   const SizedBox(width: 4),
                                                   IconButton(
-                                                    onPressed: _saving
+                                                    onPressed: _editorLocked
                                                         ? null
                                                         : () =>
                                                               _toggleSetCompleted(
@@ -1617,7 +1794,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                                   ),
                                                   const SizedBox(width: 2),
                                                   IconButton(
-                                                    onPressed: _saving
+                                                    onPressed: _editorLocked
                                                         ? null
                                                         : () => _removeSet(
                                                             draft,
@@ -1654,7 +1831,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                                     );
                                   }),
                                   TextButton.icon(
-                                    onPressed: _saving
+                                    onPressed: _editorLocked
                                         ? null
                                         : () => _addSet(draft),
                                     icon: const Icon(Icons.add_circle_outline),
@@ -1684,6 +1861,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                     const SizedBox(height: 14),
                     TextFormField(
                       controller: _recordNameController,
+                      enabled: !_editorLocked,
                       decoration: InputDecoration(
                         labelText: strings.workoutRecordNameLabel,
                       ),
@@ -1695,7 +1873,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                       title: Text(strings.date),
                       subtitle: Text(DateUtilsX.formatReadable(_date)),
                       trailing: TextButton(
-                        onPressed: _pickDate,
+                        onPressed: _editorLocked ? null : _pickDate,
                         child: Text(strings.change),
                       ),
                     ),
@@ -1733,6 +1911,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _notesController,
+                      enabled: !_editorLocked,
                       decoration: InputDecoration(
                         labelText: strings.notesLabel,
                       ),
@@ -1744,7 +1923,7 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _discardCurrentDraft,
+                  onPressed: _editorLocked ? null : _discardCurrentDraft,
                   icon: const Icon(Icons.delete_outline_rounded),
                   label: Text(
                     _isEditing
@@ -1773,7 +1952,13 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save_outlined),
-              label: Text(_saving ? strings.saving : strings.saveWorkoutPlan),
+              label: Text(
+                _saving
+                    ? strings.saving
+                    : _hasPendingCommit
+                    ? strings.retryWorkoutSaveConfirmation
+                    : strings.saveWorkoutPlan,
+              ),
               style: FilledButton.styleFrom(
                 minimumSize: const Size(0, 54),
                 shape: RoundedRectangleBorder(

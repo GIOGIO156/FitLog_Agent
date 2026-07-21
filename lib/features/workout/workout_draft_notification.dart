@@ -47,7 +47,7 @@ class WorkoutDraftNotificationBuilder {
     WorkoutRecordDraft? draft,
     AppStrings strings,
   ) {
-    if (draft == null) {
+    if (draft == null || !draft.canAutosave) {
       return null;
     }
     final exercises = _exercisesFromDraft(draft);
@@ -455,8 +455,9 @@ class WorkoutDraftNotificationTapCoordinator {
       WorkoutDraftNotificationTapCoordinator();
 
   bool _editorOpen = false;
+  bool _openingEditor = false;
 
-  bool get editorOpen => _editorOpen;
+  bool get editorOpen => _editorOpen || _openingEditor;
 
   void markEditorOpen() {
     _editorOpen = true;
@@ -471,15 +472,20 @@ class WorkoutDraftNotificationTapCoordinator {
     required Future<void> Function(WorkoutRecordDraft draft) openDraft,
     required Future<void> Function() cancelNotification,
   }) async {
-    if (_editorOpen) {
+    await cancelNotification();
+    if (editorOpen) {
       return;
     }
-    final draft = await loadActiveDraft();
-    if (draft == null) {
-      await cancelNotification();
-      return;
+    _openingEditor = true;
+    try {
+      final draft = await loadActiveDraft();
+      if (draft == null || !draft.canAutosave) {
+        return;
+      }
+      await openDraft(draft);
+    } finally {
+      _openingEditor = false;
     }
-    await openDraft(draft);
   }
 }
 

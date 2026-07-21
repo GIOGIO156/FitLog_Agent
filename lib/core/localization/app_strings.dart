@@ -259,8 +259,8 @@ class AppStrings {
         );
       case 'record_schema_mismatch':
         return _t(
-          'Cloud Records schema is incomplete. Run the Phase 3 Supabase migration.',
-          'Cloud Records schema 不完整，请运行 Phase 3 Supabase migration。',
+          'Cloud Records schema is incomplete. Apply the latest Supabase migrations.',
+          'Cloud Records schema 不完整，请应用最新的 Supabase migrations。',
         );
       case 'cloud_record_missing':
         return _t(
@@ -996,6 +996,9 @@ class AppStrings {
   String failedToLoadWorkout(Object error) =>
       _t('Failed to load workout records: $error', '加载训练记录失败：$error');
 
+  String failedToSaveWorkout(Object error) =>
+      _t('Failed to save workout record: $error', '保存训练记录失败：$error');
+
   String get workoutDeleted => _t('Workout deleted.', '训练记录已删除。');
 
   String failedToDeleteWorkout(Object error) =>
@@ -1019,6 +1022,14 @@ class AppStrings {
 
   String get unsavedWorkoutDraftTitle => _t('Unsaved workout draft', '未保存训练');
   String get workoutDraftLabel => _t('Workout draft', '训练草稿');
+  String get workoutSaveStatusPendingTitle =>
+      _t('Confirming workout save', '正在确认训练保存结果');
+  String get workoutSaveStatusPendingMessage => _t(
+    'The cloud may already have saved this workout. Keep this recovery state and retry confirmation before editing or saving it again.',
+    '云端可能已经保存了这次训练。请保留此恢复状态，并先重试确认结果，不要重新编辑或再次创建记录。',
+  );
+  String get retryWorkoutSaveConfirmation =>
+      _t('Retry save confirmation', '重试确认保存结果');
   String workoutDraftCountSummary(int count) =>
       _t('$count exercise${count == 1 ? '' : 's'}', '$count 个动作');
   String workoutDraftBodyPartSummary(String bodyParts, int count) => _t(

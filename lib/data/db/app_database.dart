@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 16;
+  static const int dbVersion = 18;
 
   Database? _database;
 
@@ -32,6 +32,11 @@ class AppDatabase {
       },
       onCreate: (Database db, int version) async {
         await _createTables(db);
+      },
+      onOpen: (Database db) async {
+        await _ensureWorkoutDraftCommitColumns(db);
+        await _createWorkoutPlanCommitTable(db);
+        await _repairWorkoutPlanCommitStatuses(db);
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
         if (oldVersion < 2) {
@@ -148,6 +153,14 @@ class AppDatabase {
             where: 'kind = ?',
             whereArgs: <Object?>['edit_record'],
           );
+        }
+        if (oldVersion < 17) {
+          await _ensureWorkoutDraftCommitColumns(db);
+          await _createWorkoutPlanCommitTable(db);
+        }
+        if (oldVersion < 18) {
+          await _createWorkoutPlanCommitTable(db);
+          await _repairWorkoutPlanCommitStatuses(db);
         }
       },
     );
@@ -294,6 +307,7 @@ class AppDatabase {
     await _createWeightAndCalibrationTables(db);
     await _createDietAdjustmentReviewTable(db);
     await _createWorkoutDraftTable(db);
+    await _createWorkoutPlanCommitTable(db);
     await _createCustomExerciseTable(db);
     await _createDailySummaryCacheTable(db);
   }
@@ -505,10 +519,74 @@ class AppDatabase {
         record_name TEXT NOT NULL,
         notes TEXT NOT NULL,
         payload_json TEXT NOT NULL,
+        save_state TEXT NOT NULL DEFAULT 'editing',
+        save_mutation_id TEXT,
+        target_plan_id TEXT,
+        save_payload_hash TEXT,
+        save_started_at TEXT,
+        save_body_weight_kg REAL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> _ensureWorkoutDraftCommitColumns(Database db) async {
+    await _createWorkoutDraftTable(db);
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      "save_state TEXT NOT NULL DEFAULT 'editing'",
+    );
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      'save_mutation_id TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      'target_plan_id TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      'save_payload_hash TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      'save_started_at TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      'workout_record_drafts',
+      'save_body_weight_kg REAL',
+    );
+  }
+
+  Future<void> _createWorkoutPlanCommitTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS workout_plan_commits (
+        account_scope TEXT NOT NULL,
+        mutation_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        target_plan_id TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        committed_at TEXT NOT NULL,
+        PRIMARY KEY (account_scope, mutation_id)
+      )
+    ''');
+  }
+
+  Future<void> _repairWorkoutPlanCommitStatuses(Database db) async {
+    await db.update(
+      'workout_plan_commits',
+      <String, Object?>{'status': 'committed'},
+      where: 'status NOT IN (?, ?)',
+      whereArgs: <Object?>['committed', 'abandoned'],
+    );
   }
 
   Future<void> _createCustomExerciseTable(Database db) async {
@@ -696,6 +774,7 @@ class AppDatabase {
       await txn.delete('workout_sets');
       await txn.delete('workout_sessions');
       await txn.delete('workout_record_drafts');
+      await txn.delete('workout_plan_commits');
       await txn.delete('custom_exercises');
       await txn.delete('user_weight_logs');
       await txn.delete('calorie_calibration_state');

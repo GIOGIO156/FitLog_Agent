@@ -3,6 +3,7 @@ import 'package:supabase/supabase.dart' as supabase;
 
 import '../../core/utils/date_utils.dart';
 import '../../domain/models/cloud_runtime_context.dart';
+import '../../domain/models/workout_plan_commit.dart';
 import '../../domain/models/workout_session.dart';
 import '../../domain/models/workout_set.dart';
 import 'active_device_repository.dart';
@@ -99,6 +100,167 @@ class WorkoutRepository {
         );
       }
     });
+  }
+
+  Future<WorkoutPlanCommitResult> commitWorkoutPlan(
+    WorkoutPlanCommitRequest request,
+  ) async {
+    final db = await _database.database;
+    final accountScope = _activeAccountId ?? '__local__';
+    var alreadyCommitted = false;
+    await db.transaction((txn) async {
+      final existingRows = await txn.query(
+        'workout_plan_commits',
+        where: 'account_scope = ? AND mutation_id = ?',
+        whereArgs: <Object?>[accountScope, request.mutationId],
+        limit: 1,
+      );
+      if (existingRows.isNotEmpty) {
+        final existing = existingRows.single;
+        if (existing['payload_hash'] != request.payloadHash) {
+          throw const Phase2RepositoryException('idempotency_conflict');
+        }
+        if (existing['status'] == 'abandoned') {
+          throw const Phase2RepositoryException('workout_commit_abandoned');
+        }
+        if (existing['status'] != 'committed') {
+          throw const Phase2RepositoryException('workout_commit_invalid_state');
+        }
+        alreadyCommitted = true;
+        return;
+      }
+
+      final now = DateTime.now().toIso8601String();
+      switch (request.operation) {
+        case WorkoutPlanCommitOperation.create:
+          break;
+        case WorkoutPlanCommitOperation.replacePlan:
+          final sourcePlanId = request.sourcePlanId;
+          if (sourcePlanId == null || sourcePlanId.isEmpty) {
+            throw const Phase2RepositoryException(
+              'workout_commit_source_plan_required',
+            );
+          }
+          await txn.delete(
+            'workout_sessions',
+            where: _withAccountWhere('plan_id = ?'),
+            whereArgs: _withAccountArgs(<Object?>[sourcePlanId]),
+          );
+        case WorkoutPlanCommitOperation.replaceSession:
+          final sourceSessionId = request.sourceSessionId;
+          if (sourceSessionId == null) {
+            throw const Phase2RepositoryException(
+              'workout_commit_source_session_required',
+            );
+          }
+          await txn.delete(
+            'workout_sessions',
+            where: _withAccountWhere('id = ?'),
+            whereArgs: _withAccountArgs(<Object?>[sourceSessionId]),
+          );
+      }
+
+      for (final session in request.sessions) {
+        await _insertSessionWithSets(
+          txn,
+          session.copyWith(
+            planId: request.targetPlanId,
+            createdAt: session.createdAt ?? now,
+            updatedAt: now,
+          ),
+        );
+      }
+      await txn.insert('workout_plan_commits', <String, Object?>{
+        'account_scope': accountScope,
+        'mutation_id': request.mutationId,
+        'operation': request.operation.wireValue,
+        'target_plan_id': request.targetPlanId,
+        'payload_hash': request.payloadHash,
+        'status': 'committed',
+        'committed_at': now,
+      });
+    });
+
+    if (alreadyCommitted) {
+      final sessions = await getWorkoutSessionsByPlanId(request.targetPlanId);
+      return WorkoutPlanCommitResult.committed(
+        targetPlanId: request.targetPlanId,
+        sessions: sessions,
+      );
+    }
+    return WorkoutPlanCommitResult.committed(
+      targetPlanId: request.targetPlanId,
+      sessions: request.sessions,
+    );
+  }
+
+  Future<WorkoutPlanCommitResult> getWorkoutPlanCommit(
+    String mutationId,
+  ) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'workout_plan_commits',
+      where: 'account_scope = ? AND mutation_id = ? AND status = ?',
+      whereArgs: <Object?>[
+        _activeAccountId ?? '__local__',
+        mutationId,
+        'committed',
+      ],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return WorkoutPlanCommitResult.notFound();
+    }
+    final targetPlanId = rows.single['target_plan_id']?.toString() ?? '';
+    return WorkoutPlanCommitResult.committed(
+      targetPlanId: targetPlanId,
+      sessions: await getWorkoutSessionsByPlanId(targetPlanId),
+    );
+  }
+
+  Future<WorkoutPlanCommitResult> abandonWorkoutPlanCommit({
+    required String mutationId,
+    required String targetPlanId,
+    required String payloadHash,
+  }) async {
+    final db = await _database.database;
+    final accountScope = _activeAccountId ?? '__local__';
+    var committedPlanId = '';
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'workout_plan_commits',
+        where: 'account_scope = ? AND mutation_id = ?',
+        whereArgs: <Object?>[accountScope, mutationId],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        final existing = rows.single;
+        if (existing['payload_hash'] != payloadHash) {
+          throw const Phase2RepositoryException('idempotency_conflict');
+        }
+        if (existing['status'] == 'committed') {
+          committedPlanId = existing['target_plan_id']?.toString() ?? '';
+        }
+        return;
+      }
+      final now = DateTime.now().toIso8601String();
+      await txn.insert('workout_plan_commits', <String, Object?>{
+        'account_scope': accountScope,
+        'mutation_id': mutationId,
+        'operation': WorkoutPlanCommitOperation.create.wireValue,
+        'target_plan_id': targetPlanId,
+        'payload_hash': payloadHash,
+        'status': 'abandoned',
+        'committed_at': now,
+      });
+    });
+    if (committedPlanId.isNotEmpty) {
+      return WorkoutPlanCommitResult.committed(
+        targetPlanId: committedPlanId,
+        sessions: await getWorkoutSessionsByPlanId(committedPlanId),
+      );
+    }
+    return WorkoutPlanCommitResult.abandoned();
   }
 
   Future<void> updateWorkoutSession(WorkoutSession session) async {
@@ -511,6 +673,95 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
   final ActiveDeviceRepository activeDeviceRepository;
 
   @override
+  Future<WorkoutPlanCommitResult> commitWorkoutPlan(
+    WorkoutPlanCommitRequest request,
+  ) async {
+    final accountId = _requireAccountId();
+    setActiveAccountId(accountId);
+    await activeDeviceRepository.assertActive();
+    final sourceCloudSessionId = request.sourceSessionId == null
+        ? null
+        : await cloudIdForWorkoutSession(request.sourceSessionId!);
+    if (request.operation == WorkoutPlanCommitOperation.replaceSession &&
+        (sourceCloudSessionId ?? '').isEmpty) {
+      throw const Phase2RepositoryException('cloud_record_missing');
+    }
+
+    try {
+      final result = await client.rpc(
+        'commit_workout_plan_v1',
+        params: <String, dynamic>{
+          'input_mutation_id': request.mutationId,
+          'input_operation': request.operation.wireValue,
+          'input_target_plan_id': request.targetPlanId,
+          'input_source_plan_id': request.sourcePlanId,
+          'input_source_session_id': sourceCloudSessionId,
+          'input_payload_hash': request.payloadHash,
+          'input_sessions': request.canonicalPayload['sessions'],
+          'input_device_id': runtimeContext.deviceId,
+          'input_session_id': runtimeContext.sessionId,
+        },
+      );
+      return _commitResultFromRpc(
+        result,
+        request: request,
+        accountId: accountId,
+      );
+    } catch (error) {
+      throw _cloudRecordExceptionFor('workout_commit_failed', error);
+    }
+  }
+
+  @override
+  Future<WorkoutPlanCommitResult> getWorkoutPlanCommit(
+    String mutationId,
+  ) async {
+    final accountId = _requireAccountId();
+    setActiveAccountId(accountId);
+    await activeDeviceRepository.assertActive();
+    try {
+      final result = await client.rpc(
+        'get_workout_plan_commit_v1',
+        params: <String, dynamic>{
+          'input_mutation_id': mutationId,
+          'input_device_id': runtimeContext.deviceId,
+          'input_session_id': runtimeContext.sessionId,
+        },
+      );
+      return _commitResultFromRpc(result, accountId: accountId);
+    } catch (error) {
+      throw _cloudRecordExceptionFor('workout_commit_status_failed', error);
+    }
+  }
+
+  @override
+  Future<WorkoutPlanCommitResult> abandonWorkoutPlanCommit({
+    required String mutationId,
+    required String targetPlanId,
+    required String payloadHash,
+  }) async {
+    final accountId = _requireAccountId();
+    setActiveAccountId(accountId);
+    await activeDeviceRepository.assertActive();
+    try {
+      final result = await client.rpc(
+        'abandon_workout_plan_commit_v1',
+        params: <String, dynamic>{
+          'input_mutation_id': mutationId,
+          'input_operation': WorkoutPlanCommitOperation.create.wireValue,
+          'input_target_plan_id': targetPlanId,
+          'input_payload_hash': payloadHash,
+          'input_device_id': runtimeContext.deviceId,
+          'input_session_id': runtimeContext.sessionId,
+        },
+      );
+      return _commitResultFromRpc(result, accountId: accountId);
+    } catch (error) {
+      throw _cloudRecordExceptionFor('workout_commit_status_failed', error);
+    }
+  }
+
+  @override
   Future<int> insertWorkoutSession(WorkoutSession session) async {
     final accountId = _requireAccountId();
     await activeDeviceRepository.assertActive();
@@ -732,6 +983,66 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
     } catch (error) {
       throw _cloudRecordExceptionFor('workout_insert_failed', error);
     }
+  }
+
+  Future<WorkoutPlanCommitResult> _commitResultFromRpc(
+    Object? raw, {
+    WorkoutPlanCommitRequest? request,
+    required String accountId,
+  }) async {
+    if (raw is! Map) {
+      throw const Phase2RepositoryException('workout_commit_invalid_response');
+    }
+    final result = Map<String, dynamic>.from(raw);
+    final status = result['status']?.toString();
+    if (status == 'not_found') {
+      return WorkoutPlanCommitResult.notFound();
+    }
+    if (status == 'abandoned') {
+      return WorkoutPlanCommitResult.abandoned();
+    }
+    if (status != 'committed') {
+      throw Phase2RepositoryException(
+        result['code']?.toString() ?? 'workout_commit_invalid_response',
+      );
+    }
+    final targetPlanId = result['target_plan_id']?.toString() ?? '';
+    if (targetPlanId.isEmpty) {
+      throw const Phase2RepositoryException('workout_commit_invalid_response');
+    }
+    final rows = (result['sessions'] as List? ?? const <Object?>[])
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+    final sessions = rows.map(_workoutSessionFromCloudRow).toList();
+
+    try {
+      if (request?.operation == WorkoutPlanCommitOperation.replacePlan &&
+          (request?.sourcePlanId ?? '').isNotEmpty) {
+        await super.deleteWorkoutPlan(request!.sourcePlanId!);
+      } else if (request?.operation ==
+              WorkoutPlanCommitOperation.replaceSession &&
+          request?.sourceSessionId != null) {
+        await super.deleteWorkoutSession(request!.sourceSessionId!);
+      }
+      for (var index = 0; index < rows.length; index++) {
+        final row = rows[index];
+        await cacheConfirmedWorkoutSession(
+          sessions[index],
+          accountId: accountId,
+          cloudId: row['id'].toString(),
+          recordVersion: _recordVersion(row),
+          cloudUpdatedAt: _updatedAt(row),
+        );
+      }
+    } catch (_) {
+      // Cloud confirmation is authoritative; cache repair remains optional.
+    }
+
+    return WorkoutPlanCommitResult.committed(
+      targetPlanId: targetPlanId,
+      sessions: sessions,
+    );
   }
 
   Future<Map<String, dynamic>> _updateCloudWorkoutSession(
