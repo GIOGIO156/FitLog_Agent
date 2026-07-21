@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fitlog_local/app.dart';
@@ -37,6 +38,7 @@ import 'package:fitlog_local/export/xlsx_export_service.dart';
 import 'package:fitlog_local/features/account/account_controller.dart';
 import 'package:fitlog_local/features/food/food_image_picker.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_page.dart';
+import 'package:fitlog_local/features/food/photo_food_analysis_recovery.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -48,8 +50,25 @@ MemoryImage _memoryImage(ImageProvider<Object> provider) {
 }
 
 void main() {
+  late Directory recoveryDirectory;
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+    recoveryDirectory = Directory.systemTemp.createTempSync(
+      'fitlog_photo_food_recovery_test_',
+    );
+    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = recoveryDirectory;
+    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = true;
+  });
+
+  tearDown(() async {
+    await PhotoFoodAnalysisRecoveryStore.clearPending();
+    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = null;
+    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = false;
+    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = null;
+    if (await recoveryDirectory.exists()) {
+      await recoveryDirectory.delete(recursive: true);
+    }
   });
 
   testWidgets('photo analysis submit is disabled until image or description', (
@@ -573,6 +592,216 @@ void main() {
     expect(submit.onPressed, isNotNull);
   });
 
+  testWidgets('lost camera image restores inside the photo page preview', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final lostImages = Completer<List<PickedFoodImage>>();
+    harness.picker.lostImagesCompleter = lostImages;
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildPhotoTestApp(
+        harness,
+        initialNote: '去皮鸡腿',
+        restoreLostImagesOnStart: true,
+      ),
+    );
+    await tester.pump();
+    await _waitForLostImageRetrieve(tester, harness);
+
+    expect(harness.picker.retrieveLostImageCalls, 1);
+    expect(harness.picker.retrieveLostLimits, <int>[3]);
+    expect(
+      find.byKey(
+        const ValueKey<String>('photo_food_recovering_image_indicator'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('photo_food_submit_button')),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    lostImages.complete(<PickedFoodImage>[harness.picker.image]);
+    await _finishLostImageRecovery(tester);
+
+    expect(
+      find.byKey(
+        const ValueKey<String>('photo_food_recovering_image_indicator'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+      findsOneWidget,
+    );
+    expect(find.text('去皮鸡腿'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('photo_food_submit_button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('lost camera image appends to persisted photo draft images', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final lostImages = Completer<List<PickedFoodImage>>();
+    final secondBytes = Uint8List.fromList(_onePixelPng);
+    final secondImage = PickedFoodImage(
+      bytes: secondBytes,
+      mimeType: 'image/png',
+      name: 'food-2.png',
+    );
+    harness.picker.lostImagesCompleter = lostImages;
+    addTearDown(harness.dispose);
+    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = (_) async =>
+        <PickedFoodImage>[harness.picker.image];
+    await tester.runAsync(
+      () => PhotoFoodAnalysisRecoveryStore.savePending(
+        initialDate: '2026-07-01',
+        note: '去皮鸡腿',
+        images: const <PickedFoodImage>[],
+        selectedImageIndex: 0,
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildPhotoTestApp(harness, restoreLostImagesOnStart: true),
+    );
+    await tester.pump();
+    await _waitForLostImageRetrieve(tester, harness);
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey<String>('photo_food_recovering_image_indicator'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_selected_image_0')),
+      findsOneWidget,
+    );
+    expect(harness.picker.retrieveLostLimits, <int>[2]);
+
+    lostImages.complete(<PickedFoodImage>[secondImage]);
+    await _finishLostImageRecovery(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_selected_image_1')),
+      findsOneWidget,
+    );
+    final mainPreview = tester.widget<Image>(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+    );
+    expect(_memoryImage(mainPreview.image).bytes, same(secondBytes));
+    expect(find.text('去皮鸡腿'), findsOneWidget);
+  });
+
+  testWidgets('lost camera image replaces selected persisted image when full', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final lostImages = Completer<List<PickedFoodImage>>();
+    final firstBytes = Uint8List.fromList(_onePixelPng);
+    final secondBytes = Uint8List.fromList(_onePixelPng);
+    final thirdBytes = Uint8List.fromList(_onePixelPng);
+    final replacementBytes = Uint8List.fromList(_onePixelPng);
+    final firstImage = PickedFoodImage(
+      bytes: firstBytes,
+      mimeType: 'image/png',
+      name: 'food-1.png',
+    );
+    final secondImage = PickedFoodImage(
+      bytes: secondBytes,
+      mimeType: 'image/png',
+      name: 'food-2.png',
+    );
+    final thirdImage = PickedFoodImage(
+      bytes: thirdBytes,
+      mimeType: 'image/png',
+      name: 'food-3.png',
+    );
+    final replacementImage = PickedFoodImage(
+      bytes: replacementBytes,
+      mimeType: 'image/png',
+      name: 'replacement.png',
+    );
+    harness.picker.lostImagesCompleter = lostImages;
+    addTearDown(harness.dispose);
+    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = (_) async =>
+        <PickedFoodImage>[firstImage, secondImage, thirdImage];
+    await tester.runAsync(
+      () => PhotoFoodAnalysisRecoveryStore.savePending(
+        initialDate: '2026-07-01',
+        note: '',
+        images: const <PickedFoodImage>[],
+        selectedImageIndex: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildPhotoTestApp(harness, restoreLostImagesOnStart: true),
+    );
+    await tester.pump();
+    await _waitForLostImageRetrieve(tester, harness);
+
+    expect(harness.picker.retrieveLostLimits, <int>[1]);
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_selected_image_1')),
+      findsOneWidget,
+    );
+
+    lostImages.complete(<PickedFoodImage>[replacementImage]);
+    await _finishLostImageRecovery(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_preview_image_2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('photo_food_empty_slot_2')),
+      findsNothing,
+    );
+    final selectedPreview = tester.widget<Image>(
+      find.byKey(const ValueKey<String>('photo_food_preview_image')),
+    );
+    expect(_memoryImage(selectedPreview.image).bytes, same(replacementBytes));
+  });
+
   testWidgets('failure keeps selected image and note for retry', (
     tester,
   ) async {
@@ -913,6 +1142,8 @@ Future<void> _pickFromGallery(WidgetTester tester) async {
     find.byKey(const ValueKey<String>('photo_food_gallery_button')),
   );
   await tester.pumpAndSettle();
+  await _settleRealAsyncWork(tester);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
@@ -924,10 +1155,37 @@ Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
   await tester.pump();
 }
 
+Future<void> _settleRealAsyncWork(WidgetTester tester) async {
+  await tester.runAsync(() async {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  });
+  await tester.pump();
+}
+
+Future<void> _finishLostImageRecovery(WidgetTester tester) async {
+  await _settleRealAsyncWork(tester);
+  await tester.pump();
+}
+
+Future<void> _waitForLostImageRetrieve(
+  WidgetTester tester,
+  _PhotoHarness harness,
+) async {
+  await tester.runAsync(() async {
+    final deadline = DateTime.now().add(const Duration(seconds: 2));
+    while (harness.picker.retrieveLostImageCalls == 0 &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  });
+  await tester.pump();
+}
+
 Widget _buildPhotoTestApp(
   _PhotoHarness harness, {
   String? initialNote,
   List<PickedFoodImage> initialImages = const <PickedFoodImage>[],
+  bool restoreLostImagesOnStart = false,
 }) {
   return ChangeNotifierProvider<LanguageController>(
     create: (_) => LanguageController(),
@@ -945,6 +1203,7 @@ Widget _buildPhotoTestApp(
           initialDate: '2026-07-01',
           initialNote: initialNote,
           initialImages: initialImages,
+          restoreLostImagesOnStart: restoreLostImagesOnStart,
           imagePicker: harness.picker,
           analysisClient: harness.client,
         ),
@@ -1124,9 +1383,12 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     name: 'food.png',
   );
   List<PickedFoodImage>? multiImages;
+  Completer<List<PickedFoodImage>>? lostImagesCompleter;
   final List<List<PickedFoodImage>> queuedSelections =
       <List<PickedFoodImage>>[];
   final List<int> requestedLimits = <int>[];
+  final List<int> retrieveLostLimits = <int>[];
+  int retrieveLostImageCalls = 0;
 
   @override
   Future<PickedFoodImage?> pick(FoodImageSource source) async {
@@ -1144,6 +1406,14 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     }
     final images = multiImages ?? <PickedFoodImage>[image];
     return images;
+  }
+
+  @override
+  Future<List<PickedFoodImage>> retrieveLostImages({required int limit}) {
+    retrieveLostImageCalls += 1;
+    retrieveLostLimits.add(limit);
+    return lostImagesCompleter?.future ??
+        Future<List<PickedFoodImage>>.value(const <PickedFoodImage>[]);
   }
 }
 

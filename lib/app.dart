@@ -642,15 +642,17 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
   bool _recordHydrationRefreshScheduled = false;
   bool _restoringLostPickerImages = false;
   bool _checkedWorkoutEditorResume = false;
-  bool _initialPickerRecoveryComplete = false;
+  bool _initialFirstFrameDeferred = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.deferFirstFrame();
+    _initialFirstFrameDeferred = true;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(_runInitialRecovery());
+        unawaited(_runInitialRecoveryThenAllowFirstFrame());
         unawaited(_syncActiveWorkoutDraftNotification());
       }
     });
@@ -658,6 +660,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _allowInitialFirstFrame();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -734,91 +737,126 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _runInitialRecovery() async {
-    await _restoreLostPickerImagesIfNeeded();
+  Future<void> _runInitialRecoveryThenAllowFirstFrame() async {
+    var restoredPickerRoute = false;
+    try {
+      restoredPickerRoute = await _restoreLostPickerImagesIfNeeded(
+        routeOnly: true,
+      );
+    } finally {
+      _allowInitialFirstFrame();
+    }
     if (!mounted) {
       return;
     }
-    setState(() => _initialPickerRecoveryComplete = true);
+    if (restoredPickerRoute) {
+      return;
+    }
     await _restoreRecentWorkoutEditorIfNeeded();
   }
 
-  Future<void> _restoreLostPickerImagesIfNeeded() async {
-    if (_restoringLostPickerImages) {
+  void _allowInitialFirstFrame() {
+    if (!_initialFirstFrameDeferred) {
       return;
     }
+    _initialFirstFrameDeferred = false;
+    WidgetsBinding.instance.allowFirstFrame();
+  }
+
+  Future<bool> _restoreLostPickerImagesIfNeeded({
+    bool routeOnly = false,
+  }) async {
+    if (_restoringLostPickerImages) {
+      return false;
+    }
     _restoringLostPickerImages = true;
+    var chatRestoreContinues = false;
     try {
       final photoDraft = await PhotoFoodAnalysisRecoveryStore.loadPending();
       final chatDraft = await AiChatImageRecoveryStore.loadPending();
       if (photoDraft == null && chatDraft == null) {
-        return;
+        return false;
       }
       if (photoDraft != null) {
-        await PhotoFoodAnalysisRecoveryCoordinator.instance.runRootRecovery(
-          () => _retrieveAndRestoreLostPickerImages(
-            photoDraft: photoDraft,
-            chatDraft: chatDraft,
-          ),
-        );
-        return;
+        if (chatDraft != null) {
+          await AiChatImageRecoveryStore.clearPending();
+        }
+        return await PhotoFoodAnalysisRecoveryCoordinator.instance
+            .runRootRecovery(() => _restoreLostPhotoAnalysis(photoDraft));
       }
-      await _retrieveAndRestoreLostPickerImages(chatDraft: chatDraft);
+      if (chatDraft != null) {
+        _restoreLostAiChatImages(chatDraft, const <PickedFoodImage>[]);
+        if (routeOnly) {
+          chatRestoreContinues = true;
+          unawaited(
+            _retrieveAndRestoreLostChatImagesSafely(
+              chatDraft,
+            ).whenComplete(() => _restoringLostPickerImages = false),
+          );
+          return true;
+        }
+        await _retrieveAndRestoreLostChatImages(chatDraft);
+        return true;
+      }
+      return false;
     } catch (_) {
       await PhotoFoodAnalysisRecoveryStore.clearPending();
       await AiChatImageRecoveryStore.clearPending();
+      return false;
     } finally {
-      _restoringLostPickerImages = false;
+      if (!chatRestoreContinues) {
+        _restoringLostPickerImages = false;
+      }
     }
   }
 
-  Future<void> _retrieveAndRestoreLostPickerImages({
-    PhotoFoodAnalysisRecoveryDraft? photoDraft,
-    AiChatImageRecoveryDraft? chatDraft,
-  }) async {
+  Future<void> _retrieveAndRestoreLostChatImagesSafely(
+    AiChatImageRecoveryDraft draft,
+  ) async {
+    try {
+      await _retrieveAndRestoreLostChatImages(draft);
+    } catch (_) {
+      await AiChatImageRecoveryStore.clearPending();
+    }
+  }
+
+  Future<void> _retrieveAndRestoreLostChatImages(
+    AiChatImageRecoveryDraft draft,
+  ) async {
     final images = await ImagePickerFoodImagePicker().retrieveLostImages(
       limit: 3,
     );
-    if (photoDraft != null) {
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
-    }
-    if (chatDraft != null) {
-      await AiChatImageRecoveryStore.clearPending();
-    }
+    await AiChatImageRecoveryStore.clearPending();
     if (!mounted) {
       return;
     }
-    if (photoDraft != null) {
-      await _restoreLostPhotoAnalysis(photoDraft, images);
-      return;
-    }
-    if (chatDraft != null) {
-      _restoreLostAiChatImages(chatDraft, images);
-    }
+    _restoreLostAiChatImages(draft, images);
   }
 
   Future<void> _restoreLostPhotoAnalysis(
     PhotoFoodAnalysisRecoveryDraft draft,
-    List<PickedFoodImage> images,
   ) async {
-    if (images.isEmpty && draft.note.trim().isEmpty) {
-      return;
-    }
     final restoredDate = draft.initialDate ?? DateUtilsX.todayKey();
     context.read<SelectedDateNotifier>().setDate(restoredDate);
     context.read<RootTabController>().setIndex(RootTabIndex.food);
-    final saved = await Navigator.of(context).push<bool>(
+    final savedFuture = Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => PhotoFoodAnalysisPage(
           initialDate: draft.initialDate,
           initialNote: draft.note,
-          initialImages: images,
+          restoreLostImagesOnStart: true,
         ),
       ),
     );
-    if (saved == true && mounted) {
-      context.read<RefreshNotifier>().markDataChanged();
-    }
+    unawaited(
+      savedFuture
+          .then((saved) {
+            if (saved == true && mounted) {
+              context.read<RefreshNotifier>().markDataChanged();
+            }
+          })
+          .catchError((_) {}),
+    );
   }
 
   void _restoreLostAiChatImages(
@@ -924,7 +962,6 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         navController.index != RootTabIndex.ai &&
         navController.index != RootTabIndex.profile;
     final fitLogTheme = context.fitLogTheme;
-    final showInitialRecoveryGate = !_initialPickerRecoveryComplete;
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: resizeForKeyboard,
@@ -933,51 +970,35 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         child: Stack(
           children: <Widget>[
             Positioned.fill(
-              child: showInitialRecoveryGate
-                  ? const _PickerRecoveryGate()
-                  : IndexedStack(index: navController.index, children: _pages),
+              child: IndexedStack(index: navController.index, children: _pages),
             ),
-            if (!showInitialRecoveryGate)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: IgnorePointer(
-                  ignoring: interactionLock.navigationLocked,
-                  child: _RootLockedNavigationSurface(
-                    locked: interactionLock.navigationLocked,
-                    child: FitLogBottomNavBar(
-                      items: items,
-                      currentIndex: navController.index,
-                      onTap: (index) {
-                        FitLogNotifications.dismiss();
-                        if (index != RootTabIndex.ai) {
-                          context.read<AiChatController>().clearError();
-                        }
-                        navController.setIndex(index);
-                      },
-                      surface: navController.index == RootTabIndex.ai
-                          ? FitLogBottomNavSurface.glass
-                          : FitLogBottomNavSurface.solid,
-                    ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                ignoring: interactionLock.navigationLocked,
+                child: _RootLockedNavigationSurface(
+                  locked: interactionLock.navigationLocked,
+                  child: FitLogBottomNavBar(
+                    items: items,
+                    currentIndex: navController.index,
+                    onTap: (index) {
+                      FitLogNotifications.dismiss();
+                      if (index != RootTabIndex.ai) {
+                        context.read<AiChatController>().clearError();
+                      }
+                      navController.setIndex(index);
+                    },
+                    surface: navController.index == RootTabIndex.ai
+                        ? FitLogBottomNavSurface.glass
+                        : FitLogBottomNavSurface.solid,
                   ),
                 ),
               ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _PickerRecoveryGate extends StatelessWidget {
-  const _PickerRecoveryGate();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation<Color>(context.fitLogTheme.primary),
       ),
     );
   }

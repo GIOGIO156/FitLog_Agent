@@ -4,13 +4,15 @@
 
 ### Fixed
 
-- Kept root navigation behind a picker-recovery gate during startup lost-data recovery so returning from Android Camera no longer exposes the default Home loading state before AI Chat attachments or AI Food Analysis images are restored.
+- Moved Android Camera lost-data recovery out of the root startup gate so returning from Camera no longer shows a full-screen Home or root loading interstitial before AI Chat or AI Food Analysis is restored.
+- Restored recovered AI Food Analysis photos from inside the target page preview, preserving the note, selected image slot, and already-added images before merging the Android lost camera result.
+- Deferred the first root Flutter frame only until lightweight picker-route recovery has pushed the target page, avoiding the brief default Home flash without waiting for image byte restoration.
 - Restored recovered AI Food Analysis flows onto the Food tab and selected record date, and routed successful photo-analysis saves back to the Food log destination after the reviewed draft is written.
 - Replaced the Android light startup/window background with the FitLog dark launch surface to avoid a white native frame when Camera returns through an Activity rebuild.
 
 ### Validation
 
-- `flutter analyze` reported no issues. `flutter test` passed 262/262, including focused photo-analysis and picker-recovery coverage. The configured split debug APK build completed for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
+- `flutter analyze` reported no issues. `flutter test` passed 266/266, including focused photo-analysis and picker-recovery coverage. The configured split debug APK build completed for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
 
 ## 2026-07-20 Food Description Focus And Image Source Sheet
 
