@@ -34,9 +34,9 @@ class AppStrings {
   );
   String foodRecordsSummary(int mealCount) =>
       _t('$mealCount meal${mealCount == 1 ? '' : 's'}', '已记录 $mealCount 餐');
-  String workoutRecordsSummary(int sessionCount) => _t(
-    '$sessionCount session${sessionCount == 1 ? '' : 's'}',
-    '已记录 $sessionCount 次',
+  String workoutRecordsSummary(int exerciseCount) => _t(
+    '$exerciseCount exercise${exerciseCount == 1 ? '' : 's'}',
+    '已记录 $exerciseCount 个动作',
   );
   String macroProgressText(double current, double target) =>
       '${current.toStringAsFixed(0)} / ${target.toStringAsFixed(0)} g';

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-07-29 Home Workout Action Count
+
+### Fixed
+
+- Corrected the Home workout summary to describe the underlying workout-entry count as exercises/actions instead of workout sessions.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 279 Flutter tests passed.
+
 ## 2026-07-22 Idempotent Workout Save Recovery
 
 ### Added
