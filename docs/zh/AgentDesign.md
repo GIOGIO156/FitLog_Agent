@@ -65,7 +65,7 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 
 | 能力 | 行为 | 分类 |
 | --- | --- | --- |
-| Prompt template copy | 唯一入口位于 Paste AI Result。它建立可复用的外部食物估算对话约束：每个新的外部 chat 只发送一次，之后直接提交图片、描述和修正，并把完整 JSON 粘贴回 App。模板遵循与应用内 Food Draft 相同的证据原则：文字通常只补充图片的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算。卡片推荐 ChatGPT 中的“FitLog 中文助手”与“FitLog Estimator”。回复保留既有完整扁平 JSON schema；尾部 `estimation_notes` 通常为空，只允许必要且不重复的补充信息。复制语言跟随 App 语言。 | 用户中介的外部 AI，不是 App 内部 AI，也不是 Edge prompt。 |
+| Prompt template copy | 唯一入口位于 Paste AI Result。它建立可复用的外部食物估算对话约束：每个新的外部 chat 只发送一次，之后直接提交图片、描述和修正，并把完整 JSON 粘贴回 App。最高优先级规则要求最终回复只有一个 JSON 对象，并要求模型先完成准备输出的 items，再以这些 items 生成所有顶层总计。模板遵循与应用内 Food Draft 相同的证据原则：文字通常只补充图片的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算。卡片推荐 ChatGPT 中的“FitLog 中文助手”与“FitLog Estimator”。回复保留既有完整扁平 JSON schema；字段名保持英文，自然语言值跟随用户当前使用的主要语言。尾部 `estimation_notes` 通常为空，只允许必要且不重复的补充信息。复制的 Prompt 语言跟随 App 语言。 | 用户中介的外部 AI，不是 App 内部 AI，也不是 Edge prompt。 |
 | 外部 AI JSON 粘贴 | 用户粘贴外部生成的食物 JSON，FitLog 使用既有食物估算 schema 在本地解析。 | 用户中介的外部 AI，不是 App 内部 AI。 |
 | `source = ai_paste` | 标记兼容流程确认后的 food record 来源。 | 只表示 provenance，不证明发生内部模型调用。 |
 | Add Food AI 分析 | 把文字和零到三张图片发送给 `ai-food-photo-analyze`；入口固定 Food Draft family，校验后打开 Food Preview。 | 服务端中介的确定性 draft workflow，不重新判断 Chat 意图。 |

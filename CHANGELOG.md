@@ -7,6 +7,7 @@
 - Simplified Food Draft validation so Edge still enforces strict JSON shape, dates, numeric bounds, item-total normalization, workflow, permissions, and no-write boundaries, but no longer rejects consumer food drafts through regex-derived semantic gates for target language, item-specific macro/weight notes, exclusions, or macro energy explanations.
 - Updated Add Food and AI Chat food prompts to treat text and images as complementary evidence: preserve user-explicit foods, use images to refine portions or add reasonable visual candidates, and expose conflict or uncertainty through confidence and notes.
 - Centralized the Add Food, AI Chat OpenAI, and AI Chat Qwen food-evidence instruction in one shared prompt policy. Clear user facts now take priority only for their scoped food and field, descriptions do not close the image inventory without explicit include/exclude wording, and the reusable external-model prompt follows the same behavior.
+- Promoted the reusable Paste AI Result prompt's JSON-only response boundary and items-first total reconciliation to its highest-priority opening rules, with aligned Chinese and English wording; JSON keys remain English while natural-language values follow the user's current primary language.
 - Structural correction for image-based food requests now keeps the original request images in provider context while logs continue to exclude raw image bytes, base64 payloads, full notes, provider raw output, and secrets.
 
 ### Fixed
