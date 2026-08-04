@@ -374,16 +374,7 @@ function executeFoodCapabilityCase(testCase: FixtureCase): void {
       ? explicitFoodFactsFromText(testCase.input)
       : undefined,
   });
-  if (typeof testCase.expected_issue === "string") {
-    assert(issues.some((issue) => issue.reason === testCase.expected_issue));
-  } else {
-    assertEquals(
-      issues.some((issue) =>
-        issue.reason === "macro_energy_mismatch_unexplained"
-      ),
-      false,
-    );
-  }
+  assertEquals(issues, []);
 }
 
 function executeGroundedOutputCase(testCase: FixtureCase): void {

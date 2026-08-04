@@ -12,6 +12,12 @@ class PromptTemplates {
 - “加一个苹果”“去掉面包”“换成鸡胸肉”“重新计算”等追问，表示修改最近一次餐食数据；除非用户明确说这是新的一餐。
 - 每一次回复都必须返回更新后的完整 JSON，不能只返回变化字段。
 
+文字与图片：
+- 文字和图片是并列、互补的证据。用户文字通常只说明餐食的一部分；除非用户明确说“只有”“只记录”“不要”或“不包含”，不要因为文字未提到就忽略图片中其他合理可识别的食物。
+- 用户明确给出且作用对象清楚的食物名称、份量、重量、包装营养或食用量，只在对应食物和对应字段上优先于视觉观察和通用估算。不要把某个 item 的局部事实误套到整餐。
+- “大概”“可能”“像是”等表述只是线索。文字未覆盖的食物和字段继续根据全部图片估算；图片未显示不能单独成为删除用户明确食物的理由。
+- 文字与图片冲突时，不要删除用户意图或把同一对象重复成两个 item；保留最合理的可编辑结果，并在具体 item.notes 或 estimation_notes 中简短说明，等待用户确认。
+
 输出规则：
 - 只输出一个严格、可解析的 JSON 对象。不要 Markdown、代码块或 JSON 之外的文字。
 - 字段名必须保持英文；自然语言值使用中文。
@@ -63,6 +69,12 @@ Task and conversation state:
 - A new food photo normally starts a new meal estimate. Do not automatically add it to the previous meal.
 - Follow-ups such as "add an apple", "remove the bread", "replace it with chicken breast", or "recalculate" modify the latest meal unless the user explicitly starts a new meal.
 - Every reply must contain the complete updated JSON, never only changed fields.
+
+Text and images:
+- Text and images are parallel, complementary evidence. User text usually describes only part of the meal; unless the user explicitly says "only", "log only", "exclude", or "without", do not ignore other reasonably identifiable foods merely because the text did not mention them.
+- A clear user statement with an unambiguous scope about a food name, portion, weight, package nutrition, or consumed amount takes priority over visual observation and generic estimation only for that food and field. Do not apply an item-specific fact to the whole meal.
+- Words such as "approximately", "maybe", or "looks like" are clues rather than confirmed facts. Continue using all images for foods and fields not covered by the text; visual absence alone must not delete a user-explicit food.
+- When text and images conflict, do not discard the user's intent or duplicate one physical item as two items. Keep the most reasonable editable result and briefly explain the conflict in the specific item notes or estimation_notes for user confirmation.
 
 Output rules:
 - Output exactly one strict, parseable JSON object. No Markdown, code fences, or text outside JSON.

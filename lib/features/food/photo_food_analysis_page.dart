@@ -60,7 +60,8 @@ class PhotoFoodAnalysisPage extends StatefulWidget {
   State<PhotoFoodAnalysisPage> createState() => _PhotoFoodAnalysisPageState();
 }
 
-class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
+class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
+    with WidgetsBindingObserver {
   final TextEditingController _noteController = TextEditingController();
   final FocusNode _noteFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -73,6 +74,9 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   int _selectedImageIndex = 0;
   bool _analyzing = false;
   bool _recoveringLostImages = false;
+  bool _appInForeground = true;
+  bool _consumingPendingAnalysis = false;
+  _PendingPhotoAnalysisResult? _pendingAnalysisResult;
   double _notePanelHeight = 160;
   double? _noteRestingBottom;
   AiGatewayModelChoice _modelChoice = AiGatewayModelChoice.qwen;
@@ -80,6 +84,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _recoveryLease = PhotoFoodAnalysisRecoveryCoordinator.instance
         .acquireOwner();
     _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
@@ -101,6 +106,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     FitLogNotifications.dismiss();
     _recoveryLease.release();
     _scrollController.dispose();
@@ -109,6 +115,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     _noteController.removeListener(_handleNoteChanged);
     _noteController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final inForeground = state == AppLifecycleState.resumed;
+    _appInForeground = inForeground;
+    if (inForeground) {
+      unawaited(_consumePendingAnalysisResult());
+    }
   }
 
   String get _analysisDate => widget.initialDate ?? DateUtilsX.todayKey();
@@ -477,6 +492,41 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
       return;
     }
     setState(() => _analyzing = false);
+    final pendingResult = _PendingPhotoAnalysisResult(
+      response: response,
+      analysisDate: _analysisDate,
+      userNote: userNote,
+    );
+    if (!_appInForeground) {
+      _pendingAnalysisResult = pendingResult;
+      return;
+    }
+    await _handleAnalysisResult(pendingResult);
+  }
+
+  Future<void> _consumePendingAnalysisResult() async {
+    if (!mounted || !_appInForeground || _consumingPendingAnalysis) {
+      return;
+    }
+    final pending = _pendingAnalysisResult;
+    if (pending == null) {
+      return;
+    }
+    _pendingAnalysisResult = null;
+    _consumingPendingAnalysis = true;
+    try {
+      await _handleAnalysisResult(pending);
+    } finally {
+      _consumingPendingAnalysis = false;
+    }
+  }
+
+  Future<void> _handleAnalysisResult(_PendingPhotoAnalysisResult result) async {
+    if (!mounted) {
+      return;
+    }
+    final response = result.response;
+    final strings = context.stringsRead;
     if (response.error != null) {
       _showError(_aiErrorLabel(response.error!));
       return;
@@ -492,9 +542,9 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
     }
 
     final record = draft.toFoodRecord(
-      date: _analysisDate,
+      date: result.analysisDate,
       modelProvider: response.modelProvider,
-      userNote: userNote,
+      userNote: result.userNote,
     );
     var savedRecordDate = record.date;
     final saved = await Navigator.of(context).push<bool>(
@@ -736,7 +786,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage> {
               alignment: Alignment.bottomCenter,
               child: _PhotoFoodSubmitOverlay(
                 enabled: canSubmit,
-                analyzing: _analyzing,
                 onPressed: _analyze,
               ),
             ),
@@ -785,6 +834,18 @@ class _RecoveredPhotoState {
 
   final List<PickedFoodImage> images;
   final int selectedIndex;
+}
+
+class _PendingPhotoAnalysisResult {
+  const _PendingPhotoAnalysisResult({
+    required this.response,
+    required this.analysisDate,
+    required this.userNote,
+  });
+
+  final AiFoodPhotoAnalysisResponse response;
+  final String analysisDate;
+  final String userNote;
 }
 
 class _PhotoKeyboardScrollable extends StatelessWidget {
@@ -919,12 +980,10 @@ class _PhotoKeyboardSubmitGuard extends StatelessWidget {
 class _PhotoFoodSubmitOverlay extends StatelessWidget {
   const _PhotoFoodSubmitOverlay({
     required this.enabled,
-    required this.analyzing,
     required this.onPressed,
   });
 
   final bool enabled;
-  final bool analyzing;
   final VoidCallback onPressed;
 
   @override
@@ -966,20 +1025,8 @@ class _PhotoFoodSubmitOverlay extends StatelessWidget {
               child: FilledButton.icon(
                 key: const ValueKey<String>('photo_food_submit_button'),
                 onPressed: enabled ? onPressed : null,
-                icon: analyzing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.auto_awesome_rounded),
-                label: Text(
-                  analyzing
-                      ? strings.photoAiAnalyzing
-                      : strings.startPhotoAiAnalysis,
-                ),
+                icon: const Icon(Icons.auto_awesome_rounded),
+                label: Text(strings.startPhotoAiAnalysis),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(
                     0,

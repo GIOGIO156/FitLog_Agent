@@ -32,7 +32,7 @@ FitLog 不在设备端运行模型。远程调用统一通过使用服务端 pro
   -> 任何正式写入前由用户 review
 ```
 
-每条 AI 路径分离四层职责。Surface orchestration 负责入口、目标语言、本地 provider preference、允许的终态和 UI 确认；版本化 Capability Core 负责任务、Food/Workout 语义、事实优先级和 Context 需要；OpenAI/Qwen adapter 只把同一能力编码为 provider-specific 文字、图片、schema 和 tool protocol，不能重新定义产品规则；Shared validation 强制执行结构、领域语义、语言、grounding、安全和确认边界。更换 provider 不能扩大 Context、改变事实优先级、绕过校验或写正式数据。
+每条 AI 路径分离四层职责。Surface orchestration 负责入口、目标语言、本地 provider preference、允许的终态和 UI 确认；版本化 Capability Core 负责任务、Food/Workout 草稿边界和 Context 需要；OpenAI/Qwen adapter 只把同一能力编码为 provider-specific 文字、图片、schema 和 tool protocol，不能重新定义产品规则；Shared validation 强制执行结构、日期、数值、grounding、安全和确认边界。更换 provider 不能扩大 Context、绕过校验或写正式数据。
 
 `chat_decision.v2` 是普通 Chat 唯一 active decision contract。它按固定优先级消费合法 clarification reply，应用 safety 与 fixed-entry constraints，接受少量中英对称的高置信结构规则，其余开放语义只进入一次有界 planner。输出共同固定 capability、允许/选中的 output family、授权 Context 请求、clarification 状态和附件策略。旧 decision 生产分支及其 runtime flags 已退场；对应 comparator 只保留在确定性的历史行为等价测试中，不能影响生产结果。Planner failure 是系统故障，不是用户歧义的证据。
 
@@ -65,7 +65,7 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 
 | 能力 | 行为 | 分类 |
 | --- | --- | --- |
-| Prompt template copy | 唯一入口位于 Paste AI Result。它建立可复用的外部食物估算对话约束：每个新的外部 chat 只发送一次，之后直接提交图片、描述和修正，并把完整 JSON 粘贴回 App；卡片推荐 ChatGPT 中的“FitLog 中文助手”与“FitLog Estimator”。回复保留既有完整扁平 JSON schema；尾部 `estimation_notes` 通常为空，只允许必要且不重复的补充信息。复制语言跟随 App 语言。 | 用户中介的外部 AI，不是 App 内部 AI，也不是 Edge prompt。 |
+| Prompt template copy | 唯一入口位于 Paste AI Result。它建立可复用的外部食物估算对话约束：每个新的外部 chat 只发送一次，之后直接提交图片、描述和修正，并把完整 JSON 粘贴回 App。模板遵循与应用内 Food Draft 相同的证据原则：文字通常只补充图片的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算。卡片推荐 ChatGPT 中的“FitLog 中文助手”与“FitLog Estimator”。回复保留既有完整扁平 JSON schema；尾部 `estimation_notes` 通常为空，只允许必要且不重复的补充信息。复制语言跟随 App 语言。 | 用户中介的外部 AI，不是 App 内部 AI，也不是 Edge prompt。 |
 | 外部 AI JSON 粘贴 | 用户粘贴外部生成的食物 JSON，FitLog 使用既有食物估算 schema 在本地解析。 | 用户中介的外部 AI，不是 App 内部 AI。 |
 | `source = ai_paste` | 标记兼容流程确认后的 food record 来源。 | 只表示 provenance，不证明发生内部模型调用。 |
 | Add Food AI 分析 | 把文字和零到三张图片发送给 `ai-food-photo-analyze`；入口固定 Food Draft family，校验后打开 Food Preview。 | 服务端中介的确定性 draft workflow，不重新判断 Chat 意图。 |
@@ -75,6 +75,8 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 | 用户记录摘要权限 | 控制受保护 record summary 是否可以进入 routed AI context。 | 权限控制，不是 AI 输出。 |
 
 Chat persistence、request logs、debug summaries、Gateway transport models 和 evidence snapshots 都是支撑基础设施。它们的存在不会授予模型额外读写权限。
+
+Add Food 与 AI Chat 继续使用不同 Edge Function 和 response envelope，但食物生成 adapters 共用一套证据 policy。这套共享规则不会把用户文字误当成完整清单：它保留作用范围清楚的明确事实，让图片补充文字未提到的食物和缺失字段，并把冲突留在可编辑草稿中供用户确认。Edge 的运行时校验继续只负责结构和确定性不变量，不再用 regex 猜测自然语言作用范围。
 
 ## 入口
 
@@ -125,7 +127,7 @@ Readiness 与 request activity 分离：
 
 Add Food AI 分析是明确工作流：它绕过普通 Chat 的意图选择，成功终态必须产生可编辑 Food Draft。普通 AI Chat 则通过高置信度确定性判断或模型选择返回 Food Draft；无论来源，Gateway 都执行同一 canonical schema 和确认边界。
 
-输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。Chat 中出现受支持的明确日期时，Gateway 以请求选中日期为基准解析；没有日期表达时继续使用选中日期作为默认值。
+输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。文字和图片被视为可编辑 C 端草稿的互补证据：模型应保留用户明确说出的食物，用图片修正份量或增加合理可识别的视觉候选，并把冲突或不确定性写入 confidence/notes，而不是因为图片没看到某个食物就删除用户意图。Chat 中出现受支持的明确日期时，Gateway 以请求选中日期为基准解析；没有日期表达时继续使用选中日期作为默认值。
 
 1. AI 提取候选食物、份量、烹饪方式、营养和不确定性。
 2. 会实质影响结果的歧义产生有界 clarification，而不是强行给出确定估算。
@@ -205,7 +207,7 @@ Backend 可以内部记录 request count 和 model cost。没有独立产品决�
 
 ## Output、Retention 与隐私
 
-所有 provider reply 在 Gateway 完成 provider-independent envelope、output selection、领域规则和 write policy 校验前都不可信。普通 Chat 的确定性 resolver 可以主动返回 `auto`，由模型在受限类型中选择；明确产品入口不参与这一层判断。OpenAI 使用 strict Structured Outputs；Qwen 使用 JSON Mode 加同一确定性 validator。可纠正结构失败最多一次受限纠错。完整规则见 [AIOutputContract.md](AIOutputContract.md)。
+所有 provider reply 在 Gateway 完成 provider-independent envelope、output selection、领域规则和 write policy 校验前都不可信。普通 Chat 的确定性 resolver 可以主动返回 `auto`，由模型在受限类型中选择；明确产品入口不参与这一层判断。OpenAI 使用 strict Structured Outputs；Qwen 使用 JSON Mode 加同一确定性 validator。可纠正结构失败最多一次受限纠错；基于图片的食物纠错会保留原始请求图片作为 provider context，同时日志仍排除图片字节和 base64。完整规则见 [AIOutputContract.md](AIOutputContract.md)。
 
 云端可以保存：
 

@@ -4,10 +4,7 @@ import {
   type OutputValidationIssue,
   parseFoodAnalysisEnvelope,
 } from "../_shared/ai_output_contract.ts";
-import {
-  buildFoodCapabilityRequest,
-  explicitFoodFactsFromText,
-} from "../_shared/food_capability.ts";
+import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
 
 export type {
   FoodDraft,
@@ -154,7 +151,15 @@ export function buildQwenVisionRequestBody(params: {
               },
             })),
           ]
-          : correctionPrompt(correction, request),
+          : [
+            { type: "text", text: correctionPrompt(correction, request) },
+            ...request.images.map((image) => ({
+              type: "image_url",
+              image_url: {
+                url: `data:${image.mimeType};base64,${image.base64Data}`,
+              },
+            })),
+          ],
       },
     ],
   };
@@ -181,10 +186,16 @@ export function buildOpenAiVisionRequestBody(params: {
         image_url: `data:${image.mimeType};base64,${image.base64Data}`,
       })),
     ]
-    : [{
-      type: "input_text",
-      text: correctionPrompt(params.correction, params.request),
-    }];
+    : [
+      {
+        type: "input_text",
+        text: correctionPrompt(params.correction, params.request),
+      },
+      ...params.request.images.map((image) => ({
+        type: "input_image",
+        image_url: `data:${image.mimeType};base64,${image.base64Data}`,
+      })),
+    ];
   return {
     model: params.model,
     instructions: systemPrompt(params.request.language),
@@ -384,9 +395,13 @@ export function stripImageDataForDebug(request: PhotoAnalysisRequest | null) {
 }
 
 function systemPrompt(language: PhotoLanguage): string {
-  return language === "zh"
-    ? "你是 FitLog 的 AI 食物分析助手。你只能根据本次请求的用户描述和零到三张图片生成可编辑食物草稿，不能写入正式记录，不能修改目标，不能调用 RAG。输出必须是严格 JSON。"
-    : "You are FitLog's AI food analysis assistant. Use only the user's description and zero to three images in this request to create an editable food draft. Do not write official records, change goals, or use RAG. Output strict JSON only.";
+  const boundary = language === "zh"
+    ? "你是 FitLog 的 AI 食物分析助手。你只能根据本次请求的用户描述和零到三张图片生成可编辑食物草稿，不能写入正式记录，不能修改目标，不能调用 RAG。"
+    : "You are FitLog's AI food analysis assistant. Use only the user's description and zero to three images in this request to create an editable food draft. Do not write official records, change goals, or use RAG.";
+  const output = language === "zh"
+    ? "输出必须是严格 JSON。"
+    : "Output strict JSON only.";
+  return `${boundary} ${foodDraftEvidencePolicy(language)} ${output}`;
 }
 
 function userPrompt(request: PhotoAnalysisRequest): string {
@@ -402,11 +417,7 @@ function userPrompt(request: PhotoAnalysisRequest): string {
     "When items is non-empty, item values are totals for that item portion, not per-100g values; draft meal totals must equal the sum of items.",
     clarificationInstruction,
     "Use finite non-negative numbers. Estimate honestly and keep notes brief.",
-    `Food capability request: ${
-      JSON.stringify(
-        buildFoodCapabilityRequest(request.userNote ?? "", request.language),
-      )
-    }. Preserve higher-priority facts and use image/model estimates only for missing fields.`,
+    "If no image was sent, do not pretend to have visual evidence. If images were sent but are blurry or partial, still produce the best editable draft when the text gives enough information.",
     `Image count: ${request.images.length}`,
     `Selected date: ${request.selectedDate}`,
     "Copy the selected date exactly into draft.date.",
@@ -434,11 +445,11 @@ function correctionPrompt(params: {
   return [
     "Correct the previous food analysis response.",
     "Return exactly one food_analysis_envelope.v1 JSON object and no outside prose.",
+    "Use the original user note and all original images again under the food evidence policy while correcting the structure. Do not invent or discard food items merely to satisfy the schema.",
     `Validation errors: ${issues}`,
     `Target language: ${request.language}. Selected date: ${request.selectedDate}.`,
-    `Original normalized user facts: ${
-      JSON.stringify(explicitFoodFactsFromText(request.userNote ?? ""))
-    }`,
+    `Original user note: ${request.userNote ?? ""}`,
+    `Image count: ${request.images.length}`,
     `Previous response: ${params.previousOutput.slice(0, 12000)}`,
   ].join("\n");
 }

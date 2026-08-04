@@ -16,9 +16,24 @@ void main() {
     expect(PromptTemplates.aiFoodPromptZh, contains('完整 JSON'));
     expect(PromptTemplates.aiFoodPromptZh, contains('静默复核'));
     expect(PromptTemplates.aiFoodPromptZh, contains('通常应为 ""'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('并列、互补的证据'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('对应食物和对应字段'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('文字未提到就忽略图片中其他'));
     expect(PromptTemplates.aiFoodPromptEn, contains('standing instructions'));
     expect(PromptTemplates.aiFoodPromptEn, contains('complete JSON'));
     expect(PromptTemplates.aiFoodPromptEn, contains('silently validate'));
     expect(PromptTemplates.aiFoodPromptEn, contains('Normally set it to ""'));
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('parallel, complementary evidence'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('only for that food and field'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('text did not mention them'),
+    );
   });
 }

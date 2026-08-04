@@ -1,5 +1,6 @@
 import type { GatewayRequest } from "./contracts.ts";
 import { providerGatewayEnvelopeSchemaVersion } from "../_shared/ai_output_contract.ts";
+import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
 import {
   answerLanguageInstruction,
   phase5PromptContext,
@@ -11,7 +12,6 @@ import type {
   ProviderGenerationOptions,
 } from "./providers.ts";
 import { ProviderError } from "./providers.ts";
-import { buildFoodCapabilityRequest } from "../_shared/food_capability.ts";
 
 interface QwenProviderParams {
   apiKey: string;
@@ -148,8 +148,7 @@ export function buildQwenRequestBody(
   model: string,
   options?: ProviderGenerationOptions,
 ): Record<string, unknown> {
-  const hasImage = request.attachments.length > 0 &&
-    options?.correction === undefined;
+  const hasImage = request.attachments.length > 0;
   return {
     model,
     enable_thinking: false,
@@ -163,7 +162,7 @@ export function buildQwenRequestBody(
       {
         role: "user",
         content: hasImage
-          ? multimodalUserContent(request)
+          ? multimodalUserContent(request, options)
           : textUserPrompt(request, options),
       },
     ],
@@ -176,9 +175,10 @@ function outputTokenBudget(request: GatewayRequest): number {
 
 function multimodalUserContent(
   request: GatewayRequest,
+  options?: ProviderGenerationOptions,
 ): Record<string, unknown>[] {
   return [
-    { type: "text", text: multimodalUserPrompt(request) },
+    { type: "text", text: multimodalUserPrompt(request, options) },
     ...request.attachments.map((image) => ({
       type: "image_url",
       image_url: {
@@ -197,6 +197,11 @@ function systemMessage(request: GatewayRequest): string {
     `只返回一个 ${providerGatewayEnvelopeSchemaVersion} JSON 对象，JSON 外禁止任何文字或 Markdown 围栏。`,
     `Expected output: ${request.expectedOutput}. Markdown is allowed only in message.text.`,
     outputFamilySystemInstruction(request),
+    request.expectedOutput === "food_draft" || request.expectedOutput === "auto"
+      ? `Food draft evidence policy: ${
+        foodDraftEvidencePolicy(request.language)
+      }`
+      : "",
     request.workflowType === "app_logic_answer" &&
       request.expectedOutput === "text"
       ? "For every FitLog-specific fact, use only an explicit matching statement from Document sources. Answer only the asked rule, do not add adjacent FitLog rules or concepts, and say no matching documentation was found when the excerpts do not contain the answer."
@@ -222,7 +227,10 @@ function textUserPrompt(
   ].filter((line) => line.trim() !== "").join("\n");
 }
 
-function multimodalUserPrompt(request: GatewayRequest): string {
+function multimodalUserPrompt(
+  request: GatewayRequest,
+  options?: ProviderGenerationOptions,
+): string {
   const selectedDate = request.selectedDate ?? "not provided";
   const userText = request.messageText.trim() === ""
     ? "Analyze these images."
@@ -244,7 +252,8 @@ function multimodalUserPrompt(request: GatewayRequest): string {
     }. Copy it exactly into draft.date; if unresolved, clarify instead of guessing.`,
     `User message: ${userText}`,
     finalOutputReminder(request),
-  ].join("\n");
+    correctionPrompt(options),
+  ].filter((line) => line.trim() !== "").join("\n");
 }
 
 function finalOutputReminder(request: GatewayRequest): string {
@@ -269,11 +278,7 @@ function outputFamilySystemInstruction(request: GatewayRequest): string {
     return "Return output_type=text with draft=null. If essential information is missing, return output_type=clarification with draft=null. Never return a food or workout draft.";
   }
   if (request.expectedOutput === "food_draft") {
-    return `Return output_type=food_draft with exactly one food_draft.v2, or clarification with draft=null. Food capability request: ${
-      JSON.stringify(
-        buildFoodCapabilityRequest(request.messageText, request.language),
-      )
-    }. Copy resolved date ${
+    return `Return output_type=food_draft with exactly one food_draft.v2, or clarification with draft=null. Copy resolved date ${
       request.targetDate ?? "unresolved"
     }; if unresolved, clarify. Never claim the draft was saved.`;
   }
@@ -300,7 +305,7 @@ function outputFamilyUserLines(request: GatewayRequest): string[] {
       `${envelopePrefix},"output_type":"food_draft","message":{"text":"请审核并确认草稿。"},"needs_clarification":false,"clarification_questions":[],"draft":{"schema_version":"food_draft.v2","date":"${
         request.targetDate ?? "unresolved"
       }","meal_name":"...","total_weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0,"confidence":0.0,"estimation_notes":"...","items":[{"name":"...","weight_g":0,"calories_kcal":0,"protein_g":0,"carbs_g":0,"fat_g":0}]}}`,
-      "Item nutrition values are portion totals. Meal weight, kcal and macros must equal item sums. Preserve explicit user facts; estimate only missing values.",
+      "Item nutrition values are portion totals. Meal weight, kcal and macros must equal item sums.",
     ];
   }
   if (request.expectedOutput === "workout_draft") {

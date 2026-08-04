@@ -500,7 +500,7 @@ If the request or final provider result fails, no draft/action is returned and `
 
 - `request_schema_mismatch`: invalid Flutter-to-Gateway request
 - `provider_unavailable`: selected provider/model is not configured
-- `provider_output_invalid`: strict output validation still failed after zero or one eligible correction attempt
+- `provider_output_invalid`: strict structural output validation still failed after zero or one eligible correction attempt
 - `provider_refusal`: the provider explicitly refused
 - `provider_incomplete`: generation ended before a complete contract result
 - `provider_failure`: provider/service failure without a valid result
@@ -579,9 +579,11 @@ Rules:
 - `model_choice` is `chatgpt` or `qwen`. The page stores this preference under its own device-local key; it neither reads nor overwrites the AI Chat preference.
 - In the current release, an unconfigured `chatgpt` selection is a UI-only unavailable state and is not transported or persisted as the active provider; Qwen remains the configured request path.
 - The Edge Function forwards request-scoped text and optional images only to a configured, explicitly selected image-capable adapter through server-managed secrets. The current client transports Qwen only; unconfigured ChatGPT stops in Flutter, shows unavailable, and restores the Qwen selector without sending. A later user-initiated send while Qwen is visibly selected follows the normal Qwen path.
-- A successful terminal result is a structurally and semantically validated Food Draft. A clarification-compatible response is mapped by the dedicated page to inline input-revision feedback while retaining the current text/images; it does not create a chat session or hidden conversation loop.
+- A successful terminal result is a structurally valid Food Draft whose totals are normalized from items when present. A clarification-compatible response is mapped by the dedicated page to inline input-revision feedback while retaining the current text/images; it does not create a chat session or hidden conversation loop.
+- Text and images are parallel, complementary evidence for this consumer draft. Text is not treated as a complete inventory unless the user explicitly closes the scope. Clear, unambiguously scoped user facts take priority only for the corresponding food and field; image evidence continues to identify and estimate foods and fields not covered by text. Visual absence cannot deterministically delete user intent, and conflicts remain editable uncertainty for confirmation rather than runtime regex-validation failures. Add Food and AI Chat provider adapters consume this rule from the same shared food-prompt policy.
 - `selected_date` is the exact required draft date for this explicit workflow. Current clients request `food_draft.v2`; the endpoint may downgrade a validated v2 draft to the legacy v1 response shape only when a legacy request explicitly asks for v1.
 - A returned draft opens `FoodPreviewPage`; no official `food_records` row is written until the user explicitly saves there.
+- Correctable structural-output failures may receive one bounded correction attempt. For image-based food requests, the correction keeps the original request images in provider context; logs still store only compact metadata and never raw image bytes or base64 payloads.
 - Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, expected output, validator version, first-pass/final validation result, correction count, provider completion category, provider/model and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
 
 ## Food Draft Payload

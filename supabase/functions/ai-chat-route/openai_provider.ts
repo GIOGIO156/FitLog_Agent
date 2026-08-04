@@ -3,6 +3,7 @@ import {
   providerGatewayEnvelopeJsonSchemaForExpectedOutput,
   providerGatewayEnvelopeSchemaVersion,
 } from "../_shared/ai_output_contract.ts";
+import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
 import {
   answerLanguageInstruction,
   phase5PromptContext,
@@ -14,7 +15,6 @@ import type {
   ProviderGenerationOptions,
 } from "./providers.ts";
 import { ProviderError } from "./providers.ts";
-import { buildFoodCapabilityRequest } from "../_shared/food_capability.ts";
 
 interface OpenAiProviderParams {
   apiKey: string;
@@ -178,11 +178,9 @@ function systemInstructions(request: GatewayRequest): string {
     "output_type must match the payload. For text, draft must be null and message.text must not claim a draft was created. For a requested draft, return that exact draft type or one clarification with draft null. Never claim anything was saved.",
     "An unclear image alone is not a reason to clarify when the selected output family can be completed from clear user text. Use the text, preserve uncertainty in notes, and do not reopen intent selection. Clarify only when required business fields remain missing after using both inputs.",
     "For workout_draft.v3, use only an exercise_definition in Approved Context and copy its key, source, definition_hash, exercise_type, body_part, load_input_mode, reps_input_mode, and set_metric_type exactly. If no single approved definition exists, return a concise clarification that only states missing facts and asks at most two short questions; do not append an answer or secondary task.",
-    `Food capability request: ${
-      JSON.stringify(
-        buildFoodCapabilityRequest(request.messageText, request.language),
-      )
-    }. Preserve higher-priority facts, use lower-priority sources only for missing fields, and keep estimates in the target language.`,
+    request.expectedOutput === "food_draft" || request.expectedOutput === "auto"
+      ? `Food draft evidence policy: ${foodDraftEvidencePolicy(language)}`
+      : "",
     `Resolved record date: ${
       request.targetDate ?? "unresolved"
     }. Date source: ${request.dateResolutionSource}. For any draft, copy this exact date into draft.date. If unresolved, return clarification instead of guessing.`,

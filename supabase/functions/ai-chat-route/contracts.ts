@@ -14,10 +14,6 @@ import {
   type ProviderOutputType,
 } from "../_shared/ai_output_contract.ts";
 import {
-  explicitFoodFactsFromText,
-  validateFoodSemantics,
-} from "../_shared/food_capability.ts";
-import {
   type DateResolutionSource,
   isValidDateKey,
 } from "./record_date_resolver.ts";
@@ -439,17 +435,6 @@ export function parseProviderGatewayBody(
     request.targetDate,
   );
   validateWorkoutBindings(parsed, request);
-  if (
-    parsed.outputType === "food_draft" &&
-    parsed.draft?.schema_version === "food_draft.v2"
-  ) {
-    const issues = validateFoodSemantics({
-      draft: parsed.draft,
-      responseLanguage: request.language,
-      understanding: explicitFoodFactsFromText(request.messageText),
-    });
-    if (issues.length > 0) throw new OutputContractError(issues);
-  }
   if (request.taskPlan != null && parsed.outputType === "text") {
     const issues = validateGroundedText(parsed.messageText, request);
     if (issues.length > 0) throw new OutputContractError(issues);

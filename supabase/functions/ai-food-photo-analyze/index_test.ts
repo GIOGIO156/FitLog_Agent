@@ -10,6 +10,7 @@ import {
   stripImageDataForDebug,
 } from "./contracts.ts";
 import { OutputContractError } from "../_shared/ai_output_contract.ts";
+import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
 
 Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported images", () => {
   const parsed = parsePhotoAnalysisRequest({
@@ -40,7 +41,7 @@ Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported image
   assertEquals(parsed.userNote, "米饭吃了一半");
 });
 
-Deno.test("OpenAI and Qwen image adapters preserve capability input and configured model", () => {
+Deno.test("OpenAI and Qwen image adapters share scoped food evidence policy", () => {
   const request = parsePhotoAnalysisRequest({
     images: [{
       mime_type: "image/jpeg",
@@ -52,7 +53,7 @@ Deno.test("OpenAI and Qwen image adapters preserve capability input and configur
     device_id: "device-a",
     selected_date: "2026-07-01",
     schema_version: "food_draft.v2",
-    user_note: "蛋白质 20g",
+    user_note: "盒饭里还有一杯含20g蛋白质的奶昔",
   });
   const openAi = buildOpenAiVisionRequestBody({
     request,
@@ -66,8 +67,15 @@ Deno.test("OpenAI and Qwen image adapters preserve capability input and configur
   assertEquals(qwen.model, "qwen-model");
   assert(JSON.stringify(openAi).includes("abc123"));
   assert(JSON.stringify(qwen).includes("abc123"));
-  assert(JSON.stringify(openAi).includes("蛋白质 20g"));
-  assert(JSON.stringify(qwen).includes("蛋白质 20g"));
+  const policy = foodDraftEvidencePolicy("zh");
+  for (const body of [openAi, qwen]) {
+    const json = JSON.stringify(body);
+    assert(json.includes("盒饭里还有一杯含20g蛋白质的奶昔"));
+    assert(json.includes(policy));
+    assert(json.includes("只在对应食物和对应字段上优先"));
+    assert(json.includes("不要因为文字未提到就忽略图片中其他"));
+    assertEquals(json.split(policy).length - 1, 1);
+  }
 });
 
 Deno.test("OpenAI vision completion maps completed and refusal states", () => {
@@ -221,7 +229,7 @@ Deno.test("buildQwenVisionRequestBody supports text-only provider requests", () 
   assertEquals(json.includes("data:image/"), false);
 });
 
-Deno.test("food correction request does not resend image data", () => {
+Deno.test("food correction request resends image data for visual context", () => {
   const request = parsePhotoAnalysisRequest({
     images: [{
       mime_type: "image/jpeg",
@@ -243,7 +251,7 @@ Deno.test("food correction request does not resend image data", () => {
     },
   });
   const json = JSON.stringify(body);
-  assertEquals(json.includes("secret-image"), false);
+  assert(json.includes("secret-image"));
   assert(json.includes("expected one JSON object"));
   assert(json.includes("not-json"));
 });

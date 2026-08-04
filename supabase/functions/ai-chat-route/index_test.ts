@@ -20,6 +20,7 @@ import {
   extractQwenCompletion,
 } from "./qwen_provider.ts";
 import { OutputContractError } from "../_shared/ai_output_contract.ts";
+import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
 
 Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   const parsed = parseGatewayRequest({
@@ -877,6 +878,53 @@ Deno.test("OpenAI image failure stays on the selected provider without fallback"
   assertEquals(requestedUrls, ["https://api.openai.com/v1/responses"]);
 });
 
+Deno.test("AI Chat OpenAI and Qwen share scoped food evidence policy", async () => {
+  const request = {
+    ...parseGatewayRequest({
+      message: { text: "盒饭里还有一杯含20g蛋白质的奶昔" },
+      language: "zh",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      selected_date: "2026-07-10",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/jpeg",
+        base64_data: "meal-image",
+        byte_length: 128,
+      }],
+    }),
+    expectedOutput: "food_draft" as const,
+    targetDate: "2026-07-10",
+    dateResolutionSource: "default" as const,
+  };
+  const qwenBody = buildQwenRequestBody(request, "qwen-model");
+  let openAiBody: Record<string, unknown> | null = null;
+  const openAi = providerForChoice("chatgpt", {
+    openAiApiKey: "openai-key",
+    openAiModel: "openai-model",
+    qwenApiKey: "qwen-key",
+    qwenModel: "qwen-model",
+    qwenBaseUrl: "https://example.test/qwen",
+    timeoutMs: 1000,
+    allowMockProvider: false,
+  }, async (_url, init) => {
+    openAiBody = JSON.parse(init?.body?.toString() ?? "{}");
+    return new Response(JSON.stringify({ output_text: "{}" }), {
+      status: 200,
+    });
+  });
+  await openAi.generateText({ ...request, modelChoice: "chatgpt" });
+
+  const policy = foodDraftEvidencePolicy("zh");
+  for (const body of [qwenBody, openAiBody]) {
+    const json = JSON.stringify(body);
+    assert(json.includes(policy));
+    assert(json.includes("盒饭里还有一杯含20g蛋白质的奶昔"));
+    assertEquals(json.split(policy).length - 1, 1);
+  }
+});
+
 Deno.test("Provider adapters reject a missing unified generation model", () => {
   assertThrowsProviderUnavailable(() =>
     providerForChoice("chatgpt", {
@@ -1037,6 +1085,39 @@ Deno.test("Qwen provider adapter builds multimodal image request", async () => {
   assert(
     json.includes("An unclear image alone is not a reason to clarify"),
   );
+});
+
+Deno.test("Qwen food correction keeps original image context", () => {
+  const request = {
+    ...parseGatewayRequest({
+      message: { text: "香蕉和士力架" },
+      language: "zh",
+      model_choice: "qwen",
+      workflow_hint: "food_logging",
+      device_id: "device-a",
+      attachments: [{
+        kind: "image",
+        mime_type: "image/jpeg",
+        base64_data: "meal-image",
+        byte_length: 128,
+      }],
+    }),
+    expectedOutput: "food_draft" as const,
+    targetDate: "2026-07-10",
+    dateResolutionSource: "default" as const,
+  };
+  const body = buildQwenRequestBody(request, "qwen-model", {
+    correction: {
+      previousOutput: "not-json",
+      issues: [{ path: "$", reason: "expected one JSON object" }],
+    },
+  });
+  const json = JSON.stringify(body);
+
+  assert(json.includes("data:image/jpeg;base64,meal-image"));
+  assert(json.includes("香蕉和士力架"));
+  assert(json.includes("not-json"));
+  assert(json.includes(foodDraftEvidencePolicy("zh")));
 });
 
 function assertThrowsGatewayRequest(action: () => void): void {

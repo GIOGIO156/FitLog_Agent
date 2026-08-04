@@ -531,11 +531,50 @@ void main() {
       expect(harness.client.requests, hasLength(1));
       expect(harness.client.requests.single.userNote, '米饭只吃了一半');
       expect(harness.client.requests.single.images, hasLength(1));
-      expect(find.text('Analyzing...'), findsWidgets);
+      expect(find.text('Analyzing...'), findsOneWidget);
+      expect(find.text('Analyze food'), findsOneWidget);
 
       completer.complete(_successResponse());
     },
   );
+
+  testWidgets('backgrounded analysis result is delivered after resume', (
+    tester,
+  ) async {
+    final harness = _PhotoHarness();
+    final completer = Completer<AiFoodPhotoAnalysisResponse>();
+    harness.client.handler = (_) => completer.future;
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _pickFromGallery(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('photo_food_submit_button')),
+    );
+    await tester.pump();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    completer.complete(_successResponse());
+    await _settleRealAsyncWork(tester);
+
+    expect(find.text('Preview AI Result'), findsNothing);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _settleRealAsyncWork(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Preview AI Result'), findsOneWidget);
+    expect(harness.client.requests, hasLength(1));
+  });
 
   testWidgets('description-only input submits without images', (tester) async {
     final harness = _PhotoHarness();

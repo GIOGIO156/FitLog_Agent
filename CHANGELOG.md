@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-04 Food Photo AI Intent Alignment And Lifecycle Reliability
+
+### Changed
+
+- Simplified Food Draft validation so Edge still enforces strict JSON shape, dates, numeric bounds, item-total normalization, workflow, permissions, and no-write boundaries, but no longer rejects consumer food drafts through regex-derived semantic gates for target language, item-specific macro/weight notes, exclusions, or macro energy explanations.
+- Updated Add Food and AI Chat food prompts to treat text and images as complementary evidence: preserve user-explicit foods, use images to refine portions or add reasonable visual candidates, and expose conflict or uncertainty through confidence and notes.
+- Centralized the Add Food, AI Chat OpenAI, and AI Chat Qwen food-evidence instruction in one shared prompt policy. Clear user facts now take priority only for their scoped food and field, descriptions do not close the image inventory without explicit include/exclude wording, and the reusable external-model prompt follows the same behavior.
+- Structural correction for image-based food requests now keeps the original request images in provider context while logs continue to exclude raw image bytes, base64 payloads, full notes, provider raw output, and secrets.
+
+### Fixed
+
+- Prevented valid inputs such as ingredient weights or "20g protein shake" from producing `provider_output_invalid` because the old semantic validator compared item-specific facts against whole-meal totals.
+- Kept Add Food photo-analysis results from being lost when the app is backgrounded and the in-flight request completes while the page process survives; the page now delivers the terminal Preview/error after resume.
+- Removed the duplicate animated loading state from the bottom analysis button; the central analysis overlay is the sole progress indicator.
+
+### Validation
+
+- Added deterministic Edge tests for screenshot-style additive food notes, image-context correction, and AI Chat Qwen image correction.
+- Added Flutter widget coverage for static analysis button loading and background/resume result delivery.
+- Deployed the validated Edge artifacts to the linked Supabase project as AI Chat v67 and Food Photo Analysis v36; both functions reported `ACTIVE`. The Document RAG corpus and embeddings were intentionally left unchanged for the later consolidated documentation refresh.
+
 ## 2026-07-29 Home Workout Action Count
 
 ### Fixed

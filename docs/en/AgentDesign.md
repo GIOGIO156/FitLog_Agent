@@ -32,7 +32,7 @@ User request
   -> user review before any official write
 ```
 
-Each AI path separates four responsibilities. Surface orchestration owns entry, target language, local provider preference, approved terminal states, and UI confirmation. A versioned Capability Core owns task, Food/Workout semantics, fact priority, and context needs. OpenAI/Qwen adapters encode that capability into provider-specific text, image, schema, and tool protocols without redefining product rules. Shared validation enforces structure, domain semantics, language, grounding, safety, and confirmation. A provider change cannot broaden context, alter fact priority, bypass validation, or write official data.
+Each AI path separates four responsibilities. Surface orchestration owns entry, target language, local provider preference, approved terminal states, and UI confirmation. A versioned Capability Core owns task, Food/Workout draft boundaries, and context needs. OpenAI/Qwen adapters encode that capability into provider-specific text, image, schema, and tool protocols without redefining product rules. Shared validation enforces structure, dates, numbers, grounding, safety, and confirmation. A provider change cannot broaden context, bypass validation, or write official data.
 
 `chat_decision.v2` is the only active ordinary-Chat decision contract. In fixed precedence it consumes an eligible clarification reply, applies safety and fixed-entry constraints, accepts small symmetric high-confidence rules, and otherwise invokes one bounded planner. Its output jointly fixes the capability, allowed and selected output family, authorized Context request, clarification state, and attachment policy. The former legacy decision branch and its runtime flags are retired; its comparator remains only in deterministic historical-parity tests and cannot affect production. Planner failure is a system failure, not evidence that the user is ambiguous.
 
@@ -65,7 +65,7 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 
 | Capability | Behavior | Classification |
 | --- | --- | --- |
-| Prompt template copy | Its sole entry is Paste AI Result. It establishes a reusable external food-estimation chat contract: send once per new external chat, then submit photos, descriptions, and corrections before pasting the complete JSON back into the app. The card recommends the ChatGPT GPTs **FitLog 中文助手** and **FitLog Estimator**. Replies retain the existing complete flat JSON schema; trailing `estimation_notes` is normally empty and is limited to necessary non-duplicative supplemental information. The copied language follows the app language. | User-mediated external AI, not app-internal AI or an Edge prompt. |
+| Prompt template copy | Its sole entry is Paste AI Result. It establishes a reusable external food-estimation chat contract: send once per new external chat, then submit photos, descriptions, and corrections before pasting the complete JSON back into the app. The template follows the same evidence principle as internal food drafting: text normally supplements part of the image, and a clear scoped user fact overrides estimation only for its food and field. The card recommends the ChatGPT GPTs **FitLog 中文助手** and **FitLog Estimator**. Replies retain the existing complete flat JSON schema; trailing `estimation_notes` is normally empty and is limited to necessary non-duplicative supplemental information. The copied language follows the app language. | User-mediated external AI, not app-internal AI or an Edge prompt. |
 | External AI JSON paste | User pastes externally generated food JSON and FitLog parses it locally using the established food-estimate schema. | User-mediated external AI, not app-internal AI. |
 | `source = ai_paste` | Marks the origin of a confirmed compatibility-flow food record. | Provenance only, not proof of an internal model call. |
 | Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze`; the entry fixes the Food Draft family, validates it, and opens Food Preview. | Deterministic server-mediated draft workflow, without Chat intent inference. |
@@ -75,6 +75,8 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 | User-record-summary permission | Controls whether protected record summaries may enter routed AI context. | Permission control, not AI output. |
 
 Chat persistence, request logs, debug summaries, Gateway transport models, and evidence snapshots are supporting infrastructure. Their presence does not grant the model additional read or write authority.
+
+Add Food and AI Chat keep different Edge Functions and response envelopes, but their food-generation adapters use one shared evidence policy. This shared policy does not make user text an exhaustive inventory: it preserves clear scoped facts, lets images supply unmentioned foods and missing fields, and leaves conflicts in the editable draft for confirmation. Runtime Edge validation remains structural and deterministic rather than attempting to infer this natural-language scope with regex rules.
 
 ## Entry Points
 
@@ -125,7 +127,7 @@ Visual layout, animation, scroll anchoring, keyboard geometry, navigation treatm
 
 Add Food AI analysis is an explicit workflow: it bypasses ordinary Chat intent selection, and a successful terminal result must contain an editable Food Draft. Ordinary AI Chat can return a Food Draft through either high-confidence deterministic selection or bounded model selection; both paths use the same canonical schema and confirmation boundary.
 
-Inputs may include a text description, up to three current-request images, selected date, and user corrections. If Chat contains an explicit supported date, the Gateway resolves it against the selected request date; otherwise the selected date remains the default.
+Inputs may include a text description, up to three current-request images, selected date, and user corrections. Text and images are treated as complementary evidence for an editable consumer draft: the model should preserve foods explicitly named by the user, use images to refine portions or add reasonably identifiable visual candidates, and expose conflict or uncertainty in confidence and notes rather than deleting user intent because an item is not visible. If Chat contains an explicit supported date, the Gateway resolves it against the selected request date; otherwise the selected date remains the default.
 
 1. AI extracts candidate foods, portions, cooking method, nutrition, and uncertainty.
 2. Material ambiguity produces a bounded clarification rather than a confident guess.
@@ -205,7 +207,7 @@ Backend request counts and model cost may be logged internally. The UI must not 
 
 ## Output, Retention, And Privacy
 
-All provider replies are untrusted until the Gateway validates the provider-independent envelope, output selection, domain rules, and write policy. The ordinary-Chat resolver may abstain with `auto`, allowing the model to select from bounded types; explicit product entries do not participate in that inference. OpenAI uses strict Structured Outputs; Qwen uses JSON Mode plus the same deterministic validator. Correctable structured failures receive at most one bounded correction attempt. Complete rules are in [AIOutputContract.md](AIOutputContract.md).
+All provider replies are untrusted until the Gateway validates the provider-independent envelope, output selection, domain rules, and write policy. The ordinary-Chat resolver may abstain with `auto`, allowing the model to select from bounded types; explicit product entries do not participate in that inference. OpenAI uses strict Structured Outputs; Qwen uses JSON Mode plus the same deterministic validator. Correctable structured failures receive at most one bounded correction attempt; image-based food correction keeps the original request images in provider context while logs continue to exclude image bytes and base64. Complete rules are in [AIOutputContract.md](AIOutputContract.md).
 
 Cloud retention may include:
 

@@ -21,10 +21,7 @@ import {
   OutputContractError,
   outputValidatorVersion,
 } from "../_shared/ai_output_contract.ts";
-import {
-  explicitFoodFactsFromText,
-  validateFoodSemantics,
-} from "../_shared/food_capability.ts";
+import { explicitFoodFactsFromText } from "../_shared/food_capability.ts";
 
 const minimumCorrectionBudgetMs = 1500;
 
@@ -246,16 +243,7 @@ interface PhotoGatewayEnv {
 }
 
 function parseAndValidateFood(content: string, request: PhotoAnalysisRequest) {
-  const parsed = parseProviderFoodDraftBody(content, request.selectedDate);
-  if (parsed.draft !== null) {
-    const issues = validateFoodSemantics({
-      draft: parsed.draft,
-      responseLanguage: request.language,
-      understanding: explicitFoodFactsFromText(request.userNote ?? ""),
-    });
-    if (issues.length > 0) throw new OutputContractError(issues);
-  }
-  return parsed;
+  return parseProviderFoodDraftBody(content, request.selectedDate);
 }
 
 interface PhotoProviderConfig {

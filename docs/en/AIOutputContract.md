@@ -19,13 +19,13 @@ The same contract is enforced at generation, Gateway validation, persistence, an
 
 | Surface | Generation or input constraint | Enforcement responsibility |
 | --- | --- | --- |
-| Add Food AI analysis | The dedicated surface fixes Food capability and maps it to an explicitly selected image-capable OpenAI Structured Outputs or Qwen JSON Mode adapter with `food_analysis_envelope.v1`. | Parse one object, apply shared fact-priority, target-language, structural and semantic Food validation, normalize item totals, and allow at most one bounded correction. |
+| Add Food AI analysis | The dedicated surface fixes Food capability and maps it to an explicitly selected image-capable OpenAI Structured Outputs or Qwen JSON Mode adapter with `food_analysis_envelope.v1`. | Parse one object, enforce the structural Food Draft contract, normalize item totals, and allow at most one bounded structural correction. Text-image judgment remains a model drafting responsibility surfaced through confidence and notes. |
 | AI Chat, Qwen text and images | The same configured Qwen multimodal generation model handles text and image turns in non-thinking JSON Mode with `provider_gateway_envelope.v2`. | Parse one strict envelope; the Gateway fixes high-confidence families and otherwise lets the model select `output_type` inside the contract, without degrading an expected draft into prose success. |
 | AI Chat, OpenAI text and images | The same configured OpenAI multimodal generation model handles text and image turns through Responses API Structured Outputs with a strict canonical JSON Schema; image turns add `input_image` parts without selecting a second model ID. | Separate completed, refusal, and incomplete outcomes before shared validation. The configured model must support the selected Responses API format and image input when images are sent. |
-| Shared Gateway validation | Versioned shared modules own provider-compatible schemas and deterministic domain validation for Chat, Food Draft, Workout Draft, and clarification. | Reject unknown fields and coercion, enforce bounds and real dates, preserve higher-priority Food facts, validate language/semantic/grounding consistency, bind Workout exercises to approved definitions, and check workflow/write policy. |
+| Shared Gateway validation | Versioned shared modules own provider-compatible schemas and deterministic domain validation for Chat, Food Draft, Workout Draft, and clarification. | Reject unknown fields and coercion, enforce bounds and real dates, normalize Food item totals, bind Workout exercises to approved definitions, validate grounded text when document evidence is required, and check workflow/write policy. |
 | Persistence boundary | Only the validated user-facing message, compatible artifact snapshot, evidence snapshot, and compact metadata may cross into storage. | Never persist raw failed provider output, correction prompts, chain-of-thought, provider secrets, or image/base64 payloads. |
 | Flutter response models | Parse typed Food Draft and Workout Draft payloads and additive output error codes. | Reject snapshots that cannot safely rebuild an editor; accept legacy unversioned Food Drafts only at the history compatibility boundary. |
-| Provider-output correction | A correctable structural failure may receive zero or one correction attempt inside the original total deadline. | Keep failed output in request memory only; do not resend images for syntax correction or retry refusals, incomplete completions, safety, auth, entitlement, or device failures as correction candidates. |
+| Provider-output correction | A correctable structural failure may receive zero or one correction attempt inside the original total deadline. | Keep failed output in request memory only. For image-based food requests, the correction attempt keeps the original request text and images so the model does not have to repair a visual draft blind; retry refusals, incomplete completions, safety, auth, entitlement, or device failures are not correction candidates. |
 
 Structured provider paths require exactly one directly parseable JSON object. Markdown fences, prose outside the object, multiple objects, truncated JSON, permissive number conversion, and broad JSON repair are rejected.
 
@@ -37,7 +37,7 @@ The following rules apply to every provider and model:
 2. Explicit product workflows fix the output family before provider generation; ordinary AI Chat fixes only high-confidence cases and otherwise lets the model choose from a bounded `output_type` set.
 3. OpenAI and Qwen must map to the same provider-independent Chat envelope.
 4. A draft is never an official record.
-5. A save/review action appears only for a structurally valid, semantically valid, policy-allowed draft.
+5. A save/review action appears only for a structurally valid, policy-allowed draft.
 6. Workflow controls authorized context and write permission, while output type controls result shape; read-only context may support a draft, but the draft is still not an official write.
 7. A request that expects a draft must not silently succeed as ordinary prose when the draft is missing or invalid.
 8. Deterministic FitLog calculations and source-of-truth data override model claims.
@@ -117,9 +117,11 @@ Each Food Draft item requires:
 - non-empty `name`
 - finite, non-negative portion totals for weight, kcal, protein, carbs, and fat
 
-Item nutrition values represent the whole estimated portion, not per-100-g values. When `items` is non-empty, the Gateway deterministically recalculates meal-level weight and macro totals from the item sum. This is domain normalization, not model self-correction.
+Item nutrition values represent the whole estimated portion, not per-100-g values. When `items` is non-empty, the Gateway deterministically recalculates meal-level weight and macro totals from the item sum. This is domain normalization, not model self-correction, and it must not add, delete, rename, merge, or split food items.
 
-Food understanding uses a bounded typed fact ledger. Source priority is user-explicit fact, package/OCR fact, image observation, model assumption, then model estimate. A lower-priority source fills only missing information and never overwrites a resolved higher-priority fact. Before Preview, semantic validation checks target-language user-visible text, explicit-fact binding, date and totals, notes/number consistency, and nutrition-energy plausibility with versioned tolerance for labels, fiber, sugar alcohols, alcohol, and rounding. A semantic failure may use the same single correction budget; a second failure cannot reach Preview.
+Food drafting treats text and images as parallel, complementary evidence rather than mutually exclusive complete inventories. User text normally supplements only part of a meal unless it explicitly closes the scope with wording such as "only", "log only", "exclude", or "without". A clear user statement with an unambiguous scope about a food name, portion, weight, package nutrition, or consumed amount takes priority over visual observation and generic estimation only for that food and field; an item-specific fact must not be applied to the whole meal, and uncertain wording remains a clue rather than a confirmed fact. Foods and fields not covered by text continue to be identified and estimated from all request images. Visual absence alone cannot delete a user-explicit food, while reasonably identifiable image-only foods may be added. A text/image conflict preserves the user's clear intent without duplicating one physical item and exposes uncertainty through `confidence` and `estimation_notes` for confirmation.
+
+The dedicated Add Food path and AI Chat OpenAI/Qwen adapters consume this evidence policy from one shared prompt source. Their routing, context, provider envelope, and date instructions remain surface-specific. The Gateway does not turn regex-derived food facts into runtime semantic blockers because that previously compared item-specific protein or ingredient weights with whole-meal totals and rejected valid consumer drafts.
 
 A Food Draft remains editable. Confidence and notes communicate uncertainty but never bypass required fields or user confirmation.
 
@@ -211,7 +213,7 @@ Automatic JSON repair is not enabled by default. A future syntax-only repair exp
 - repaired output is measured separately;
 - repair failure never creates a draft action.
 
-For correctable structured-output failures, the Gateway performs at most one server-side correction attempt when enough of the original deadline remains. It may include a compact field-path error list and the bounded previous output in memory, but it does not persist raw provider output. Image bytes are not retransmitted for syntax correction. Refusal, incomplete completion, safety blocks, auth/entitlement failures, active-device failures, and unsupported actions are not correction candidates.
+For correctable structured-output failures, the Gateway performs at most one server-side correction attempt when enough of the original deadline remains. It may include a compact field-path error list and the bounded previous output in memory, but it does not persist raw provider output. Image-based food correction includes the original request images again; logs still store only compact metadata and never image bytes or base64. Refusal, incomplete completion, safety blocks, auth/entitlement failures, active-device failures, and unsupported actions are not correction candidates.
 
 ## Failure Semantics
 
@@ -321,6 +323,7 @@ Successful model output only creates an editable proposal:
 - Expected-output resolver: `supabase/functions/ai-chat-route/expected_output.ts`
 - OpenAI adapter: `supabase/functions/ai-chat-route/openai_provider.ts`
 - Qwen adapter: `supabase/functions/ai-chat-route/qwen_provider.ts`
+- Shared food prompt policy: `supabase/functions/_shared/food_prompt_policy.ts`
 - Dedicated food analysis: `supabase/functions/ai-food-photo-analyze/index.ts`, `supabase/functions/ai-food-photo-analyze/contracts.ts`
 - Flutter Gateway response: `lib/domain/models/ai_gateway_response.dart`
 - Flutter Food Draft: `lib/domain/models/ai_food_photo_analysis.dart`

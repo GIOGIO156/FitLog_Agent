@@ -1,5 +1,23 @@
-{"schema":"fitlog_failure_corpus.v1","cases":[
-  {"case_id":"regression_wrong_language","input":"中文食物描述","failure":"ordinary food fields returned in English","expected_gate":"response_language_mismatch"},
-  {"case_id":"regression_explicit_protein","input":"用户明确蛋白质 20g","failure":"notes mentioned 20g while protein_g was 8.5","expected_gate":"user_explicit_fact_mismatch"},
-  {"case_id":"regression_dedicated_chat_loop","surface":"food_photo","failure":"clarification rendered like chat","expected_terminal":"input_revision_required"}
-]}
+{
+  "schema": "fitlog_failure_corpus.v1",
+  "cases": [
+    {
+      "case_id": "regression_wrong_language",
+      "input": "中文食物描述",
+      "failure": "ordinary food fields returned in English",
+      "expected_prompt_behavior": "target_language_response"
+    },
+    {
+      "case_id": "regression_explicit_protein",
+      "input": "盒饭、烤鸡胸，还有一杯含20g蛋白质的奶昔",
+      "failure": "notes mentioned 20g while protein_g was 8.5",
+      "expected_prompt_behavior": "bind_scoped_20g_to_shake_and_keep_other_visual_foods"
+    },
+    {
+      "case_id": "regression_dedicated_chat_loop",
+      "surface": "food_photo",
+      "failure": "clarification rendered like chat",
+      "expected_terminal": "input_revision_required"
+    }
+  ]
+}

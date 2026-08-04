@@ -19,13 +19,13 @@ workflow 校验和写权限校验前，一律是不可信数据。
 
 | Surface | 生成或输入约束 | 执行责任 |
 | --- | --- | --- |
-| Add Food AI 分析 | 专用 Surface 固定 Food capability，并映射到用户明确选择、支持图片的 OpenAI Structured Outputs 或 Qwen JSON Mode adapter 与 `food_analysis_envelope.v1`。 | 解析单个 object，应用共享事实优先级、目标语言、结构和语义 Food 校验，归一化 items totals，并最多允许一次受限纠错。 |
+| Add Food AI 分析 | 专用 Surface 固定 Food capability，并映射到用户明确选择、支持图片的 OpenAI Structured Outputs 或 Qwen JSON Mode adapter 与 `food_analysis_envelope.v1`。 | 解析单个 object，强制 Food Draft 结构契约，归一化 items totals，并最多允许一次受限结构纠错。文字与图片的判断由模型生成草稿并通过 confidence/notes 暴露给用户确认。 |
 | AI Chat，Qwen 文字与图片 | 文字和图片 turn 使用同一个已配置的 Qwen 多模态生成模型，并统一采用非思考 JSON Mode 与 `provider_gateway_envelope.v2`。 | 解析严格 envelope；高置信度类型由 Gateway 固定，其余由模型在 envelope 内选择 `output_type`，且期待 draft 时不得降级为 prose success。 |
 | AI Chat，OpenAI 文字与图片 | 文字和图片 turn 使用同一个已配置的 OpenAI 多模态生成模型，通过 Responses API Structured Outputs 与严格 canonical JSON Schema 生成结果；图片 turn 只增加 `input_image` part，不选择第二个模型 ID。 | 在共享校验前区分 completed、refusal 与 incomplete；发送图片时，配置模型还必须支持对应 Responses API image input。 |
-| Gateway 共享校验 | 版本化共享模块维护 Chat、Food Draft、Workout Draft 与 clarification 的 provider-compatible schema 和确定性领域校验。 | 拒绝未知字段和类型转换，校验 bounds/真实日期，保留高优先级 Food 事实，校验语言/语义/grounding 一致性，把 Workout exercise 绑定到批准的 definition，并检查 workflow 与写入 policy。 |
+| Gateway 共享校验 | 版本化共享模块维护 Chat、Food Draft、Workout Draft 与 clarification 的 provider-compatible schema 和确定性领域校验。 | 拒绝未知字段和类型转换，校验 bounds/真实日期，归一化 Food item totals，把 Workout exercise 绑定到批准的 definition，在需要文档证据时校验 grounded text，并检查 workflow 与写入 policy。 |
 | 持久化边界 | 只有通过校验的用户可见消息、兼容 artifact snapshot、evidence snapshot 和紧凑 metadata 可以进入存储。 | 永不持久化失败 raw provider output、correction prompt、chain-of-thought、provider secret 或 image/base64 payload。 |
 | Flutter response models | 解析 typed Food Draft、Workout Draft 和新增 output error codes。 | 拒绝无法安全重建 editor 的 snapshot；只在历史兼容边界读取无版本旧 Food Draft。 |
-| Provider 输出纠错 | 可纠正的结构失败可在原始总 deadline 内执行零次或一次纠错。 | 失败原文只存在于请求内存；语法纠错不重传图片，也不把 refusal、incomplete、safety、认证、entitlement 或 device 失败当成纠错候选。 |
+| Provider 输出纠错 | 可纠正的结构失败可在原始总 deadline 内执行零次或一次纠错。 | 失败原文只存在于请求内存；基于图片的食物请求在纠错时继续带上原始文字和图片，避免模型盲修视觉草稿；refusal、incomplete、safety、认证、entitlement 或 device 失败不属于纠错候选。 |
 
 结构化 provider 路径只接受一个可直接解析的 JSON object。Markdown fence、object 外 prose、多个 object、截断 JSON、宽松数字转换和广义 JSON Repair 都会被拒绝。
 
@@ -37,7 +37,7 @@ workflow 校验和写权限校验前，一律是不可信数据。
 2. 明确产品工作流在调用 provider 前固定 output family；普通 AI Chat 只在高置信度时确定性指定，否则由模型在受限集合中选择 `output_type`。
 3. OpenAI 和 Qwen 必须映射到同一个 provider-independent Chat envelope。
 4. Draft 永远不是正式记录。
-5. 只有结构有效、领域有效且 policy 允许的 draft 才能显示保存/审查入口。
+5. 只有结构有效且 policy 允许的 draft 才能显示保存/审查入口。
 6. Workflow 决定授权上下文和写权限，output type 决定结果形态；只读上下文可以辅助生成草稿，但草稿仍不是正式写入。
 7. 预期生成 draft 的请求不能因为 draft 缺失或非法而静默成功为普通 prose。
 8. FitLog 确定性算法和权威数据优先于模型声称的结果。
@@ -117,9 +117,11 @@ Canonical Food Draft 必须包含：
 - 非空 `name`
 - 整份估算食物的有限、非负重量、kcal、蛋白质、碳水和脂肪 totals
 
-Item 营养值表示该 item 整份估算结果，不是每 100 g 数值。当 `items` 非空时，Gateway 必须确定性地按 item sum 重新计算 meal-level 重量和宏量营养 totals。这是领域归一化，不是模型自我纠错。
+Item 营养值表示该 item 整份估算结果，不是每 100 g 数值。当 `items` 非空时，Gateway 必须确定性地按 item sum 重新计算 meal-level 重量和宏量营养 totals。这是领域归一化，不是模型自我纠错，也不能新增、删除、改名、合并或拆分 food items。
 
-Food understanding 使用有界 typed fact ledger。来源优先级固定为用户明确事实、包装/OCR 事实、图片观察、模型假设、模型估算；低优先级来源只能补缺，不能覆盖已解析的高优先级事实。进入 Preview 前，semantic validation 检查用户可见文字的目标语言、明确事实绑定、日期与 totals、notes/数值一致性，以及带版本化容差的营养/热量合理性；标签、纤维、糖醇、酒精和四舍五入可作为解释。语义失败可以使用同一个单次 correction budget，第二次仍失败不得进入 Preview。
+Food drafting 把文字和图片视为并列、互补的证据，而不是互相排斥的完整清单。除非用户明确用“只有”“只记录”“不要”或“不包含”等表达关闭范围，文字通常只补充餐食的一部分。用户明确给出且作用对象清楚的食物名称、份量、重量、包装营养或食用量，只在对应食物和对应字段上优先于视觉观察和通用估算；item-specific 事实不能误套到整餐，“大概”“可能”“像是”等不确定表达仍然只是线索。文字未覆盖的食物和字段继续根据本次全部图片识别和估算。视觉缺失不能单独成为删除用户明确食物的理由，图片中合理可识别的额外食物可以加入草稿。文字与图片冲突时，保留用户清楚表达的意图，不把同一实体重复成两个 item，并通过 `confidence` 和 `estimation_notes` 暴露不确定性供用户确认。
+
+专用 Add Food 路径与 AI Chat 的 OpenAI/千问 adapters 从同一个共享 Prompt 来源读取这套证据策略；各自的路由、上下文、Provider envelope 和日期指令继续独立。Gateway 不再把 regex 派生出的食物事实作为运行时语义 blocker，因为旧规则会把 item-specific protein 或原料重量与整餐 totals比较，从而拒绝正常 C 端草稿。
 
 Food Draft 始终可编辑。Confidence 和 notes 用于表达不确定性，但不能绕过必填字段和用户确认。
 
@@ -211,7 +213,7 @@ Output budget 用于限制成本和延迟，不能让 partial artifact 被接受
 - repaired output 单独统计；
 - repair 失败绝不生成 draft action。
 
-对于可纠正的结构化输出失败，只要原始 deadline 剩余时间足够，Gateway 最多执行一次服务端 correction attempt。它可在内存中使用紧凑 field-path error list 和受限 previous output，但不持久化 raw provider output；语法纠错也不重传图片。Refusal、incomplete、safety block、认证/entitlement、active-device 失败和不支持的动作不属于 correction candidate。
+对于可纠正的结构化输出失败，只要原始 deadline 剩余时间足够，Gateway 最多执行一次服务端 correction attempt。它可在内存中使用紧凑 field-path error list 和受限 previous output，但不持久化 raw provider output。基于图片的食物纠错会再次包含原始请求图片；日志仍只保存紧凑 metadata，绝不保存图片字节或 base64。Refusal、incomplete、safety block、认证/entitlement、active-device 失败和不支持的动作不属于 correction candidate。
 
 ## 失败语义
 
@@ -321,6 +323,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - Expected-output resolver：`supabase/functions/ai-chat-route/expected_output.ts`
 - OpenAI adapter：`supabase/functions/ai-chat-route/openai_provider.ts`
 - Qwen adapter：`supabase/functions/ai-chat-route/qwen_provider.ts`
+- 共享食物 Prompt policy：`supabase/functions/_shared/food_prompt_policy.ts`
 - 专用 Food Analysis：`supabase/functions/ai-food-photo-analyze/index.ts`、`supabase/functions/ai-food-photo-analyze/contracts.ts`
 - Flutter Gateway response：`lib/domain/models/ai_gateway_response.dart`
 - Flutter Food Draft：`lib/domain/models/ai_food_photo_analysis.dart`
