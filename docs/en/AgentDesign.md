@@ -116,7 +116,10 @@ Readiness is distinct from request activity:
 | State | Send behavior |
 | --- | --- |
 | Logged in, online, subscribed, active device, Profile and Gateway ready | Enabled. |
-| Logged out, offline, inactive subscription, missing Profile, replaced device, or unconfigured provider | Disabled with a readable reason. |
+| Subscription state unknown or loading | Disabled and presented as checking/loading, never as inactive. |
+| Subscription lookup failed | Disabled and presented as unavailable, never as inactive. |
+| Subscription successfully resolved as inactive | Disabled with the explicit inactive-subscription reason. |
+| Logged out, offline, missing Profile, replaced device, or unconfigured provider | Disabled with a readable reason. |
 | Request pending | Readiness remains stable; the send control and assistant loading bubble show activity. |
 
 Visual layout, animation, scroll anchoring, keyboard geometry, navigation treatment, theme accents, and auth-screen presentation are maintained in [Product.md](Product.md) and summarized by app area in [AppGuide.md](AppGuide.md).
@@ -200,6 +203,8 @@ Detailed reads, writes, cache-first behavior, conflicts, and repair are defined 
 ## Subscription And Availability
 
 V1 uses subscription gating rather than a user-visible per-message credit balance. AI send requires login, network, active device, Cloud Profile, active subscription, Gateway, and configured provider checks.
+
+For a signed-in client, subscription `unknown`/`loading` maps to pending, a lookup error maps to unavailable, and only a successful inactive result maps to inactive. All three states gate AI sending, but their user-visible reasons remain distinct.
 
 The Profile Subscription entry shows active/inactive/loading/error state and can expose the development internal-code redemption flow. Redemption is a server-owned entitlement RPC backed by hashed codes; clients never receive service-role credentials or direct entitlement-write access. This is not a production payment or app-store subscription implementation.
 

@@ -1,6 +1,8 @@
 enum AiAvailabilityStatus {
   signedOut,
   offline,
+  subscriptionPending,
+  subscriptionUnavailable,
   subscriptionInactive,
   profileMissing,
   gatewayPending,

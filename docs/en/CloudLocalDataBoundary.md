@@ -76,6 +76,7 @@ Transition rules:
 - A successful subscription refresh updates the local display cache.
 - If subscription refresh fails while a previous confirmed state exists, keep that state and mark it stale with an error reason; do not make the Profile subscription card or AI page repeatedly flicker into unavailable/loading.
 - If no subscription cache exists and refresh fails, AI stays unsendable/pending; non-AI product data pages remain usable.
+- Without a usable confirmed cache, a signed-in client's `unknown`/`loading` state is presented as pending, a lookup error as unavailable, and only a successful inactive result as inactive. These states must not alias each other even though each gates AI sending.
 - Real AI send and quota deduction must still be checked by the server/Gateway entitlement path. Local active cache is only display state and startup latency reduction.
 
 ## Data Classes
@@ -393,6 +394,7 @@ Automated tests and manual acceptance should preserve these invariants:
 
 - Real account, Cloud Profile, and Cloud Records testing requires a configured build.
 - Local release/debug APKs should be built with `--dart-define-from-file=config/supabase.local.json` or equivalent `SUPABASE_URL` and `SUPABASE_ANON_KEY` defines.
+- Every cloud-enabled Android build type must inherit `android.permission.INTERNET` from `android/app/src/main/AndroidManifest.xml`; a declaration limited to debug/profile manifests does not grant Release network access.
 - A build without these defines is an unconfigured auth-shell build; it cannot verify persisted Supabase sessions, cloud records, or cloud/local cache recovery.
 
 ## Runtime Acceptance Invariants

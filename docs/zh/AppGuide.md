@@ -125,7 +125,10 @@ Status pill 只表达 readiness；请求进行状态由发送按钮和 assistant
 | 已登录、在线、订阅有效、active device、Gateway 已配置 | 显示 `Ready`，允许发送。 |
 | 发送或等待中 | Readiness 保持稳定，由发送控件和 assistant bubble 表达进行中。 |
 | 未登录或离线 | 灰色禁用；用户仍可编辑未完成 prompt。 |
-| 订阅或 Cloud Profile 不可用 | Gated 状态并解释账号/Profile 原因。 |
+| 正在检查订阅 | 发送保持禁用，状态显示 loading，不能误报为未订阅。 |
+| 订阅查询不可用 | 发送保持禁用，状态明确显示订阅状态不可用。 |
+| 订阅已确认未生效 | 发送保持禁用，状态明确显示订阅未生效。 |
+| Cloud Profile 不可用 | Gated 状态并解释 Profile 原因。 |
 | Gateway、provider 或 active-device 校验未完成 | 准备中或不可用，发送保持禁用。 |
 
 账号 sheet 展示账号/订阅状态、后端配置提示和用户记录摘要权限，不重复 Profile 中正式的退出登录操作。聊天历史 sidebar 支持新建、切换 session、行内重命名和确认后删除。在没有恢复体验前不暴露 archive。
@@ -193,7 +196,7 @@ Profile 包含账号绑定的身份信息、身体资料、饮食设置、显示
 - Auth landing、登录和注册始终使用同一棵稳定布局树，键盘关闭时画布不可滚动。键盘打开后只给同一画布增加临时滚动范围，由唯一的 inset owner 立即跟随键盘移动，只在需要时移动焦点字段，并在键盘上方保留 14 px 间距，不再为下一字段或主要操作按钮额外预留空间。键盘 Next 明确按“登录邮箱→密码”和“注册邮箱→验证码→密码→确认密码”推进，每次只执行一次短促焦点切换定位，不再由计时器或键盘稳定后的校正启动第二段位移。键盘关闭后恢复零偏移和滚动锁定。
 - 一个账号只有一个 active device；新设备登录会替换旧设备，旧设备在下一次受保护云端交互时进入可读的 `device_replaced` 流程。
 - 登录后 Cloud Profile 是权威来源；缺失 Profile row 会用安全默认值初始化。刷新时只有账号 metadata 与当前恢复账号匹配的 cache 才能先展示。
-- Subscription loading 与 Profile loading 相互独立；订阅失败不遮挡已经成功加载的 editor，但 AI 发送继续 gated。
+- Subscription loading 与 Profile loading 相互独立；pending、查询错误和已确认 inactive 必须保持区分。订阅失败不遮挡已经成功加载的 editor，但 AI 发送继续 gated。
 - Profile edits 组成一份 page-local draft。修改 section 有标记；Discard 恢复已保存 snapshot，Save Changes 写入完整 Cloud Profile。离线禁止保存 Profile。
 - 底部 Account card 提供明确退出。退出清除 auth session、运行期 drafts 和账号绑定本地 cache，但不删除云端正式记录。
 

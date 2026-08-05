@@ -76,6 +76,7 @@
 - 订阅刷新成功后更新本地展示 cache。
 - 订阅刷新失败但存在上一份已确认状态时，保留上一份状态并标记 stale/error reason；不能把 Profile 订阅卡或 AI 页面反复打回不可用闪烁态。
 - 没有任何订阅 cache 且刷新失败时，AI 相关功能保持不可发送/待确认；非 AI 产品数据页面不被阻断。
+- 没有可用 confirmed cache 时，已登录 client 的 `unknown`/`loading` 显示为 pending，查询错误显示为 unavailable，只有成功确认的 inactive 结果才显示为 inactive。三者虽然都禁止 AI 发送，但不能互相混用。
 - 真正的 AI 发送和额度扣减仍必须由服务端/Gateway 校验 entitlement；本地 active cache 只用于展示和减少打开等待。
 
 ## 数据分类
@@ -393,6 +394,7 @@ AI：
 
 - 真实账号、Cloud Profile 和 Cloud Records 测试必须使用已配置构建。
 - 本地 release/debug APK 应使用 `--dart-define-from-file=config/supabase.local.json`，或等价的 `SUPABASE_URL` 和 `SUPABASE_ANON_KEY` defines 构建。
+- 所有启用云功能的 Android build type 都必须从 `android/app/src/main/AndroidManifest.xml` 继承 `android.permission.INTERNET`；只在 debug/profile Manifest 声明不会赋予 Release 网络权限。
 - 没有这些 defines 的构建只是未配置 auth-shell 包；它不能验证 Supabase session 持久化、云端记录或云端/本地 cache 恢复。
 
 ## 运行期验收不变量

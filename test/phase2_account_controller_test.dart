@@ -16,6 +16,7 @@ import 'package:fitlog_local/data/repositories/workout_repository.dart';
 import 'package:fitlog_local/core/constants/app_constants.dart';
 import 'package:fitlog_local/core/utils/date_utils.dart';
 import 'package:fitlog_local/domain/models/calorie_calibration_state.dart';
+import 'package:fitlog_local/domain/models/ai_availability.dart';
 import 'package:fitlog_local/domain/models/auth_session.dart';
 import 'package:fitlog_local/domain/models/cloud_profile.dart';
 import 'package:fitlog_local/domain/models/diet_adjustment_review.dart';
@@ -147,7 +148,11 @@ void main() {
         'subscription_load_failed',
       );
       expect(controller.cloudProfileState.isReady, isTrue);
-      expect(controller.aiAvailability.reason, 'subscription_inactive');
+      expect(
+        controller.aiAvailability.status,
+        AiAvailabilityStatus.subscriptionUnavailable,
+      );
+      expect(controller.aiAvailability.reason, 'subscription_unavailable');
     },
   );
 

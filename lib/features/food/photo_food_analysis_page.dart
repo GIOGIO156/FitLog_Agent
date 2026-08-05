@@ -615,6 +615,10 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
         return strings.authRequired;
       case AiAvailabilityStatus.offline:
         return strings.aiOfflineStatus;
+      case AiAvailabilityStatus.subscriptionPending:
+        return strings.loading;
+      case AiAvailabilityStatus.subscriptionUnavailable:
+        return strings.subscriptionUnavailable;
       case AiAvailabilityStatus.subscriptionInactive:
         return strings.subscriptionInactive;
       case AiAvailabilityStatus.profileMissing:

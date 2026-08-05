@@ -125,7 +125,10 @@ The status pill communicates readiness only. Request activity belongs to the sen
 | Logged in, online, subscribed, active device, configured Gateway | `Ready`; sending is enabled. |
 | Sending or waiting | Readiness stays stable; the send control and assistant bubble show activity. |
 | Logged out or offline | Disabled gray state; the user may still edit an unfinished prompt. |
-| Subscription or Cloud Profile unavailable | Gated state with an account/Profile explanation. |
+| Subscription checking | Sending remains disabled and the status shows loading rather than inactive. |
+| Subscription lookup unavailable | Sending remains disabled and the status reports that subscription state is unavailable. |
+| Subscription confirmed inactive | Sending remains disabled and the status explicitly reports an inactive subscription. |
+| Cloud Profile unavailable | Gated state with a Profile explanation. |
 | Gateway, provider, or active-device check incomplete | Preparing or unavailable state; sending remains disabled. |
 
 The account sheet exposes account/subscription state, backend configuration warnings, and the user-record-summary permission. It does not duplicate Profile's formal sign-out action. The chat-history sidebar supports new chat, session switching, inline rename, and delete with confirmation. Archive is not exposed without a corresponding recovery experience.
@@ -193,7 +196,7 @@ Profile contains account-bound identity, body information, diet setup, presentat
 - The auth landing, sign-in, and registration canvas uses one stable layout tree and is non-scrollable while the keyboard is closed. With the keyboard open, that same canvas gains temporary scroll extent. A single inset owner follows keyboard movement immediately and moves only the focused field as needed, leaving a 14 px keyboard gap rather than reserving room for the next field or primary action. Keyboard Next advances login email to password and registration email to code to password to confirmation with one short focus transition; no later timer or keyboard-settle correction starts a second movement. Closing the keyboard restores zero offset and locked scrolling.
 - One account has one active device. A newer login replaces the older device, which receives a readable `device_replaced` flow on its next protected cloud interaction.
 - After login, Cloud Profile is authoritative. Missing Profile rows are initialized with safe defaults. Cached display values may appear during refresh only when their account metadata matches the recovered account.
-- Subscription loading is independent from Profile loading. A subscription failure keeps a successfully loaded editor usable but continues to gate AI sending.
+- Subscription loading is independent from Profile loading. Pending, lookup-error, and confirmed-inactive subscription states remain distinct; a subscription failure keeps a successfully loaded editor usable but continues to gate AI sending.
 - Profile edits form one page-local draft. Changed sections are marked; Discard restores the saved snapshot and Save Changes writes one complete Cloud Profile. Offline Profile saving is disabled.
 - The bottom Account card provides explicit sign-out. Sign-out clears the auth session, runtime drafts, and account-bound local caches without deleting cloud official records.
 

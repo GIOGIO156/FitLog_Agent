@@ -614,16 +614,19 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
           label: strings.aiUnavailableStatus,
           tone: _AiStatusTone.unavailable,
         );
-      case AiAvailabilityStatus.subscriptionInactive:
-        if (accountController?.subscriptionStatus.state ==
-            SubscriptionState.error) {
-          return _AiStatusPresentation(
-            label: strings.aiUnavailableStatus,
-            tone: _AiStatusTone.blocked,
-          );
-        }
+      case AiAvailabilityStatus.subscriptionPending:
         return _AiStatusPresentation(
-          label: strings.aiUnavailableStatus,
+          label: strings.loading,
+          tone: _AiStatusTone.unavailable,
+        );
+      case AiAvailabilityStatus.subscriptionUnavailable:
+        return _AiStatusPresentation(
+          label: strings.subscriptionUnavailable,
+          tone: _AiStatusTone.blocked,
+        );
+      case AiAvailabilityStatus.subscriptionInactive:
+        return _AiStatusPresentation(
+          label: strings.subscriptionInactive,
           tone: _AiStatusTone.blocked,
         );
       case AiAvailabilityStatus.profileMissing:
@@ -2158,11 +2161,13 @@ class _AiAccountStatusSheet extends StatelessWidget {
             const SizedBox(height: 8),
             _AiAccountLine(
               icon: Icons.verified_user_outlined,
-              label: subscription.isActive
-                  ? strings.subscriptionActive
-                  : subscription.state == SubscriptionState.error
-                  ? strings.subscriptionUnavailable
-                  : strings.subscriptionInactive,
+              label: switch (subscription.state) {
+                SubscriptionState.active => strings.subscriptionActive,
+                SubscriptionState.loading ||
+                SubscriptionState.unknown => strings.loading,
+                SubscriptionState.error => strings.subscriptionUnavailable,
+                SubscriptionState.inactive => strings.subscriptionInactive,
+              },
             ),
             const SizedBox(height: 14),
             SwitchListTile.adaptive(

@@ -116,7 +116,10 @@ Readiness 与 request activity 分离：
 | 状态 | Send 行为 |
 | --- | --- |
 | 已登录、在线、订阅有效、active device、Profile 与 Gateway ready | 启用。 |
-| 未登录、离线、订阅无效、缺少 Profile、device replaced 或 provider 未配置 | 禁用并展示可读原因。 |
+| Subscription 状态为 unknown 或 loading | 禁用并显示检查中/loading，不能显示为未订阅。 |
+| Subscription 查询失败 | 禁用并显示状态不可用，不能显示为未订阅。 |
+| Subscription 成功确认为 inactive | 禁用并明确说明订阅未生效。 |
+| 未登录、离线、缺少 Profile、device replaced 或 provider 未配置 | 禁用并展示可读原因。 |
 | Request pending | Readiness 保持稳定，由 send control 和 assistant loading bubble 展示进行中。 |
 
 视觉布局、动画、scroll anchoring、键盘 geometry、导航处理、主题强调色和 auth screen 呈现由 [Product.md](Product.md) 维护，并由 [AppGuide.md](AppGuide.md) 按 App 区域摘要。
@@ -200,6 +203,8 @@ Cloud Profile 规则：
 ## Subscription 与可用性
 
 V1 使用 subscription gating，不显示每条消息 credits。AI send 需要 login、network、active device、Cloud Profile、active subscription、Gateway 和 configured provider checks。
+
+对于已登录 client，subscription `unknown`/`loading` 映射为 pending，查询错误映射为 unavailable，只有成功确认的 inactive 结果才映射为 inactive。三种状态都禁止 AI 发送，但用户可见原因必须保持区分。
 
 Profile Subscription 入口展示 active/inactive/loading/error 状态，并可包含开发内部兑换码流程。兑换是使用 hashed codes 的服务端 entitlement RPC；client 永远不能获取 service-role credentials 或直接写 entitlement。这不是生产支付或 App Store subscription 实现。
 

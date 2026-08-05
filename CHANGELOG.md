@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-05 Android Release Cloud Connectivity
+
+### Fixed
+
+- Granted Android Release builds the network permission required for Supabase authentication, subscription lookup, Cloud Profile access, and AI Gateway requests; Debug/Profile behavior is unchanged.
+- Distinguished subscription checks and lookup failures from a genuinely inactive subscription so AI surfaces no longer misreport cloud-read failures as an unsubscribed account.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 281 Flutter tests passed, including a regression check that keeps the network permission in the main Android manifest. README setup and the paired Agent, app-guide, and cloud/local-boundary documents were aligned with the Release and subscription-state invariants.
+- The configured split Release APK build completed for `armeabi-v7a`, `arm64-v8a`, and `x86_64`; all three APKs passed v2 signature verification and packaged `android.permission.INTERNET`.
+- Regenerated the local 21-source/630-chunk Document RAG seed as build `2538b2bec2d7d63246781b4e`; manifest, bilingual outline, link, corruption, and deterministic chunking checks passed. The refreshed corpus was not uploaded or activated.
+
 ## 2026-08-04 Food Photo AI Intent Alignment And Lifecycle Reliability
 
 ### Changed

@@ -86,13 +86,31 @@ class AccountController extends ChangeNotifier {
         reason: 'offline',
       );
     }
-    if (!subscriptionStatus.isActive) {
-      return const AiAvailability(
-        status: AiAvailabilityStatus.subscriptionInactive,
-        canEditComposer: true,
-        canSend: false,
-        reason: 'subscription_inactive',
-      );
+    switch (subscriptionStatus.state) {
+      case SubscriptionState.unknown:
+      case SubscriptionState.loading:
+        return const AiAvailability(
+          status: AiAvailabilityStatus.subscriptionPending,
+          canEditComposer: true,
+          canSend: false,
+          reason: 'subscription_pending',
+        );
+      case SubscriptionState.error:
+        return const AiAvailability(
+          status: AiAvailabilityStatus.subscriptionUnavailable,
+          canEditComposer: true,
+          canSend: false,
+          reason: 'subscription_unavailable',
+        );
+      case SubscriptionState.inactive:
+        return const AiAvailability(
+          status: AiAvailabilityStatus.subscriptionInactive,
+          canEditComposer: true,
+          canSend: false,
+          reason: 'subscription_inactive',
+        );
+      case SubscriptionState.active:
+        break;
     }
     if (!cloudProfileState.isReady) {
       return const AiAvailability(

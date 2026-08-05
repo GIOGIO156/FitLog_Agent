@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Locally retained release APK artifacts
+/artifacts/release-apks/*.apk
+/artifacts/release-apks/SHA256SUMS.txt
+
 # Local build configuration
 /config/supabase.local.json
 /supabase/.env*.local

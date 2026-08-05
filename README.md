@@ -118,7 +118,10 @@ flutter run --dart-define=SUPABASE_URL=<url> --dart-define=SUPABASE_ANON_KEY=<an
 ```bash
 flutter run --dart-define-from-file=config/supabase.local.json
 flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json
+flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json
 ```
+
+Android 云功能构建依赖主 Manifest 中的 `INTERNET` 权限，不能只在 debug/profile Manifest 中声明。Release APK 默认输出到 `build/app/outputs/flutter-apk/`；如需在可清理的 `build/` 目录外保留本地产物和 SHA-256，请遵循 [`artifacts/release-apks/README.md`](artifacts/release-apks/README.md)。
 
 ### 设计与工程文档
 
@@ -270,7 +273,10 @@ You can also copy `config/supabase.local.json.example` to the uncommitted local 
 ```bash
 flutter run --dart-define-from-file=config/supabase.local.json
 flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json
+flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json
 ```
+
+Android cloud-enabled builds depend on the main manifest's `INTERNET` permission; declaring it only in the debug/profile manifests does not cover Release. Release APKs are written to `build/app/outputs/flutter-apk/` by default. To retain local binaries and SHA-256 hashes outside the disposable `build/` tree, follow [`artifacts/release-apks/README.md`](artifacts/release-apks/README.md).
 
 ### Design And Engineering Documents
 
