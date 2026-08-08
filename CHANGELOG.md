@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-09 Black Theme Exercise Badge Colors
+
+### Changed
+
+- Synced the Black theme workout action-selector thumbnail badge colors to the Local visual scheme: each body part now has a dedicated runtime fill and thin outer ring while preserving the existing circular size, icon scale, centering, row height, spacing, and filter behavior.
+- Kept the badge treatment runtime-only for the action selector. Exercise PNG resources are unchanged, non-Black themes keep the previous translucent body-part fill with no ring, and Android workout-in-progress notification large icons still render the transparent exercise PNG directly.
+
+### Validation
+
+- Added regression coverage for all nine Black-theme body-part fill/ring pairs, uniqueness, and non-Black fallback behavior.
+- Ran `dart format lib test`, `flutter analyze`, and `flutter test`; analysis reported no issues and all 291 Flutter tests passed.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --build-number 38 --no-pub --dart-define-from-file=config/supabase.local.json`; the elevated Gradle build completed in 30.9 seconds and produced `armeabi-v7a`, `arm64-v8a`, and `x86_64` APKs.
+- Regenerated the local stable-document corpus as build `991d4101ce8089cefa69d95d` with 633 chunks from 21 sources; local embeddings reached 633/633 parity, and no Document RAG upload or cloud activation was performed.
+
 ## 2026-08-09 Built-in Exercise PNG Icons
 
 ### Added

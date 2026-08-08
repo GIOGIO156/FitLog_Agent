@@ -57,7 +57,7 @@ FitLog_Agent V1 是一款以确定性计划规则为基础、由用户控制 AI 
 | Food Log | 正式 food record 管理。 | 支持手动录入、外部 AI JSON 粘贴、复制日期、编辑、删除和用户确认后的 AI 辅助记录。 | 登录后正式写入 cloud-first；所有 AI 结果在确认保存前都是草稿。 |
 | Add Food | 食物创建 workflow。 | AI 食物分析作为第一入口，接受纯文字或最多三张可选图片，并提供与 AI Chat 独立的 ChatGPT/千问选择；当前请求使用 Qwen，未配置 ChatGPT 只报告不可用而不发送。手动录入和外部 AI JSON 粘贴继续保留；可复用外部对话 Prompt 的唯一入口位于 Paste AI Result。 | Provider 状态不改变共享 Food policy、语义 Preview Gate、隐私或确认边界。 |
 | AI | Agent 主入口。 | 提供 gated Qwen 文字与图片对话、保留但未配置的 ChatGPT 选择反馈、云端 history、最多三张图片、校验后的 Food/Workout Draft 卡片、受限只读 RAG 和“回答依据”面板。 | Provider credentials 留在服务端；AI 不能静默写记录或设置。 |
-| Workout | 正式训练记录管理。 | 支持训练记录、自定义动作、内置动作专属 PNG 缩略图、手动/AI 新建记录保留草稿、确定性热量估算和草稿恢复通知。 | 已保存历史的编辑状态仅存在于当前页面；AI 可以起草或复盘，但不能静默修改正式记录。 |
+| Workout | 正式训练记录管理。 | 支持训练记录、自定义动作、内置动作专属 PNG 缩略图、黑色主题动作选择器运行时 badge、手动/AI 新建记录保留草稿、确定性热量估算和草稿恢复通知。 | 已保存历史的编辑状态仅存在于当前页面；AI 可以起草或复盘，但不能静默修改正式记录。 |
 | Profile | 账号、身体资料、饮食和显示设置。 | 未登录显示 auth；登录后编辑一份 Cloud Profile draft 和独立历史身体记录。 | Cloud Profile 是权威来源；正式饮食设置只能通过 Profile 确认修改。 |
 | Export | 用户主动导出数据。 | 支持从权威记录集合生成 XLSX 和 CSV ZIP。 | 本地 cache 可以加速，但不是完整性前提，也不等于备份。 |
 

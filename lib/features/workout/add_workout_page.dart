@@ -3479,6 +3479,7 @@ class _ExerciseLibraryPickerPageState
             exerciseName: option.name,
             color: color,
             size: 54,
+            useDarkThemeBadgeColors: true,
           ),
           const SizedBox(width: 12),
           Expanded(
