@@ -302,7 +302,7 @@ void main() {
     expect(content?.imageAsset, FitLogIconAssets.exerciseBenchPress);
   });
 
-  test('chest press variants without dedicated png use chest image', () {
+  test('built-in chest press variants use dedicated pngs', () {
     const variants = <(String, String)>[
       ('barbell_incline_bench_press', 'Barbell Incline Bench Press'),
       ('machine_chest_press', 'Machine Chest Press'),
@@ -324,7 +324,11 @@ void main() {
         zh,
       );
 
-      expect(content?.imageAsset, FitLogIconAssets.workoutChest);
+      expect(
+        content?.imageAsset,
+        FitLogIconAssets.exerciseAssetForExerciseKey(key),
+        reason: key,
+      );
     }
   });
 

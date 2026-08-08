@@ -1,5 +1,9 @@
+import 'exercise_catalog.dart';
+
 class FitLogIconAssets {
   FitLogIconAssets._();
+
+  static const String exerciseDirectory = 'assets/icons/exercises';
 
   static const String macroProtein = 'assets/icons/macros/protein.png';
   static const String macroCarbs = 'assets/icons/macros/carbs.png';
@@ -11,28 +15,27 @@ class FitLogIconAssets {
   static const String flame = 'assets/icons/common/flame.svg';
 
   static const String exerciseBenchPress =
-      'assets/icons/exercises/bench_press.png';
-  static const String exerciseCableFly = 'assets/icons/exercises/cable_fly.png';
-  static const String exerciseDeadlift = 'assets/icons/exercises/deadlift.png';
+      '$exerciseDirectory/barbell_flat_bench_press.png';
+  static const String exerciseCableFly = '$exerciseDirectory/cable_fly.png';
+  static const String exerciseDeadlift = '$exerciseDirectory/deadlift.png';
   static const String exerciseDumbbellBicepsCurl =
-      'assets/icons/exercises/dumbbell_biceps_curl.png';
+      '$exerciseDirectory/dumbbell_biceps_curl.png';
   static const String exerciseDumbbellFly =
-      'assets/icons/exercises/dumbbell_fly.png';
+      '$exerciseDirectory/dumbbell_fly.png';
   static const String exerciseBarbellBicepsCurl =
-      'assets/icons/exercises/barbell_biceps_curl.png';
+      '$exerciseDirectory/barbell_biceps_curl.png';
   static const String exerciseBentOverBarbellRow =
-      'assets/icons/exercises/bent_over_barbell_row.png';
+      '$exerciseDirectory/bent_over_barbell_row.png';
   static const String exerciseLateralRaise =
-      'assets/icons/exercises/lateral_raise.png';
+      '$exerciseDirectory/lateral_raise.png';
   static const String exerciseLatPulldown =
-      'assets/icons/exercises/lat_pulldown.png';
+      '$exerciseDirectory/lat_pulldown.png';
   static const String exerciseOverheadPress =
-      'assets/icons/exercises/overhead_press.png';
-  static const String exercisePullUp = 'assets/icons/exercises/pull_up.png';
-  static const String exerciseRunning = 'assets/icons/exercises/running.png';
-  static const String exerciseSeatedRow =
-      'assets/icons/exercises/seated_row.png';
-  static const String exerciseSquat = 'assets/icons/exercises/squat.png';
+      '$exerciseDirectory/overhead_press.png';
+  static const String exercisePullUp = '$exerciseDirectory/pull_up.png';
+  static const String exerciseRunning = '$exerciseDirectory/running.png';
+  static const String exerciseSeatedRow = '$exerciseDirectory/seated_row.png';
+  static const String exerciseSquat = '$exerciseDirectory/squat.png';
 
   static const String workoutChest = 'assets/icons/workouts/chest.png';
   static const String workoutBack = 'assets/icons/workouts/back.png';
@@ -67,85 +70,74 @@ class FitLogIconAssets {
   }
 
   static String? exerciseAssetForExerciseKey(String? exerciseKey) {
-    switch ((exerciseKey ?? '').trim()) {
-      case 'barbell_flat_bench_press':
-      case 'bench_press':
-      case 'close_grip_bench_press':
-        return exerciseBenchPress;
-      case 'cable_fly':
-        return exerciseCableFly;
-      case 'deadlift':
-        return exerciseDeadlift;
-      case 'dumbbell_biceps_curl':
-        return exerciseDumbbellBicepsCurl;
-      case 'dumbbell_fly':
-        return exerciseDumbbellFly;
-      case 'barbell_biceps_curl':
-        return exerciseBarbellBicepsCurl;
-      case 'bent_over_barbell_row':
-        return exerciseBentOverBarbellRow;
-      case 'lateral_raise':
-        return exerciseLateralRaise;
-      case 'lat_pulldown':
-        return exerciseLatPulldown;
-      case 'barbell_overhead_press':
-      case 'overhead_press':
-        return exerciseOverheadPress;
-      case 'pull_up':
-        return exercisePullUp;
-      case 'running':
-        return exerciseRunning;
-      case 'seated_row':
-      case 'seated_cable_row':
-        return exerciseSeatedRow;
-      case 'squat':
-        return exerciseSquat;
-      default:
-        return null;
+    final definition = ExerciseCatalog.byKey(exerciseKey);
+    if (definition == null) {
+      return null;
     }
+    return _exerciseAssetForCatalogKey(definition.key);
   }
 
   static String? exerciseAssetForExercise(String exerciseName) {
-    switch (exerciseName.trim()) {
-      case 'Barbell Flat Bench Press':
-      case 'Bench Press':
-      case 'Close-grip Bench Press':
-      case '卧推':
-      case '杠铃卧推':
-      case '平板卧推':
-      case '杠铃平板卧推':
-      case '杠铃窄距平板卧推':
-        return exerciseBenchPress;
-      case 'Cable Fly':
-        return exerciseCableFly;
-      case 'Deadlift':
-        return exerciseDeadlift;
-      case 'Dumbbell Biceps Curl':
-        return exerciseDumbbellBicepsCurl;
-      case 'Dumbbell Fly':
-        return exerciseDumbbellFly;
-      case 'Barbell Biceps Curl':
-        return exerciseBarbellBicepsCurl;
-      case 'Bent-over Barbell Row':
-        return exerciseBentOverBarbellRow;
-      case 'Lateral Raise':
-        return exerciseLateralRaise;
-      case 'Lat Pulldown':
-        return exerciseLatPulldown;
-      case 'Barbell Overhead Press':
-      case 'Overhead Press':
-        return exerciseOverheadPress;
-      case 'Pull-up':
-        return exercisePullUp;
-      case 'Running':
-        return exerciseRunning;
-      case 'Seated Cable Row':
-      case 'Seated Row':
-        return exerciseSeatedRow;
-      case 'Squat':
-        return exerciseSquat;
-      default:
-        return null;
+    final normalized = exerciseName.trim();
+    if (normalized.isEmpty) {
+      return null;
     }
+    final definition = ExerciseCatalog.byName(normalized);
+    if (definition != null) {
+      return _exerciseAssetForCatalogKey(definition.key);
+    }
+    final aliasKey = _catalogKeyForReviewedAlias(normalized);
+    if (aliasKey != null) {
+      return _exerciseAssetForCatalogKey(aliasKey);
+    }
+    final legacyAliasKey = _legacyExerciseNameAliases[normalized];
+    if (legacyAliasKey != null) {
+      return _exerciseAssetForCatalogKey(legacyAliasKey);
+    }
+    final localizedKey = _catalogKeyForLocalizedName(normalized);
+    if (localizedKey == null) {
+      return null;
+    }
+    return _exerciseAssetForCatalogKey(localizedKey);
   }
+
+  static String _exerciseAssetForCatalogKey(String exerciseKey) {
+    final assetKey = switch (exerciseKey) {
+      'barbell_overhead_press' => 'overhead_press',
+      _ => exerciseKey,
+    };
+    return '$exerciseDirectory/$assetKey.png';
+  }
+
+  static String? _catalogKeyForReviewedAlias(String exerciseName) {
+    for (final entry in ExerciseCatalog.reviewedAliasesByKey.entries) {
+      if (entry.value.contains(exerciseName)) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  static String? _catalogKeyForLocalizedName(String exerciseName) {
+    for (final entry in ExerciseCatalog.localizedNamesZh.entries) {
+      if (entry.value != exerciseName) {
+        continue;
+      }
+      final definition = ExerciseCatalog.byName(entry.key);
+      if (definition != null) {
+        return definition.key;
+      }
+      final aliasKey = _catalogKeyForReviewedAlias(entry.key);
+      if (aliasKey != null) {
+        return aliasKey;
+      }
+    }
+    return null;
+  }
+
+  static const Map<String, String> _legacyExerciseNameAliases =
+      <String, String>{
+        '杠铃卧推': 'barbell_flat_bench_press',
+        '平板卧推': 'barbell_flat_bench_press',
+      };
 }

@@ -171,6 +171,8 @@ Read more: [AgentDesign.md](AgentDesign.md), [AIOutputContract.md](AIOutputContr
 
 Workout contains official workout records and at most one retained new-record draft. Users can create a named record, add built-in or custom exercises, record cardio or strength details, mark supported sets complete, review deterministic calorie estimates, and edit or delete saved records.
 
+Exercise thumbnails and the Android workout-in-progress notification prefer dedicated transparent PNG assets for every built-in exercise. Resolution starts from the `ExerciseCatalog` canonical key, keeps legacy names pointing to the same PNG, and uses the shared body-part image only for custom or unknown exercises.
+
 Strength definitions decide how each set is entered. Total or machine weight is already the complete external load; per-side weight is doubled only for the calculation snapshot; bodyweight-plus-load adds the entered external load to the movement's bounded bodyweight share; assistance weight is subtracted from bodyweight. Repetitions are likewise either total reps or per-side reps, while duration-based movements use a single-set duration. The editor keeps the original value and label visible, while saved `calculation_load_kg` and `calculation_reps` drive volume and calorie heuristics. For example, entering 12 for Bulgarian Split Squat means 12 per side and a calculation count of 24, not a displayed value of 24.
 
 The resume bar and Android workout-in-progress notification apply only to a manually created or AI-generated new workout. Editing saved history is page-local: saving commits the update, while leaving without saving discards the pending changes and does not create a retained draft.

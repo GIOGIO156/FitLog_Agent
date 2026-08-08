@@ -90,7 +90,8 @@ class AiWorkoutDraft {
       'exercises': exercises
           .map(
             (exercise) => exercise.toWorkoutPayload(
-              requireApprovedBinding: schemaVersion == aiWorkoutDraftSchemaVersion,
+              requireApprovedBinding:
+                  schemaVersion == aiWorkoutDraftSchemaVersion,
             ),
           )
           .toList(),
@@ -198,7 +199,8 @@ class AiWorkoutDraftExercise {
         ? (exerciseSource ?? ExerciseSource.adHoc)
         : ExerciseSource.builtin;
     return <String, dynamic>{
-      'exercise_key': definition?.key ??
+      'exercise_key':
+          definition?.key ??
           (requireApprovedBinding ? exerciseKey! : _adHocKey(exerciseName)),
       'exercise_source': source,
       'body_part': resolvedBodyPart,
@@ -241,9 +243,10 @@ class AiWorkoutDraftExercise {
   void _validateApprovedBinding(ExerciseDefinition? definition) {
     if ((exerciseKey ?? '').isEmpty ||
         (definitionHash ?? '').isEmpty ||
-        !<String>[ExerciseSource.builtin, ExerciseSource.custom].contains(
-          exerciseSource,
-        ) ||
+        !<String>[
+          ExerciseSource.builtin,
+          ExerciseSource.custom,
+        ].contains(exerciseSource) ||
         (loadInputMode ?? '').isEmpty ||
         (repsInputMode ?? '').isEmpty ||
         (setMetricType ?? '').isEmpty) {

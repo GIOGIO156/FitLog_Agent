@@ -33,5 +33,4 @@ void main() {
 
     expect(record.estimationNotes, 'Skin removed');
   });
-
 }

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-09 Built-in Exercise PNG Icons
+
+### Added
+
+- Imported the 57 Local-approved dedicated transparent PNG exercise icons into the Agent exercise asset library.
+- Added regression coverage so every `ExerciseCatalog.builtInExercises` key resolves to an existing PNG, every catalog `legacyNames` entry resolves to the same PNG as its canonical exercise, reviewed aliases such as `Bench Press` resolve correctly, and custom or unknown exercises still fall back to body-part imagery.
+
+### Changed
+
+- Exercise image resolution now prefers `ExerciseCatalog` canonical keys and the default `assets/icons/exercises/<exercise_key>.png` path, with `barbell_overhead_press` intentionally mapped to `assets/icons/exercises/overhead_press.png`.
+- Workout editor thumbnails, AI draft/snapshot paths, and Android workout-in-progress notifications can use built-in exercise PNGs by key or name. `close_grip_bench_press` now uses its own PNG, and `lat_pulldown.png` uses the imported newer high-pulldown asset.
+- Updated the bilingual Product and AppGuide docs to state that only custom or unknown exercises fall back to body-part icons.
+
+### Validation
+
+- Ran `dart format lib test`, `flutter analyze`, and `flutter test`; analysis reported no issues and all 288 Flutter tests passed.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --build-number 37 --no-pub --dart-define-from-file=config/supabase.local.json`; the elevated Gradle build completed in 32.1 seconds and produced `armeabi-v7a`, `arm64-v8a`, and `x86_64` APKs.
+- Regenerated the local stable-document corpus as build `846b92abc0b38007bff93836` with 631 chunks from 21 sources; local embeddings reached 631/631 parity, and the documentation/corpus validation tests passed.
+- No image generation, IconAudit, `flutter clean`, Edge Function deployment, or Document RAG upload was performed.
+
 ## 2026-08-08 AI Response Language Consistency
 
 ### Changed
