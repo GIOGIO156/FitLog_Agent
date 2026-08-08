@@ -581,7 +581,10 @@ class _WorkoutLogPageState extends State<WorkoutLogPage> {
                                       ),
                                       const SizedBox(height: 6),
                                       Text(
-                                        DateUtilsX.formatReadable(plan.date),
+                                        DateUtilsX.formatReadable(
+                                          plan.date,
+                                          isChinese: strings.isChinese,
+                                        ),
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium

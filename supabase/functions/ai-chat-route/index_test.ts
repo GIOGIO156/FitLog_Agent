@@ -21,6 +21,7 @@ import {
 } from "./qwen_provider.ts";
 import { OutputContractError } from "../_shared/ai_output_contract.ts";
 import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
+import { userFacingLanguageInstruction } from "../_shared/response_language_policy.ts";
 
 Deno.test("parseGatewayRequest accepts the Step 2 text-only contract", () => {
   const parsed = parseGatewayRequest({
@@ -917,9 +918,11 @@ Deno.test("AI Chat OpenAI and Qwen share scoped food evidence policy", async () 
   await openAi.generateText({ ...request, modelChoice: "chatgpt" });
 
   const policy = foodDraftEvidencePolicy("zh");
+  const languagePolicy = userFacingLanguageInstruction("zh");
   for (const body of [qwenBody, openAiBody]) {
     const json = JSON.stringify(body);
     assert(json.includes(policy));
+    assert(json.includes(languagePolicy));
     assert(json.includes("盒饭里还有一杯含20g蛋白质的奶昔"));
     assertEquals(json.split(policy).length - 1, 1);
   }

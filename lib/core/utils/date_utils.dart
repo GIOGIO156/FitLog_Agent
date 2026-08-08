@@ -14,8 +14,8 @@ class DateUtilsX {
 
   static DateTime parseDay(String day) => _dayFormat.parse(day);
 
-  static String formatReadable(String day) {
+  static String formatReadable(String day, {required bool isChinese}) {
     final DateTime date = parseDay(day);
-    return DateFormat('MMM d, yyyy').format(date);
+    return DateFormat(isChinese ? 'yyyy年M月d日' : 'MMM d, yyyy').format(date);
   }
 }

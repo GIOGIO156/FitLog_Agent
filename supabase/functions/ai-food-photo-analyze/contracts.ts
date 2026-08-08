@@ -5,6 +5,7 @@ import {
   parseFoodAnalysisEnvelope,
 } from "../_shared/ai_output_contract.ts";
 import { foodDraftEvidencePolicy } from "../_shared/food_prompt_policy.ts";
+import { userFacingLanguageInstruction } from "../_shared/response_language_policy.ts";
 
 export type {
   FoodDraft,
@@ -401,7 +402,9 @@ function systemPrompt(language: PhotoLanguage): string {
   const output = language === "zh"
     ? "输出必须是严格 JSON。"
     : "Output strict JSON only.";
-  return `${boundary} ${foodDraftEvidencePolicy(language)} ${output}`;
+  return `${boundary} ${userFacingLanguageInstruction(language)} ${
+    foodDraftEvidencePolicy(language)
+  } ${output}`;
 }
 
 function userPrompt(request: PhotoAnalysisRequest): string {

@@ -379,7 +379,10 @@ class FitLogDateStrip extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: Text(
-                DateUtilsX.formatReadable(selectedDate),
+                DateUtilsX.formatReadable(
+                  selectedDate,
+                  isChinese: context.strings.isChinese,
+                ),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: fitTheme.textPrimary,

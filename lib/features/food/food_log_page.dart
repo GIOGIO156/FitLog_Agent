@@ -358,6 +358,7 @@ class _FoodLogPageState extends State<FoodLogPage> {
                                           Text(
                                             DateUtilsX.formatReadable(
                                               record.date,
+                                              isChinese: strings.isChinese,
                                             ),
                                             style: Theme.of(context)
                                                 .textTheme

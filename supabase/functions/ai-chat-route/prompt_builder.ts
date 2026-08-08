@@ -1,9 +1,8 @@
 import type { GatewayRequest } from "./contracts.ts";
+import { userFacingLanguageInstruction } from "../_shared/response_language_policy.ts";
 
 export function answerLanguageInstruction(language: "zh" | "en"): string {
-  return language === "zh"
-    ? "Answer language: Chinese. Answer in Chinese even if previous conversation context or retrieved documents contain English."
-    : "Answer language: English. Answer in English even if previous conversation context or retrieved documents contain Chinese.";
+  return userFacingLanguageInstruction(language);
 }
 
 export function phase5PromptContext(request: GatewayRequest): string {

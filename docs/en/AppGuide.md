@@ -85,7 +85,7 @@ Paste AI Result keeps its resting layout fixed and non-scrollable. The JSON edit
 A successful analysis creates an editable Food Draft:
 
 - The draft opens in the existing Food Preview editor.
-- Fields and visual language remain consistent with normal food records.
+- Fields, section headings, source labels, and readable dates follow the current App language, consistent with normal food records. Provider names remain internal provenance rather than being appended to user-facing estimate notes. AI-generated meal names, item names, estimate notes, messages, and clarification questions follow the request language, while units, brands, original package names, and necessary proper nouns may retain their original form.
 - When items exist, meal weight and nutrition totals are derived from the item sum.
 - Uncertainty remains visible and may produce a clarification question.
 - Only the user's confirmed Save action creates an official record.

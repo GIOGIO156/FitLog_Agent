@@ -172,6 +172,7 @@ function systemInstructions(request: GatewayRequest): string {
     : "You are FitLog's text chat assistant. Use only server-provided controlled context and the current message. Never write or modify official records, goals, or strategies. Be concise and state missing data.";
   return [
     base,
+    answerLanguageInstruction(language),
     `Return exactly one ${providerGatewayEnvelopeSchemaVersion} object that conforms to the supplied JSON Schema.`,
     `Expected output: ${request.expectedOutput}. Markdown is allowed only inside message.text.`,
     "If Expected output is auto, infer the user's natural intent from the message and conversation context, then select exactly one output_type: text, food_draft, workout_draft, or clarification.",

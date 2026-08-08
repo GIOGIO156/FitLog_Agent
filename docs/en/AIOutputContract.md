@@ -123,6 +123,8 @@ Food drafting treats text and images as parallel, complementary evidence rather 
 
 The dedicated Add Food path and AI Chat OpenAI/Qwen adapters consume this evidence policy from one shared prompt source. Their routing, context, provider envelope, and date instructions remain surface-specific. The Gateway does not turn regex-derived food facts into runtime semantic blockers because that previously compared item-specific protein or ingredient weights with whole-meal totals and rejected valid consumer drafts.
 
+The request `language` is also a shared generation instruction, not a schema gate. JSON keys, required schema/enum values, standard units, brand names, original package names, and necessary proper nouns retain their required or original form; other user-visible natural-language values, including meal names, item names, estimate notes, messages, and clarification questions, use the target language. Ordinary foods do not receive a redundant translation in parentheses unless an original package or product name helps disambiguation. A language classifier may record `matched`, `mixed`, `mismatched`, or `unscorable` as privacy-safe quality telemetry, but it never rejects an otherwise valid draft, triggers correction, or changes the output family.
+
 A Food Draft remains editable. Confidence and notes communicate uncertainty but never bypass required fields or user confirmation.
 
 ## Workout Draft Contract
@@ -272,6 +274,7 @@ Compact logs may include:
 - final validation result
 - refusal/incomplete/failure category
 - privacy-safe validation issue codes without user content
+- target response language and a non-blocking language-quality classification without response text
 - latency and token estimate
 - whether a draft or clarification was returned
 

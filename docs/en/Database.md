@@ -664,6 +664,8 @@ Fields:
 - `correction_attempt_count`
 - `final_validation_status`
 - `provider_completion_status`
+- `target_response_language`
+- `language_validation_status`, a non-blocking `matched` / `mixed` / `mismatched` / `unscorable` / `not_attempted` quality classification that stores no response text and does not imply contract acceptance
 - `latency_breakdown_json`
 - `decision_version`
 - `decision_source`
@@ -682,6 +684,7 @@ This table is a server-side operational record:
 
 - The additive `202607100001_ai_output_contract_observability.sql` migration idempotently adds output-family, validator, first-pass/final validation, correction-count, and provider completion-category fields. It does not change SQLite `AppDatabase.dbVersion`.
 - The additive `202607110001_ai_intent_output_observability.sql` migration permits `expected_output = auto` and adds `fixed_workflow` / `deterministic` / `model` resolution source, the final validated output type, and a privacy-safe issue-code array. It likewise does not change the SQLite schema version.
+- Existing cloud fields `target_response_language` and `language_validation_status` distinguish requested language from a heuristic, non-blocking response-language observation; changing this field from an incorrect copy of structural validation status requires no schema migration and does not change SQLite `AppDatabase.dbVersion`.
 - Migration `202607110002_ai_observability_update_grants.sql` allows the Edge Function service role to finalize `ai_request_logs` and `ai_debug_summaries` after the initial RPC insert. Authenticated clients still have no direct read or write policy.
 - The additive `202607150001_rag_latency_breakdown.sql` migration adds a bounded `ai_latency_breakdown.v1` object. It separates Edge runtime age, environment/auth/request/device checks, planning, context building, query normalization, embedding, hybrid RPC, reranking, rewrite planning, provider generation/validation/correction, and persistence. Missing or inapplicable stages remain `null` or `not_requested`; the object never stores raw messages, vectors, document excerpts, images, provider output, secrets, business records, or chain-of-thought.
 - The additive `202607150002_ai_chat_turn_rag_workflows.sql` migration aligns the `record_ai_chat_turn` RPC validation with the table contract for `workout_logging`, `general_chat`, and `safety_boundary`; existing workflow values and the service-role-only execution boundary remain intact.

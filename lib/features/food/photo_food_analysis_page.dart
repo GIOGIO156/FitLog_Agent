@@ -543,8 +543,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
 
     final record = draft.toFoodRecord(
       date: result.analysisDate,
-      modelProvider: response.modelProvider,
       userNote: result.userNote,
+      userNoteLabel: strings.photoAiNoteLabel,
     );
     var savedRecordDate = record.date;
     final saved = await Navigator.of(context).push<bool>(

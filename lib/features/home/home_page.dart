@@ -234,7 +234,10 @@ class _HomePageState extends State<HomePage> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                               child: Text(
-                                DateUtilsX.formatReadable(summary.date),
+                                DateUtilsX.formatReadable(
+                                  summary.date,
+                                  isChinese: strings.isChinese,
+                                ),
                                 style: Theme.of(context).textTheme.bodyMedium
                                     ?.copyWith(
                                       color: context.fitLogTheme.mutedText,

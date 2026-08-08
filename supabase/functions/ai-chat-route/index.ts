@@ -35,9 +35,7 @@ import {
   providerForChoice,
   readProviderRuntimeConfig,
 } from "./providers.ts";
-import {
-  type IntentResolutionSource,
-} from "./expected_output.ts";
+import { type IntentResolutionSource } from "./expected_output.ts";
 import { resolveRecordDate } from "./record_date_resolver.ts";
 import { draftConfirmationMessage } from "./draft_response_builder.ts";
 import {
@@ -64,6 +62,10 @@ import {
   type ChatDecisionV2,
 } from "./planning/chat_decision_contract.ts";
 import { matchClarificationReplyText } from "./planning/clarification_reply.ts";
+import {
+  classifyResponseLanguage,
+  type ResponseLanguageStatus,
+} from "../_shared/response_language_policy.ts";
 
 const phase5PromptVersion = "chat_orchestration_v2";
 const phase5SchemaVersion = "ai_chat_response.v3";
@@ -78,6 +80,7 @@ interface OutputContractTelemetry {
   firstPassValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
   correctionAttemptCount: 0 | 1;
   finalValidationStatus: "not_attempted" | "passed" | "failed" | "blocked";
+  languageValidationStatus: ResponseLanguageStatus;
   providerCompletionStatus:
     | "not_called"
     | "completed"
@@ -302,6 +305,13 @@ Deno.serve(async (request) => {
         parsedRequest.language,
         chatDecision,
       );
+      outputTelemetry = {
+        ...outputTelemetry,
+        languageValidationStatus: classifyResponseLanguage(
+          parsedRequest.language,
+          [assistantText],
+        ),
+      };
       const evidence = evidenceFromRequest(parsedRequest, "read_only");
       const persistenceStartedAt = Date.now();
       const persisted = await recordChatTurn(
@@ -374,6 +384,13 @@ Deno.serve(async (request) => {
         finalValidationStatus: "blocked",
       };
       const assistantText = readOnlyBoundaryMessage(parsedRequest.language);
+      outputTelemetry = {
+        ...outputTelemetry,
+        languageValidationStatus: classifyResponseLanguage(
+          parsedRequest.language,
+          [assistantText],
+        ),
+      };
       const evidence = evidenceFromRequest(parsedRequest, "blocked");
       const persistenceStartedAt = Date.now();
       const persisted = await recordChatTurn(
@@ -546,6 +563,15 @@ Deno.serve(async (request) => {
       : parsedProvider.outputType === "text"
       ? prependMealDecisionImageTip(providerGuard.messageText, parsedRequest)
       : providerGuard.messageText;
+    outputTelemetry = {
+      ...outputTelemetry,
+      languageValidationStatus: classifyResponseLanguage(
+        parsedRequest.language,
+        draft === null
+          ? [assistantText, ...parsedProvider.clarificationQuestions]
+          : [assistantText, ...draftLanguageValues(draft)],
+      ),
+    };
     const evidence = evidenceFromRequest(
       parsedRequest,
       draft === null ? "read_only" : "artifact_returned",
@@ -1569,7 +1595,7 @@ async function updateDebugSummary(
           provider_adapter_version: "provider_adapters.v2",
           policy_version: "rag_context_policy.v1",
           target_response_language: request.language,
-          language_validation_status: outputTelemetry.finalValidationStatus,
+          language_validation_status: outputTelemetry.languageValidationStatus,
           task_plan_version: taskPlan?.schema_version ?? null,
           task_plan_source: taskPlan?.source ?? null,
           task_plan_confidence: taskPlan?.confidence ?? null,
@@ -1875,6 +1901,7 @@ function defaultOutputTelemetry(): OutputContractTelemetry {
     firstPassValidationStatus: "not_attempted",
     correctionAttemptCount: 0,
     finalValidationStatus: "not_attempted",
+    languageValidationStatus: "not_attempted",
     providerCompletionStatus: "not_called",
     decisionVersion: null,
     decisionSource: null,
@@ -1888,6 +1915,20 @@ function defaultOutputTelemetry(): OutputContractTelemetry {
     failureClass: null,
     writeGuardReason: null,
   };
+}
+
+function draftLanguageValues(draft: GatewayDraft): string[] {
+  return draft.schema_version === "food_draft.v2"
+    ? [
+      draft.meal_name,
+      draft.estimation_notes,
+      ...draft.items.map((item) => item.name),
+    ]
+    : [
+      draft.record_name,
+      draft.notes,
+      ...draft.exercises.map((exercise) => exercise.exercise_name),
+    ];
 }
 
 function remainingDeadline(deadlineAt: number): number {

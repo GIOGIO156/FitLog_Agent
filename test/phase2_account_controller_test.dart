@@ -1629,7 +1629,10 @@ void main() {
       find.byKey(const ValueKey<String>('profile_body_metric_date_label')),
       findsOneWidget,
     );
-    expect(find.text(DateUtilsX.formatReadable(expectedDate)), findsOneWidget);
+    expect(
+      find.text(DateUtilsX.formatReadable(expectedDate, isChinese: false)),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('profile_body_metric_weight_field')),
       findsOneWidget,

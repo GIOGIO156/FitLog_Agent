@@ -76,7 +76,7 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 
 Chat persistence、request logs、debug summaries、Gateway transport models 和 evidence snapshots 都是支撑基础设施。它们的存在不会授予模型额外读写权限。
 
-Add Food 与 AI Chat 继续使用不同 Edge Function 和 response envelope，但食物生成 adapters 共用一套证据 policy。这套共享规则不会把用户文字误当成完整清单：它保留作用范围清楚的明确事实，让图片补充文字未提到的食物和缺失字段，并把冲突留在可编辑草稿中供用户确认。Edge 的运行时校验继续只负责结构和确定性不变量，不再用 regex 猜测自然语言作用范围。
+Add Food 与 AI Chat 继续使用不同 Edge Function、完整 prompt 和 response envelope，但食物生成 adapters 共用一套证据 policy，全部 adapters 也使用一条小型目标语言指令。证据 policy 不会把用户文字误当成完整清单：它保留作用范围清楚的明确事实，让图片补充文字未提到的食物和缺失字段，并把冲突留在可编辑草稿中供用户确认。语言指令让用户可见自然语言跟随请求语言，同时保留固定字段名、单位、品牌、包装原名和必要专有名词。Edge 的运行时校验继续只负责结构和确定性不变量；无论食物范围判断还是回复语言，都不能重新成为 regex blocker。
 
 ## 入口
 

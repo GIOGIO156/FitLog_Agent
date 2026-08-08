@@ -664,6 +664,8 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 - `correction_attempt_count`
 - `final_validation_status`
 - `provider_completion_status`
+- `target_response_language`
+- `language_validation_status`：不保存 response 原文的非阻断 `matched` / `mixed` / `mismatched` / `unscorable` / `not_attempted` 质量分类，不代表 contract 是否通过
 - `latency_breakdown_json`
 - `decision_version`
 - `decision_source`
@@ -682,6 +684,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 
 - Additive migration `202607100001_ai_output_contract_observability.sql` 幂等增加 expected output、validator、first-pass/final validation、correction count 和 provider completion category 字段，不改变 SQLite `AppDatabase.dbVersion`。
 - Additive migration `202607110001_ai_intent_output_observability.sql` 允许 `expected_output = auto`，并增加 `fixed_workflow` / `deterministic` / `model` 解析来源、最终通过校验的 output type 和不含用户内容的 issue-code array。它同样不改变 SQLite schema version。
+- 既有 cloud 字段 `target_response_language` 与 `language_validation_status` 分别保存目标语言和启发式、非阻断的回复语言观测；把后者从错误复用的结构校验状态改为真实语言质量分类不需要 schema migration，也不改变 SQLite `AppDatabase.dbVersion`。
 - Migration `202607110002_ai_observability_update_grants.sql` 允许 Edge Function service role 在初始 RPC insert 后 finalize `ai_request_logs` 和 `ai_debug_summaries`；authenticated client 仍没有直接读写 policy。
 - Additive migration `202607150001_rag_latency_breakdown.sql` 增加有界的 `ai_latency_breakdown.v1` object，分别记录 Edge runtime age、环境/鉴权/请求/设备校验、规划、Context 构建、query normalization、embedding、hybrid RPC、rerank、rewrite planner、Provider 生成/校验/纠错和持久化。缺失或不适用阶段使用 `null` 或 `not_requested`；该 object 不保存 raw message、向量、文档摘录、图片、Provider output、secret、业务记录或 chain-of-thought。
 - Additive migration `202607150002_ai_chat_turn_rag_workflows.sql` 让 `record_ai_chat_turn` RPC validation 与 table contract 对 `workout_logging`、`general_chat` 和 `safety_boundary` 的支持保持一致；既有 workflow 与 service-role-only 执行边界不变。

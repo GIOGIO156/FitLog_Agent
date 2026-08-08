@@ -954,17 +954,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _openFoodDraftPreview(
-    AiFoodDraft draft,
-    String? modelProvider,
-  ) async {
-    final record = draft.toFoodRecord(
-      modelProvider: switch (modelProvider) {
-        'openai' => 'openai',
-        'qwen' => 'qwen',
-        _ => _provider == _AiProvider.chatGpt ? 'openai' : 'qwen',
-      },
-    );
+  Future<void> _openFoodDraftPreview(AiFoodDraft draft, String? _) async {
+    final record = draft.toFoodRecord();
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => FoodPreviewPage(initialRecord: record),
@@ -3404,7 +3395,7 @@ class _AiDraftDateRow extends StatelessWidget {
         Icon(Icons.calendar_today_outlined, size: 15, color: color),
         const SizedBox(width: 6),
         Text(
-          DateUtilsX.formatReadable(date),
+          DateUtilsX.formatReadable(date, isChinese: context.strings.isChinese),
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: color,
             fontWeight: FontWeight.w600,

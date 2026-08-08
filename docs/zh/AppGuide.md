@@ -85,7 +85,7 @@ Paste AI Result 在静止状态保持固定且不可滚动。键盘运动期间�
 分析成功只创建可编辑 Food Draft：
 
 - Draft 打开到现有 Food Preview editor。
-- 字段和视觉语言与普通食物记录保持一致。
+- 字段、分区标题、来源标签和可读日期跟随当前 App 语言，与普通食物记录保持一致；provider 名称只作为内部来源信息，不再拼接到用户可见估算说明。AI 生成的餐名、item 名称、估算说明、message 和 clarification question 跟随请求语言，单位、品牌、包装原名和必要专有名词可以保留原文。
 - 有 items 时，整餐重量和营养 totals 从 item sum 派生。
 - 不确定性保持可见，必要时可以要求 clarification。
 - 只有用户确认 Save 才创建正式记录。

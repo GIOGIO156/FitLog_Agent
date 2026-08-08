@@ -123,6 +123,8 @@ Food drafting 把文字和图片视为并列、互补的证据，而不是互相
 
 专用 Add Food 路径与 AI Chat 的 OpenAI/千问 adapters 从同一个共享 Prompt 来源读取这套证据策略；各自的路由、上下文、Provider envelope 和日期指令继续独立。Gateway 不再把 regex 派生出的食物事实作为运行时语义 blocker，因为旧规则会把 item-specific protein 或原料重量与整餐 totals比较，从而拒绝正常 C 端草稿。
 
+请求中的 `language` 也是共享的生成指令，而不是 schema gate。JSON 字段名、固定 schema/enum 值、标准单位、品牌名、包装原名和必要专有名词保持其要求或原文；餐名、item 名称、估算说明、message 和 clarification question 等其他用户可见自然语言使用目标语言。普通食物不无必要附加括号内的另一语言翻译，只有保留包装或商品原名有助于消歧时例外。语言分类器可以把结果记为 `matched`、`mixed`、`mismatched` 或 `unscorable`，作为不含原文的质量观测；它不能拒绝原本合法的草稿、触发 correction 或改变 output family。
+
 Food Draft 始终可编辑。Confidence 和 notes 用于表达不确定性，但不能绕过必填字段和用户确认。
 
 ## Workout Draft 契约
@@ -272,6 +274,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - final validation result
 - refusal/incomplete/failure category
 - 不含用户内容的 validation issue codes
+- 目标回复语言，以及不包含 response 原文的非阻断语言质量分类
 - latency 和 token estimate
 - 是否返回 draft 或 clarification
 

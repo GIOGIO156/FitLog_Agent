@@ -103,7 +103,9 @@ class FoodDateTile extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(strings.date),
-      subtitle: Text(DateUtilsX.formatReadable(date)),
+      subtitle: Text(
+        DateUtilsX.formatReadable(date, isChinese: strings.isChinese),
+      ),
       trailing: IconButton(
         onPressed: onChange,
         tooltip: strings.change,

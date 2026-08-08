@@ -313,7 +313,12 @@ class _FoodPreviewPageState extends State<FoodPreviewPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('Items', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(
+              strings.foodItemsTitle,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             ..._items.asMap().entries.map((entry) {
               final index = entry.key;

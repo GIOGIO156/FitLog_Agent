@@ -76,7 +76,7 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 
 Chat persistence, request logs, debug summaries, Gateway transport models, and evidence snapshots are supporting infrastructure. Their presence does not grant the model additional read or write authority.
 
-Add Food and AI Chat keep different Edge Functions and response envelopes, but their food-generation adapters use one shared evidence policy. This shared policy does not make user text an exhaustive inventory: it preserves clear scoped facts, lets images supply unmentioned foods and missing fields, and leaves conflicts in the editable draft for confirmation. Runtime Edge validation remains structural and deterministic rather than attempting to infer this natural-language scope with regex rules.
+Add Food and AI Chat keep different Edge Functions, full prompts, and response envelopes, but their food-generation adapters use one shared evidence policy and all adapters consume one small target-language instruction. The evidence policy does not make user text an exhaustive inventory: it preserves clear scoped facts, lets images supply unmentioned foods and missing fields, and leaves conflicts in the editable draft for confirmation. The language instruction keeps user-visible natural-language content in the request language while preserving required keys, units, brands, package names, and necessary proper nouns. Runtime Edge validation remains structural and deterministic; neither food-scope judgment nor response language becomes a regex blocker.
 
 ## Entry Points
 

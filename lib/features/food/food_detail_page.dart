@@ -269,7 +269,11 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
                     const SizedBox(height: 10),
                     Align(
                       alignment: Alignment.centerLeft,
-                      child: Chip(label: Text('source: $_source')),
+                      child: Chip(
+                        label: Text(
+                          '${strings.foodSourceLabel}: ${strings.foodSourceValue(_source)}',
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -281,9 +285,11 @@ class _FoodDetailPageState extends State<FoodDetailPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text(
-                      'Items',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    Text(
+                      strings.foodItemsTitle,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     if (_items.isEmpty)

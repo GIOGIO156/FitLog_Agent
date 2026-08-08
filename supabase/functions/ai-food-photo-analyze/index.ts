@@ -22,6 +22,10 @@ import {
   outputValidatorVersion,
 } from "../_shared/ai_output_contract.ts";
 import { explicitFoodFactsFromText } from "../_shared/food_capability.ts";
+import {
+  classifyResponseLanguage,
+  type ResponseLanguageStatus,
+} from "../_shared/response_language_policy.ts";
 
 const minimumCorrectionBudgetMs = 1500;
 
@@ -30,6 +34,7 @@ interface PhotoOutputTelemetry {
   correctionAttemptCount: 0 | 1;
   correctionLatencyMs: number;
   finalValidationStatus: "not_attempted" | "passed" | "failed";
+  languageValidationStatus: ResponseLanguageStatus;
   providerCompletionStatus:
     | "not_called"
     | "completed"
@@ -172,6 +177,19 @@ Deno.serve(async (request) => {
         throw correctionError;
       }
     }
+    outputTelemetry = {
+      ...outputTelemetry,
+      languageValidationStatus: classifyResponseLanguage(
+        parsedRequest.language,
+        parsedProvider.draft === null
+          ? parsedProvider.clarificationQuestions
+          : [
+            parsedProvider.draft.meal_name,
+            parsedProvider.draft.estimation_notes,
+            ...parsedProvider.draft.items.map((item) => item.name),
+          ],
+      ),
+    };
     const persisted = await writePhotoLog(env, {
       accountId,
       request: parsedRequest,
@@ -478,7 +496,7 @@ async function writePhotoLog(
         provider_adapter_version: "food_vision_adapters.v2",
         policy_version: "food_capability.v1",
         target_response_language: request?.language ?? null,
-        language_validation_status: params.telemetry.finalValidationStatus,
+        language_validation_status: params.telemetry.languageValidationStatus,
         food_fact_count: foodUnderstanding.facts.length,
         food_conflict_count: foodUnderstanding.conflict_count,
         semantic_validation_status: params.telemetry.finalValidationStatus,
@@ -551,6 +569,7 @@ function defaultPhotoOutputTelemetry(): PhotoOutputTelemetry {
     correctionAttemptCount: 0,
     correctionLatencyMs: 0,
     finalValidationStatus: "not_attempted",
+    languageValidationStatus: "not_attempted",
     providerCompletionStatus: "not_called",
   };
 }

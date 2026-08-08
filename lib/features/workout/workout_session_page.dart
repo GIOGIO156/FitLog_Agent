@@ -166,7 +166,12 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                Text(DateUtilsX.formatReadable(session.date)),
+                Text(
+                  DateUtilsX.formatReadable(
+                    session.date,
+                    isChinese: strings.isChinese,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(strings.bodyPartLabel(session.bodyPart)),
                 Text(

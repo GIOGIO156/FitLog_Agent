@@ -215,14 +215,17 @@ class AiFoodDraft {
 
   FoodRecord toFoodRecord({
     String? date,
-    String? modelProvider,
     String? userNote,
+    String? userNoteLabel,
   }) {
+    final normalizedUserNote = (userNote ?? '').trim();
+    final normalizedUserNoteLabel = (userNoteLabel ?? '').trim();
     final noteParts = <String>[
       if (estimationNotes.trim().isNotEmpty) estimationNotes.trim(),
-      if ((modelProvider ?? '').trim().isNotEmpty)
-        'AI food estimate via ${modelProvider!.trim()}',
-      if ((userNote ?? '').trim().isNotEmpty) 'User note: ${userNote!.trim()}',
+      if (normalizedUserNote.isNotEmpty)
+        normalizedUserNoteLabel.isEmpty
+            ? normalizedUserNote
+            : '$normalizedUserNoteLabel: $normalizedUserNote',
     ];
     final totals = _effectiveTotals;
     return FoodRecord(

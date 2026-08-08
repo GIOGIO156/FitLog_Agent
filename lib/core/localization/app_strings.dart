@@ -505,7 +505,22 @@ class AppStrings {
   String get foodConfidenceLabel => _t('Confidence', '置信度');
   String get foodEstimationNotesLabel => _t('Estimation notes', '估算说明');
   String get foodNotesLabel => _t('Notes', '备注');
+  String get foodItemsTitle => _t('Items', '食物明细');
+  String get foodSourceLabel => _t('Source', '来源');
   String foodItemNameLabel(int index) => _t('Item $index name', '项目 $index 名称');
+  String foodSourceValue(String source) {
+    switch (source) {
+      case 'manual':
+        return _t('Manual entry', '手动录入');
+      case 'ai_paste':
+        return _t('Pasted AI result', '粘贴 AI 结果');
+      case 'ai_photo':
+        return _t('AI food analysis', 'AI 食物分析');
+      default:
+        return source;
+    }
+  }
+
   String get unitGram => _t('g', 'g');
   String get unitKcal => _t('kcal', 'kcal');
   String get manualFoodRecordSaved =>

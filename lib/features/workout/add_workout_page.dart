@@ -1871,7 +1871,12 @@ class _AddWorkoutPageState extends State<AddWorkoutPage>
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(strings.date),
-                      subtitle: Text(DateUtilsX.formatReadable(_date)),
+                      subtitle: Text(
+                        DateUtilsX.formatReadable(
+                          _date,
+                          isChinese: strings.isChinese,
+                        ),
+                      ),
                       trailing: TextButton(
                         onPressed: _editorLocked ? null : _pickDate,
                         child: Text(strings.change),

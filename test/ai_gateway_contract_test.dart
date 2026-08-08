@@ -410,7 +410,10 @@ void main() {
       expect(response.clarification?.needsRuntimeAttachment, isTrue);
       expect(response.clarification?.question, '请选择需要的结果。');
       expect(response.clarification?.attempt, 1);
-      expect(response.clarification?.options.last.resultingOutput, 'food_draft');
+      expect(
+        response.clarification?.options.last.resultingOutput,
+        'food_draft',
+      );
       expect(
         response.toJson()['clarification']['schema_version'],
         'ai_chat_clarification.v2',
@@ -626,8 +629,8 @@ void main() {
 
       final record = draft.toFoodRecord(
         date: '2026-07-01',
-        modelProvider: 'qwen',
         userNote: '少吃了米饭',
+        userNoteLabel: '食物描述',
       );
 
       expect(record.source, AppConstants.sourceAiPhoto);
@@ -637,8 +640,8 @@ void main() {
       expect(record.items, hasLength(2));
       expect(record.items.first.name, 'Chicken');
       expect(record.items.last.name, 'Rice');
-      expect(record.estimationNotes, contains('qwen'));
-      expect(record.estimationNotes, contains('少吃了米饭'));
+      expect(record.estimationNotes, isNot(contains('qwen')));
+      expect(record.estimationNotes, contains('食物描述: 少吃了米饭'));
     });
   });
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fitlog_local/app.dart';
+import 'package:fitlog_local/core/localization/app_language.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
 import 'package:fitlog_local/core/widgets/glass_panel.dart';
 import 'package:fitlog_local/data/db/app_database.dart';
@@ -37,6 +38,7 @@ import 'package:fitlog_local/export/csv_export_service.dart';
 import 'package:fitlog_local/export/xlsx_export_service.dart';
 import 'package:fitlog_local/features/account/account_controller.dart';
 import 'package:fitlog_local/features/food/food_image_picker.dart';
+import 'package:fitlog_local/features/food/food_preview_page.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_page.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_recovery.dart';
 import 'package:flutter/material.dart';
@@ -901,6 +903,27 @@ void main() {
 
     expect(find.text('Preview AI Result'), findsOneWidget);
     expect(find.text('Chicken rice'), findsOneWidget);
+  });
+
+  testWidgets('Chinese food preview localizes fixed labels and readable date', (
+    tester,
+  ) async {
+    final languageController = LanguageController();
+    await languageController.setLanguage(AppLanguage.chinese);
+    addTearDown(languageController.dispose);
+    final record = _successResponse().draft!.toFoodRecord();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<LanguageController>.value(
+        value: languageController,
+        child: MaterialApp(home: FoodPreviewPage(initialRecord: record)),
+      ),
+    );
+
+    expect(find.text('AI 结果预览'), findsOneWidget);
+    expect(find.text('2026年7月1日'), findsOneWidget);
+    expect(find.text('食物明细', skipOffstage: false), findsOneWidget);
+    expect(find.text('Items', skipOffstage: false), findsNothing);
   });
 
   testWidgets('saving a photo draft returns the root destination to Food', (

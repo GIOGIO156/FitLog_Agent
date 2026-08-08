@@ -113,7 +113,7 @@ Home | Food | AI | Workout | Profile
 
 AI 页面在所有运行期 gate 满足时可以通过 Qwen 发送文本消息和最多三张图片附件。请求携带紧凑同会话文本和 draft artifact 摘要，使模型理解当前会话。服务端只在 auth、subscription 和 active-device 校验后构建上下文：routed read-only workflow 可以使用 Cloud Profile 和 App 文档片段；记录摘要必须先得到本机用户记录摘要授权。Assistant 消息可以显示“回答依据”面板，把参考文档、使用数据、缺少信息和受限操作分组为人类可读标签；参考文档只显示文件名级 chips，不显示完整内部路径，同会话历史也不作为回答依据展示。
 
-所有 AI Chat provider 回复都使用统一经过校验的 envelope：`output_type` 表示 text、Food Draft、Workout Draft 或 clarification，`message.text` 承载友好解释和确认提示，`draft` 承载结构化 artifact。普通 Chat 先使用高置信度确定性判断，无法确定时才由模型选择受限类型；明确的 Add Food 入口直接固定 Food Draft，不重复猜测意图。OpenAI 使用 strict Structured Outputs，Qwen 使用 JSON Mode；Gateway 再执行共享精确校验、语义一致性检查与最多一次受限纠错。只有最终校验通过后 App 才展示解释/artifact，文字不能声称生成了实际不存在的草稿，也绝不把 raw provider JSON 当作 assistant Markdown。Food Draft item totals 会在审查前归一化。
+所有 AI Chat provider 回复都使用统一经过校验的 envelope：`output_type` 表示 text、Food Draft、Workout Draft 或 clarification，`message.text` 承载友好解释和确认提示，`draft` 承载结构化 artifact。普通 Chat 先使用高置信度确定性判断，无法确定时才由模型选择受限类型；明确的 Add Food 入口直接固定 Food Draft，不重复猜测意图。两个入口的用户可见自然语言都跟随请求语言，单位、品牌、包装原名和必要专有名词可以保留原文；语言质量不能把原本可用的草稿变成技术失败。OpenAI 使用 strict Structured Outputs，Qwen 使用 JSON Mode；Gateway 再执行共享精确校验、语义一致性检查与最多一次受限纠错。只有最终校验通过后 App 才展示解释/artifact，文字不能声称生成了实际不存在的草稿，也绝不把 raw provider JSON 当作 assistant Markdown。Food Draft item totals 会在审查前归一化。
 
 每个 turn 只由一个 provider-neutral Chat decision 决定 capability、output family、授权 context、clarification 和当前附件策略。Clarification 是可持久化、typed、有限次数的状态，而不是反复出现的一句话：App 显示 allowlisted options，以稳定 request ID 精确消费一次回复，并推进原任务或返回真实系统错误。清晰的图片加文字请求在同一 turn 消费当前图片；只有后续确实仍需像素时，图片才保留在 account/session scoped 的运行期 lease 中。重新加载历史、进程重启、清空本地数据、退出或切换账号后必须重新附图。Planner、Provider、validation、attachment 和 clarification conflict 不能伪装成用户歧义。
 

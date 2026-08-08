@@ -246,7 +246,7 @@ class _WorkoutPlanPageState extends State<WorkoutPlanPage> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '${DateUtilsX.formatReadable(first.date)} · ${_timeFormat.format(startedAt)}',
+                  '${DateUtilsX.formatReadable(first.date, isChinese: strings.isChinese)} · ${_timeFormat.format(startedAt)}',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 14),

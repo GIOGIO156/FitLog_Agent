@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-08 AI Response Language Consistency
+
+### Changed
+
+- Added one shared target-language generation instruction across Add Food photo analysis and AI Chat provider paths. User-visible natural-language values now follow the requested language while required JSON keys, units, brands, original package names, and necessary proper nouns retain their required or original form.
+- Replaced the misleading structural-validation value previously written to `language_validation_status` with a privacy-safe, non-blocking language-quality classification. Language mismatch does not reject a valid draft, trigger correction, or change its output family.
+
+### Fixed
+
+- Localized readable dates, Food item/source headings, and preserved user-description labels in native Food review surfaces. AI provider names are no longer appended to user-facing estimation notes.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 282 Flutter tests passed, including Chinese Food Preview date/heading coverage and AI Chat/Add Food draft-handoff compatibility.
+- Deno type checks passed for both Edge entrypoints; 71 deterministic Edge tests passed across the shared output/language policy, AI Chat, and dedicated Food analysis suites. Configured ABI-split Release APKs were built successfully; no Edge Function was deployed, and no Document RAG corpus was regenerated or uploaded.
+
 ## 2026-08-05 Android Release Cloud Connectivity
 
 ### Fixed

@@ -5,6 +5,10 @@ import {
   validateFoodSemantics,
 } from "./food_capability.ts";
 import { foodDraftEvidencePolicy } from "./food_prompt_policy.ts";
+import {
+  classifyResponseLanguage,
+  userFacingLanguageInstruction,
+} from "./response_language_policy.ts";
 
 Deno.test("food fact priority prevents lower sources from overriding explicit input", () => {
   const understanding = mergeFoodUnderstanding([
@@ -69,10 +73,33 @@ Deno.test("semantic validator stays non-blocking while prompt owns scoped explic
     understanding: explicitFoodFactsFromText("这份食物蛋白质 20g"),
   });
   assertEquals(issues, []);
+  assertEquals(
+    classifyResponseLanguage("zh", [
+      draft.meal_name,
+      draft.estimation_notes,
+    ]),
+    "mismatched",
+  );
   const policy = foodDraftEvidencePolicy("zh");
   assert(policy.includes("只在对应食物和对应字段上优先"));
   assert(policy.includes("不要把局部事实误套到整餐"));
   assert(policy.includes("不要因为文字未提到就忽略图片中其他"));
+});
+
+Deno.test("response language policy guides generation without becoming a hard gate", () => {
+  const zh = userFacingLanguageInstruction("zh");
+  const en = userFacingLanguageInstruction("en");
+  assert(zh.includes("用户可见自然语言内容使用简洁中文"));
+  assert(zh.includes("品牌名"));
+  assert(en.includes("user-visible natural-language content"));
+  assertEquals(
+    classifyResponseLanguage("zh", ["三文鱼刺身", "Based on visual estimate"]),
+    "mixed",
+  );
+  assertEquals(
+    classifyResponseLanguage("en", ["Salmon sashimi", "Estimated portion"]),
+    "matched",
+  );
 });
 
 Deno.test("macro energy differences are handled as model uncertainty, not hard failure", () => {
