@@ -349,6 +349,8 @@ class WorkoutRepository {
     return _sessionsFromRows(rows);
   }
 
+  Future<void> refreshOfficialRecordsForDate(String day) async {}
+
   Future<List<WorkoutSession>> getWorkoutSessionsBetween({
     required String startDate,
     required String endDate,
@@ -910,6 +912,35 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
   }
 
   @override
+  Future<void> refreshOfficialRecordsForDate(String day) async {
+    final accountId = _requireAccountId();
+    setActiveAccountId(accountId);
+    await activeDeviceRepository.assertActive();
+    try {
+      final rows = await _fetchCloudWorkoutSessionsByDate(
+        day,
+        accountId: accountId,
+      );
+      await _deleteStaleConfirmedWorkoutRowsForDate(
+        accountId: accountId,
+        day: day,
+        keepCloudIds: rows.map((row) => row['id'].toString()).toSet(),
+      );
+      for (final row in rows) {
+        await cacheConfirmedWorkoutSession(
+          _workoutSessionFromCloudRow(row),
+          accountId: accountId,
+          cloudId: row['id'].toString(),
+          recordVersion: _recordVersion(row),
+          cloudUpdatedAt: _updatedAt(row),
+        );
+      }
+    } catch (error) {
+      throw _cloudRecordExceptionFor('workout_revalidate_failed', error);
+    }
+  }
+
+  @override
   Future<List<WorkoutSession>> getAllWorkoutSessions() async {
     final accountId = runtimeContext.accountId;
     if ((accountId ?? '').isEmpty) {
@@ -1081,17 +1112,81 @@ class CloudBackedWorkoutRepository extends WorkoutRepository {
   }
 
   Future<List<Map<String, dynamic>>> _fetchCloudWorkoutSessionsByDate(
-    String day,
-  ) async {
-    final rows = await client
+    String day, {
+    String? accountId,
+  }) async {
+    var query = client
         .from('workout_sessions')
         .select('*, workout_sets(*)')
-        .eq('date', day)
+        .eq('date', day);
+    if ((accountId ?? '').isNotEmpty) {
+      query = query.eq('account_id', accountId!);
+    }
+    final rows = await query
         .filter('deleted_at', 'is', null)
         .order('created_at', ascending: false);
     return rows
         .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
         .toList();
+  }
+
+  Future<void> _deleteStaleConfirmedWorkoutRowsForDate({
+    required String accountId,
+    required String day,
+    required Set<String> keepCloudIds,
+  }) async {
+    final db = await _database.database;
+    if (keepCloudIds.isEmpty) {
+      await db.transaction((txn) async {
+        await txn.delete(
+          'workout_sets',
+          where: '''
+            workout_session_id IN (
+              SELECT id FROM workout_sessions
+              WHERE account_id = ?
+                AND date = ?
+                AND cache_confirmed = 1
+                AND cloud_id IS NOT NULL
+            )
+          ''',
+          whereArgs: <Object?>[accountId, day],
+        );
+        await txn.delete(
+          'workout_sessions',
+          where:
+              'account_id = ? AND date = ? AND cache_confirmed = 1 AND cloud_id IS NOT NULL',
+          whereArgs: <Object?>[accountId, day],
+        );
+      });
+      return;
+    }
+
+    final placeholders = List<String>.filled(
+      keepCloudIds.length,
+      '?',
+    ).join(',');
+    final args = <Object?>[accountId, day, ...keepCloudIds];
+    await db.transaction((txn) async {
+      await txn.rawDelete('''
+        DELETE FROM workout_sets
+        WHERE workout_session_id IN (
+          SELECT id FROM workout_sessions
+          WHERE account_id = ?
+            AND date = ?
+            AND cache_confirmed = 1
+            AND cloud_id IS NOT NULL
+            AND cloud_id NOT IN ($placeholders)
+        )
+        ''', args);
+      await txn.rawDelete('''
+        DELETE FROM workout_sessions
+        WHERE account_id = ?
+          AND date = ?
+          AND cache_confirmed = 1
+          AND cloud_id IS NOT NULL
+          AND cloud_id NOT IN ($placeholders)
+        ''', args);
+    });
   }
 
   Future<List<Map<String, dynamic>>> _fetchAllCloudWorkoutSessions() async {

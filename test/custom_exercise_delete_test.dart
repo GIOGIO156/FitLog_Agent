@@ -18,6 +18,7 @@ import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/daily_summary_service.dart';
 import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
+import 'package:fitlog_local/domain/services/home_dashboard_coordinator.dart';
 import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
 import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
 import 'package:fitlog_local/export/csv_export_service.dart';
@@ -110,6 +111,10 @@ Widget _buildAddWorkoutTestApp(
     trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
     dietPlanStrategyService: dietPlanStrategyService,
   );
+  final homeDashboardCoordinator = HomeDashboardCoordinator(
+    dailySummaryService: dailySummaryService,
+    profileRepository: profileRepository,
+  );
   final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
 
   return MultiProvider(
@@ -122,6 +127,7 @@ Widget _buildAddWorkoutTestApp(
           workoutDraftRepository: workoutDraftRepository,
           profileRepository: profileRepository,
           dailySummaryService: dailySummaryService,
+          homeDashboardCoordinator: homeDashboardCoordinator,
           xlsxExportService: XlsxExportService(
             foodRepository: foodRepository,
             customExerciseRepository: customExerciseRepository,

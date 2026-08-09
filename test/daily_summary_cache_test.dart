@@ -14,8 +14,8 @@ import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('AppDatabase schema version retires temporary AI operation storage', () {
-    expect(AppDatabase.dbVersion, 20);
+  test('AppDatabase schema version includes account-bound profile cache', () {
+    expect(AppDatabase.dbVersion, 21);
   });
 
   test(
@@ -178,6 +178,8 @@ class _FailingDailySummaryCacheRepository extends DailySummaryCacheRepository {
   Future<void> upsertConfirmedSummary({
     required String accountId,
     required DailySummary summary,
+    DateTime? sourceUpdatedAt,
+    DateTime? cloudUpdatedAt,
   }) async {
     throw StateError('cache write failed');
   }

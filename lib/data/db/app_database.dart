@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 20;
+  static const int dbVersion = 21;
 
   Database? _database;
 
@@ -34,6 +34,7 @@ class AppDatabase {
         await _createTables(db);
       },
       onOpen: (Database db) async {
+        await _ensureUserProfileAccountColumn(db);
         await _ensureWorkoutDraftCommitColumns(db);
         await _createWorkoutPlanCommitTable(db);
         await _repairWorkoutPlanCommitStatuses(db);
@@ -165,6 +166,9 @@ class AppDatabase {
         if (oldVersion < 20) {
           await _dropRetiredAiPendingOperationsTable(db);
         }
+        if (oldVersion < 21) {
+          await _ensureUserProfileAccountColumn(db);
+        }
       },
     );
   }
@@ -173,6 +177,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE user_profile (
         id INTEGER PRIMARY KEY,
+        account_id TEXT,
         nickname TEXT,
         age INTEGER NOT NULL,
         height_cm REAL NOT NULL,
@@ -446,6 +451,10 @@ class AppDatabase {
       'ALTER TABLE user_profile ADD COLUMN body_fat_percent REAL',
     );
     await db.execute('ALTER TABLE user_profile ADD COLUMN waist_cm REAL');
+  }
+
+  Future<void> _ensureUserProfileAccountColumn(Database db) async {
+    await _addColumnIfMissing(db, 'user_profile', 'account_id TEXT');
   }
 
   Future<void> _migrateWeightLogsForBodyMetrics(Database db) async {

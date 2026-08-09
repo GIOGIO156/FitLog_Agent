@@ -158,7 +158,9 @@ Transition rules:
 - When the five-tab shell is entered for a recovered signed-in session, the app must bind Food, Workout, and Profile repositories to the auth-session account id before the active-device runtime context finishes claiming or refreshing. This lets Home, Food, and Workout read matching local account caches on the first current-date render instead of showing an empty day until the user changes dates.
 - First-render data is not warm cache. If no matching confirmed Home cache exists, the first signed-in Home render may wait for a small first-render bundle: account/Cloud Profile basics, the selected-day Home summary/read model, and only the data required by the default visible surface. The app should not render an empty Home and then replace it with the real Home while the user is watching.
 - If a matching confirmed Home cache exists, render it immediately and validate in the background. Matching cloud data should not visibly refresh Home; changed cloud data should update only the affected values without a full-page loading reset.
+- Home selected-day data is owned by a single dashboard coordinator keyed by account and date. It reads the local confirmed summary entry first, keeps any displayed snapshot mounted during revalidation, and accepts a cloud/compute result only while the account epoch and selected date still match. If no matching signed-in Home cache exists and official cloud is not ready yet, Home stays in a first-load state rather than rendering a fake zero-summary.
 - Supabase session recovery, subscription refresh, Cloud Profile refresh, and visible-window Cloud Records refresh should run in the background when matching local cache exists.
+- Cloud Profile recovery and subscription recovery are independent startup slices. Subscription lookup may continue to gate AI sending, but it must not delay a successful Cloud Profile load or the Home/Profile context derived from it.
 - `auth_required` during background refresh is a recoverable sync/session state for cache-backed UI, not a reason to replace confirmed Home or Body Trends content with a full-page error.
 - `auth_required` for an official foreground write blocks that write and should surface a clear retry/login path.
 - If no signed-in account or no matching account-bound cache exists, cloud-backed official-record areas should show the login gate or first-load state.
@@ -179,6 +181,7 @@ Rules:
 
 - The recent 30-day window is a retention priority and warm target, not a requirement to download 30 days before showing Home.
 - Warm cache should be account-bound, cancellable on sign-out/account switch, and throttled so it does not compete with visible interactions.
+- Warm cache starts only after the selected Home surface has rendered a stable snapshot and official cloud runtime is usable. It is cancelled by account changes and must not share the foreground selected-day single-flight slot.
 - Warm cache must not turn an already rendered page back into loading.
 - If warm cache discovers data for the currently visible surface, update only the affected read model and only when metadata or payload differs.
 - Detailed food/workout records are heavier than body metric logs and summaries, so they should be warmed after lightweight summaries and body metrics.
@@ -198,6 +201,7 @@ Rules:
 - If data changed, apply the smallest local read-model update needed for the visible surface.
 - Failed background refresh keeps the existing confirmed read model visible and records a refresh failure state.
 - Refresh loops should be throttled/debounced so startup and resume do not repeatedly query unchanged visible data.
+- The selected-day Home coordinator uses one foreground request per `(account_id, date)`, a 5-minute confirmed-summary freshness window, and a 45-second automatic failure backoff. App resume and active-device readiness request revalidation through that coordinator instead of broadcasting a global refresh that resets the page.
 - Account-level Cloud Profile and subscription refresh must have freshness and failure backoff. A default implementation may use roughly 5 minutes of success freshness and roughly 45 seconds of failure backoff; explicit user refresh may bypass freshness but should still record failure time to avoid automatic loops.
 - Background refresh must not reset `recovering_cached` pages into full-page loading. Matching results do not visibly refresh the page; changed results update only the affected fields or cards.
 

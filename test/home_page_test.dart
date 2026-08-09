@@ -18,6 +18,7 @@ import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/daily_summary_service.dart';
 import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
+import 'package:fitlog_local/domain/services/home_dashboard_coordinator.dart';
 import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
 import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
 import 'package:fitlog_local/export/csv_export_service.dart';
@@ -144,6 +145,45 @@ void main() {
     expect(strategyLabelFinder, findsOneWidget);
     expect(tester.getTopLeft(strategyLabelFinder).dy, lessThan(844));
     expect(find.text("Today's Records"), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('home keeps rendered dashboard after legacy refresh event', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _buildHomeTestApp(
+        profile: UserProfile.defaults.copyWith(nickname: 'Chris'),
+        foodRecords: const <FoodRecord>[
+          FoodRecord(
+            date: _referenceDay,
+            mealName: 'Lunch',
+            totalWeightG: 300,
+            caloriesKcal: 720,
+            proteinG: 45,
+            carbsG: 90,
+            fatG: 20,
+            estimationNotes: '',
+            source: 'manual',
+          ),
+        ],
+        workoutSessions: const <WorkoutSession>[],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ListView), findsOneWidget);
+
+    final context = tester.element(find.byType(HomePage));
+    context.read<RefreshNotifier>().markDataChanged();
+    await tester.pump();
+
+    expect(find.byType(ListView), findsOneWidget);
+    expect(find.textContaining('720', findRichText: true), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -383,6 +423,10 @@ Widget _buildHomeTestApp({
     trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
     dietPlanStrategyService: dietPlanStrategyService,
   );
+  final homeDashboardCoordinator = HomeDashboardCoordinator(
+    dailySummaryService: dailySummaryService,
+    profileRepository: profileRepository,
+  );
   final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
   final selectedDateNotifier = SelectedDateNotifier()..setDate(_referenceDay);
   final languageController = LanguageController();
@@ -397,6 +441,7 @@ Widget _buildHomeTestApp({
           workoutDraftRepository: workoutDraftRepository,
           profileRepository: profileRepository,
           dailySummaryService: dailySummaryService,
+          homeDashboardCoordinator: homeDashboardCoordinator,
           xlsxExportService: XlsxExportService(
             foodRepository: foodRepository,
             customExerciseRepository: customExerciseRepository,
@@ -425,6 +470,9 @@ Widget _buildHomeTestApp({
         ),
       ),
       ChangeNotifierProvider<RefreshNotifier>(create: (_) => RefreshNotifier()),
+      ChangeNotifierProvider<HomeDashboardCoordinator>.value(
+        value: homeDashboardCoordinator,
+      ),
       ChangeNotifierProvider<RootTabController>(
         create: (_) => RootTabController(),
       ),

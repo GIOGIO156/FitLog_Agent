@@ -100,6 +100,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - When rebuilding APKs for manual testing, default to the configured split build:
   - `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`
   Use an unconfigured APK build only when explicitly requested.
+- When building Release APKs, use the configured split build:
+  - `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`
+  Release builds must run in an environment that can write both `%APPDATA%\.flutter_tool_state` and the Flutter SDK cache. If a prior Flutter build was interrupted or timed out, first check for active `flutter`, `dart`, `gradle`, or relevant `java` build processes. Only when no active Flutter build owns them, remove the exact orphan lock files `C:\src\flutter\bin\cache\lockfile` and `C:\src\flutter\bin\cache\flutter.bat.lock`, then run the Release command once and keep reading the real build output. Do not restart the build just because the UI appears idle; first-time Release AOT, Gradle cache work, and three ABI outputs are normal time costs. The current Android `release` build type signs with the debug signing config for local installability; do not introduce or change production signing unless explicitly requested.
 - For audit/refactor tasks, report risks before modifying code.
 
 ## FitLog SQLite Migration Rules

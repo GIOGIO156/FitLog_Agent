@@ -10,7 +10,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 | Storage | Purpose | Authority and lifecycle |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, workout commit ledger, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v20. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
+| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, workout commit ledger, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v21. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
 | Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `workout_plan_commits`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
 | SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
@@ -20,7 +20,7 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `20`.
+Current local SQLite schema version: `21`.
 
 Foreign keys are enabled with:
 
@@ -54,6 +54,7 @@ Local migrations must remain additive and compatible.
 | 18 | Extends the local workout mutation ledger with the `abandoned` terminal state used by process-start recovery. The idempotent upgrade and open-time repair preserve existing committed rows. |
 | 19 | Reserved by an intermediate AI delivery experiment; the final product scope does not use its temporary table. |
 | 20 | Drops the retired intermediate `ai_pending_operations` table if present. This compatibility cleanup removes only transient AI delivery metadata and preserves official records, profile data, chat history, and caches. |
+| 21 | Adds nullable `user_profile.account_id` so the local Cloud Profile display cache is bound to the recovered account. Legacy rows are adopted only when the saved Cloud Profile cache metadata already matches the current auth account. |
 
 Compatibility rules:
 
@@ -75,6 +76,7 @@ Important fields:
 | Field | Meaning |
 | --- | --- |
 | `id` | Singleton profile id. |
+| `account_id` | Nullable account scope for the local Cloud Profile display cache. `NULL` remains the pre-login/legacy local profile scope; signed-in reads require the active account unless the account controller explicitly adopts a metadata-matched legacy row. |
 | `nickname` | Local-only UI nickname in the copied Local implementation. In Agent V1, account display name belongs to Cloud Profile. |
 | `age` | BMR and under-18 protection. |
 | `height_cm` | BMR input. |
@@ -106,7 +108,7 @@ Important fields:
 | `last_macro_self_check_at` | Self-check cooldown timestamp/date. |
 | `created_at`, `updated_at` | ISO timestamps. |
 
-Agent V1 note: after login, Cloud Profile becomes authoritative. The local `user_profile` table may remain as compatibility/cache/migration surface, but formal account-bound profile changes should be saved to cloud.
+Agent V1 note: after login, Cloud Profile becomes authoritative. The local `user_profile` table may remain as compatibility/cache/migration surface, but formal account-bound profile changes should be saved to cloud. Signed-in display reads are account-scoped so one account's cached profile is not shown as another account's Home/Profile context.
 
 ### `food_records`
 

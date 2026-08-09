@@ -10,7 +10,7 @@ FitLog 使用本地 SQLite 保存兼容状态、确定性本地服务数据、�
 
 | 存储 | 用途 | 权威与生命周期 |
 | --- | --- | --- |
-| SQLite / `sqflite` | 本地兼容 profile/cache、校准、策略复盘、自定义动作、训练草稿、训练提交 ledger、账号绑定 confirmed read model 和选中日期 `daily_summary_cache`。 | Schema v20。登录后正式记录在这里不具权威；confirmed cache 可重建且有界。 |
+| SQLite / `sqflite` | 本地兼容 profile/cache、校准、策略复盘、自定义动作、训练草稿、训练提交 ledger、账号绑定 confirmed read model 和选中日期 `daily_summary_cache`。 | Schema v21。登录后正式记录在这里不具权威；confirmed cache 可重建且有界。 |
 | Supabase Cloud Records | `body_metric_logs`、`food_records`/`food_items`、`workout_sessions`/`workout_sets`、`workout_plan_commits` 和 `daily_summaries`。 | 登录后正式记录的权威来源；cloud-backed repository 协调写入和本地 read-model 更新。 |
 | SharedPreferences | 语言/主题和轻量 UI preference、每账号记录摘要权限、Cloud Profile/subscription display cache、注册 PKCE verifier 和小型 picker-recovery marker。 | 设备本地运行期/显示状态，不是业务记录同步。 |
 | 本地文件 | App documents directory 中的 XLSX 和 CSV ZIP 导出。 | 用户控制的派生文件，不是 cloud source of truth。 |
@@ -20,7 +20,7 @@ FitLog 使用本地 SQLite 保存兼容状态、确定性本地服务数据、�
 
 当前本地数据库名：`fitlog_local.db`。
 
-当前本地 SQLite schema version：`20`。
+当前本地 SQLite schema version：`21`。
 
 Foreign keys 启用方式：
 
@@ -54,6 +54,7 @@ PRAGMA foreign_keys = ON
 | 18 | 为本地训练 mutation ledger 增加进程启动恢复所用的 `abandoned` 终态；幂等 upgrade 与 open-time repair 会保留已有 committed rows。 |
 | 19 | 中间 AI 交付实验曾保留该版本；最终产品范围不使用其中的临时表。 |
 | 20 | 如果存在已退役的中间表 `ai_pending_operations`，则删除该表。该兼容清理只移除临时 AI 交付 metadata，不影响正式记录、Profile、Chat history 或 cache。 |
+| 21 | 新增 nullable `user_profile.account_id`，让本地 Cloud Profile 展示 cache 绑定到恢复出的账号。旧 rows 只有在已保存的 Cloud Profile cache metadata 已经匹配当前 auth 账号时，才会被采纳到该账号。 |
 
 兼容规则：
 
@@ -75,6 +76,7 @@ PRAGMA foreign_keys = ON
 | Field | Meaning |
 | --- | --- |
 | `id` | Singleton profile id。 |
+| `account_id` | 本地 Cloud Profile 展示 cache 的 nullable 账号作用域。`NULL` 保留给登录前/legacy 本地 profile；登录态读取必须匹配 active account，除非账号控制器明确采纳 metadata 已匹配的 legacy row。 |
 | `nickname` | 复制来的 Local 实现中的本地 UI 昵称。Agent V1 中账号展示名属于 Cloud Profile。 |
 | `age` | BMR 和未成年人保护。 |
 | `height_cm` | BMR 输入。 |
@@ -106,7 +108,7 @@ PRAGMA foreign_keys = ON
 | `last_macro_self_check_at` | self-check 冷却日期/时间。 |
 | `created_at`, `updated_at` | ISO 时间戳。 |
 
-Agent V1 说明：登录后 Cloud Profile 成为权威版本。Local `user_profile` 可以作为兼容、缓存或迁移表保留，但正式账号绑定 Profile 修改应保存到云端。
+Agent V1 说明：登录后 Cloud Profile 成为权威版本。Local `user_profile` 可以作为兼容、缓存或迁移表保留，但正式账号绑定 Profile 修改应保存到云端。登录态展示读取按账号过滤，避免一个账号的 cached profile 被当成另一个账号的 Home/Profile 上下文。
 
 ### `food_records`
 

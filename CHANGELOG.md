@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-09 Home Startup Data Orchestration
+
+### Changed
+
+- Moved Home selected-day loading from page-owned `FutureBuilder` resets to an account/date dashboard coordinator. Matching confirmed cache now renders immediately, background revalidation keeps the dashboard mounted, repeated startup/resume triggers single-flight per `(account_id, date)`, and unchanged payloads do not publish a visible refresh.
+- Split summary reads into explicit local-cache entry, cloud projection entry, and force-revalidated rebuild paths. Food and workout cloud-backed repositories can now refresh the selected day from official cloud records even when local confirmed rows already exist.
+- Decoupled Cloud Profile recovery from subscription loading, delayed warm summary cache until Home has a stable snapshot and official cloud runtime is ready, and lazily mounts non-visited root tabs so hidden tabs do not participate in first Home refresh.
+- Bumped local SQLite to v21 with `user_profile.account_id` so cached Cloud Profile display data is account-bound. Legacy rows are adopted only when saved Cloud Profile cache metadata already matches the recovered account.
+- Added a concise Release APK build rule to `AGENTS.md`: run the configured Release split build in an environment that can write Flutter tool state and SDK cache, check for active build processes after interrupted attempts, and remove only confirmed orphan Flutter lock files before rebuilding.
+
+### Fixed
+
+- Fixed the signed-in Home startup/recovery experience where local cache, active-device bind, Cloud Profile recovery, write repair, warm cache, and global refresh events could replace an already rendered dashboard with full-page loading.
+- Fixed the summary revalidation gap where selected-day cloud refresh could silently use only local food/workout rows when any local row existed.
+
+### Validation
+
+- Added Home regression coverage proving a legacy global refresh event no longer removes the rendered dashboard.
+- Ran targeted `flutter test test\home_page_test.dart test\phase2_account_controller_test.dart test\daily_summary_cloud_cache_test.dart test\daily_summary_cache_test.dart`.
+- Ran `dart format lib test`, `flutter analyze`, and `flutter test`; analysis reported no issues and all 301 Flutter tests passed.
+- Regenerated the local stable-document corpus as build `991d4101ce8089cefa69d95d` with 633 chunks from 21 sources; local embeddings reached 633/633 parity, and no Document RAG upload or cloud activation was performed.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; after removing orphan Flutter lock files from an interrupted build, the elevated Gradle build completed in 34.5 seconds and produced `armeabi-v7a`, `arm64-v8a`, and `x86_64` APKs. The outputs were copied to `artifacts/release-apks/` as versioned `1.0.37+41` binaries, and `SHA256SUMS.txt` was refreshed.
+
 ## 2026-08-09 Reliable Accepted AI Delivery
 
 ### Changed

@@ -60,7 +60,7 @@ The primary signal depends on the saved calculation mode:
 - In `energy_ratio`, kcal target, intake, and remaining values are primary.
 - In `gram_per_kg`, macro gram targets are primary and kcal is auxiliary.
 
-For a recovered signed-in account, Home may render matching account-bound confirmed cache before active-device refresh completes. It must not show another account's cache or require a date switch to recover current-day content. Compact English strategy cards keep the strategy name and hyphen-prefixed detail on separate lines when space is narrow.
+For a recovered signed-in account, Home may render matching account-bound confirmed cache before active-device refresh completes. Once a dashboard is visible, background refresh keeps the page mounted; matching cloud data does not flash back to loading, and changed cloud data updates the affected values in place. If no matching signed-in cache exists, Home stays in a first-load state until the selected-day bundle is real rather than showing a fake zero-summary. It must not show another account's cache or require a date switch to recover current-day content. Compact English strategy cards keep the strategy name and hyphen-prefixed detail on separate lines when space is narrow.
 
 Home remains a dashboard rather than an AI workbench. AI questions route to the AI tab unless a future product decision explicitly introduces a Home-specific workflow.
 

@@ -60,7 +60,7 @@ Home 是选中日期的 dashboard，集中展示日期、当前饮食 phase/mode
 - `energy_ratio` 以 kcal 目标、摄入和剩余为主。
 - `gram_per_kg` 以宏量营养克数目标为主，kcal 只是辅助。
 
-账号恢复后，Home 可以在 active-device refresh 完成前先展示与当前账号匹配的 confirmed cache；它不得展示其他账号 cache，也不应要求用户切换日期才能恢复当天内容。英文紧凑 strategy 卡在窄屏上将 strategy 名称与带连字符的细节分行显示。
+账号恢复后，Home 可以在 active-device refresh 完成前先展示与当前账号匹配的 confirmed cache。一旦 dashboard 已经显示，后台刷新会保持页面挂载；云端数据一致时不会闪回 loading，云端数据变化时只就地更新受影响数值。没有匹配登录态 cache 时，Home 会保持首次加载，直到选中日期的小数据包真实可用，而不是先显示假的 0 summary。它不得展示其他账号 cache，也不应要求用户切换日期才能恢复当天内容。英文紧凑 strategy 卡在窄屏上将 strategy 名称与带连字符的细节分行显示。
 
 Home 继续是 dashboard，不变成 AI 工作台。除非未来明确批准 Home 专用 workflow，AI 问题都进入 AI tab。
 

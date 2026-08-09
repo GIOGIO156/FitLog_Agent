@@ -9,6 +9,7 @@ import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../models/calorie_calibration_state.dart';
 import '../models/daily_summary.dart';
+import '../models/daily_summary_entry.dart';
 import '../models/diet_adjustment_review.dart';
 import '../models/training_frequency_self_check_result.dart';
 import '../models/user_profile.dart';
@@ -211,21 +212,57 @@ class DailySummaryService {
     required String? accountId,
     required String day,
   }) async {
+    final entry = await getCachedOrCloudSummaryEntry(
+      accountId: accountId,
+      day: day,
+    );
+    return entry?.summary;
+  }
+
+  Future<DailySummaryEntry?> getLocalCachedSummaryEntry({
+    required String? accountId,
+    required String day,
+  }) async {
     if ((accountId ?? '').isEmpty) {
       return null;
     }
     final effectiveAccountId = accountId!;
-    if (_dailySummaryCacheRepository != null) {
-      final local = await _dailySummaryCacheRepository.getCachedSummary(
-        accountId: effectiveAccountId,
-        date: day,
-      );
-      if (local != null) {
-        return local;
-      }
-    }
+    return _dailySummaryCacheRepository?.getCachedEntry(
+      accountId: effectiveAccountId,
+      date: day,
+    );
+  }
 
-    final cloud = await _dailySummaryCloudRepository?.fetchSummary(
+  Future<DailySummaryEntry?> getCloudSummaryEntry({
+    required String? accountId,
+    required String day,
+  }) async {
+    if ((accountId ?? '').isEmpty) {
+      return null;
+    }
+    return _dailySummaryCloudRepository?.fetchSummaryEntry(
+      accountId: accountId!,
+      date: day,
+    );
+  }
+
+  Future<DailySummaryEntry?> getCachedOrCloudSummaryEntry({
+    required String? accountId,
+    required String day,
+  }) async {
+    final local = await getLocalCachedSummaryEntry(
+      accountId: accountId,
+      day: day,
+    );
+    if (local != null) {
+      return local;
+    }
+    if ((accountId ?? '').isEmpty) {
+      return null;
+    }
+    final effectiveAccountId = accountId!;
+
+    final cloud = await _dailySummaryCloudRepository?.fetchSummaryEntry(
       accountId: effectiveAccountId,
       date: day,
     );
@@ -233,7 +270,9 @@ class DailySummaryService {
       try {
         await _dailySummaryCacheRepository.upsertConfirmedSummary(
           accountId: effectiveAccountId,
-          summary: cloud,
+          summary: cloud.summary,
+          sourceUpdatedAt: cloud.sourceUpdatedAt,
+          cloudUpdatedAt: cloud.cloudUpdatedAt ?? cloud.builtAt,
         );
       } catch (_) {
         // Local cache is an acceleration layer; cloud-confirmed reads still win.
@@ -242,16 +281,36 @@ class DailySummaryService {
     return cloud;
   }
 
+  Future<void> refreshOfficialRecordsForDate({
+    required String? accountId,
+    required String day,
+  }) async {
+    if ((accountId ?? '').isEmpty) {
+      return;
+    }
+    await Future.wait<void>(<Future<void>>[
+      _foodRepository.refreshOfficialRecordsForDate(day),
+      _workoutRepository.refreshOfficialRecordsForDate(day),
+    ]);
+  }
+
   Future<DailySummary> getSummaryForDateAndCache({
     required String day,
     required String? accountId,
+    bool refreshOfficialRecords = false,
+    int? profileVersion,
   }) async {
+    if (refreshOfficialRecords) {
+      await refreshOfficialRecordsForDate(accountId: accountId, day: day);
+    }
     final summary = await getSummaryForDate(day);
+    final sourceUpdatedAt = DateTime.now().toUtc();
     if ((accountId ?? '').isNotEmpty && _dailySummaryCacheRepository != null) {
       try {
         await _dailySummaryCacheRepository.upsertConfirmedSummary(
           accountId: accountId!,
           summary: summary,
+          sourceUpdatedAt: sourceUpdatedAt,
         );
       } catch (_) {
         // Summary cache accelerates Home reads; it must not block live summary.
@@ -259,9 +318,12 @@ class DailySummaryService {
     }
     if ((accountId ?? '').isNotEmpty && _dailySummaryCloudRepository != null) {
       try {
-        await _dailySummaryCloudRepository.upsertSummary(
+        await _dailySummaryCloudRepository.upsertSummaryEntry(
           accountId: accountId!,
           summary: summary,
+          sourceUpdatedAt: sourceUpdatedAt,
+          profileVersion: profileVersion,
+          algorithmVersion: 'daily_summary_v1',
         );
       } catch (_) {
         // Daily summaries are rebuildable read models; record writes remain source.

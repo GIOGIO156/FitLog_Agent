@@ -158,7 +158,9 @@
 - 已恢复登录态并进入五栏时，App 必须先把 Food、Workout 和 Profile repositories 绑定到 auth session 中的账号 id，再等待 active-device 运行期上下文 claim 或刷新完成。这样 Home、Food、Workout 首次渲染当前日期时可以读取匹配账号的本地 cache，不会先显示空白记录并且只有切换日期后才恢复。
 - 首屏必需数据不属于 warm cache。如果没有匹配的已确认 Home cache，第一次登录后的 Home 首次渲染可以等待一个很小的首屏数据包：账号/Cloud Profile 基础状态、选中日期 Home summary/read model，以及默认可见展示面必需的数据。App 不应先渲染空 Home，再在用户注视下替换成真实 Home。
 - 如果存在匹配的已确认 Home cache，应立即渲染并在后台校验云端。云端数据一致时不应可见刷新 Home；云端数据变化时，也只更新受影响数值，不做整页 loading reset。
+- Home 选中日期数据由一个按账号和日期 keyed 的 dashboard coordinator 负责。它先读取本地 confirmed summary entry，在 revalidation 期间保持已显示 snapshot 挂载，并且只有 account epoch 与选中日期仍匹配时才接受云端/计算结果。如果登录态没有匹配 Home cache 且 official cloud 还未 ready，Home 保持首次加载状态，而不是渲染假的 0 summary。
 - 如果存在匹配的本地 cache，Supabase session 恢复、订阅刷新、Cloud Profile 刷新和当前可见窗口 Cloud Records 刷新应在后台进行。
+- Cloud Profile 恢复和订阅恢复是独立启动 slice。订阅查询可以继续 gate AI 发送，但不能延迟已经成功的 Cloud Profile load，或依赖该 Profile 的 Home/Profile context。
 - 后台刷新期间的 `auth_required` 是 cache-backed UI 的可恢复同步/session 状态，不能把已确认 Home 或 Body Trends 内容替换成整页错误。
 - 前台正式写入遇到 `auth_required` 时，应阻断该写入，并给出清晰的重试/登录路径。
 - 没有登录账号或没有匹配账号 cache 时，cloud-backed 正式记录区域应显示登录 gate 或首次加载状态。
@@ -179,6 +181,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 
 - 最近 30 天窗口是保留优先级和预热目标，不是显示 Home 前必须下载 30 天的条件。
 - Warm cache 必须绑定账号；退出登录或切换账号时可取消，并且应节流，避免抢占当前交互。
+- Warm cache 只有在 Home 选中展示面已经稳定渲染出 snapshot 且 official cloud runtime 可用后才启动。切换账号会取消旧 warm 任务，并且 warm cache 不得占用前台选中日期的 single-flight 槽位。
 - Warm cache 不得把已经渲染的页面重新打回 loading。
 - 如果 warm cache 发现当前可见展示面的数据变化，只在 metadata 或 payload 不一致时更新受影响 read model。
 - food/workout detailed records 比 body metric logs 和 summaries 重，应排在轻量 summaries 和身体指标之后预热。
@@ -198,6 +201,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - 数据变化时，只对当前可见展示面应用最小本地 read-model 更新。
 - 后台刷新失败时，保留已显示的已确认 read model，并记录刷新失败状态。
 - refresh loop 应节流/防抖，避免启动和 resume 反复查询未变化的可见数据。
+- Home 选中日期 coordinator 对每个 `(account_id, date)` 只允许一个前台请求，confirmed summary freshness window 为 5 分钟，自动失败退避为 45 秒。App resume 和 active-device ready 通过该 coordinator 请求 revalidation，而不是广播会重置页面的全局 refresh。
 - 账号级 Cloud Profile 和订阅刷新必须有 freshness 和失败退避。默认实现可使用约 5 分钟成功 freshness 和约 45 秒失败退避；用户显式刷新可以绕过 freshness，但仍要记录失败时间，避免自动循环。
 - 后台刷新不能把 `recovering_cached` 页面重置为整页 loading。刷新结果一致时不触发可见刷新；结果变化时只更新对应字段或卡片。
 
