@@ -24,7 +24,7 @@ AI 只生成草稿、建议、复盘和解释。
 - 饮食记录：手动录入、AI 食物分析、Food Draft 预览编辑、复制到日期和删除。
 - 训练记录：训练草稿、正式训练记录、自定义动作、力量和有氧热量估算。
 - Profile 与目标：Cloud Profile、饮食阶段、`energy_ratio`、`gram_per_kg`、carb cycling、carb tapering 和身体指标记录。
-- AI Chat：底部导航正中间的 AI 页面；当前发布通过千问/Qwen 支持自然中英文本和最多三张当前图片，由单一 Chat decision 选择回答或可编辑草稿，并以可恢复的 typed clarification 推进真正需要补充的信息；同时保留 ChatGPT/OpenAI adapter 供未来合法配置。
+- AI Chat：底部导航正中间的 AI 页面；当前发布通过千问/Qwen 支持自然中英文本和最多三张当前图片，由单一 Chat decision 选择回答或可编辑草稿，并以可恢复的 typed clarification 推进真正需要补充的信息；服务器确认接管后，用户切后台或杀掉 App 再回来也能看到处理中、成功或可重试失败状态；同时保留 ChatGPT/OpenAI adapter 供未来合法配置。
 - 用餐决策：用户主动询问“今天还能吃什么”“这个外卖能点吗”等问题时，AI 使用必要的 Profile、summary 和上下文给建议。
 - 周复盘：AI 可以总结近期饮食、训练、体重趋势和数据缺口，但不能自动修改目标或策略。
 - App 规则问答：Document RAG 用于解释 FitLog 的算法、字段、隐私和 Agent 边界。
@@ -38,7 +38,7 @@ AI 只生成草稿、建议、复盘和解释。
 - AI 输出在确认前只是草稿、建议、复盘或解释。
 - AI 不会静默写入正式饮食、训练、Profile 或目标数据。
 - AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
-- 图片请求最多三张；默认不长期保存原图或 base64。
+- 图片请求最多三张；服务器接管前不会长期保存原图或 base64，接管后的异步请求只把压缩图短期保存到私有临时存储，用于恢复和重试。
 - Clarification option 只在当前 session 的 pending state 内生效；planner/provider/validation 故障显示真实系统错误，不伪装为用户歧义。
 - V1 不做用户业务数据向量库、长期 embedding、semantic memory 或 GraphRAG。
 - V1 不是医疗诊断、治疗建议或儿童青少年治疗指导工具。
@@ -73,7 +73,7 @@ diet_plan_strategy:
 
 ### 云端与本地数据
 
-登录后，正式 Profile、身体指标、饮食、训练和 daily summaries 以云端为权威来源。本地 SQLite 保留为 partial cache、草稿存储和运行期加速层。FitLog_Agent 使用单 active device 策略；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入。
+登录后，正式 Profile、身体指标、饮食、训练和 daily summaries 以云端为权威来源。本地 SQLite 保留为 partial cache、草稿存储和运行期加速层。服务器已接受的 AI Chat 和 Add Food 图片分析请求由云端交付状态接管，不依赖前台 Flutter 进程继续存活。FitLog_Agent 使用单 active device 策略；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入。
 
 完整的云端/本地权威、cache-first 读取、warm cache、写入成功条件、异常、冲突和修复规则见 [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) / [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md)。
 
@@ -141,6 +141,7 @@ Android 云功能构建依赖主 Manifest 中的 `INTERNET` 权限，不能只�
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | 当前 Flutter-to-service wire contract、字段约束、稳定错误和兼容边界；文件名保留历史 `DRAFT`。 |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 架构决策、实施背景和仍有维护价值的历史上下文。 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 当前阶段状态、剩余工作、发布 Gate 和人工审查边界。 |
+| [docs/reports/AI_ACCEPTED_DELIVERY_PERFORMANCE_REPORT.md](docs/reports/AI_ACCEPTED_DELIVERY_PERFORMANCE_REPORT.md) | Accepted AI delivery 的性能、构建、验证、文档一致性和剩余风险报告。 |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | RAG 可靠性与性能优化的专业工程报告：基线、根因、修改、被拒方案、速度/质量结果、限制和原始证据索引。 |
 | [docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md](docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md) | Phase 5、Output Contract、RAG foundation 与 Chat reliability 的最终综合工程记录；不代表当前产品行为。 |
 
@@ -150,7 +151,7 @@ Local 版本基线保留在 `docs/local/`。
 
 - AI 请求可能包含用户输入、图片、Cloud Profile 字段和必要的云端摘要上下文。
 - 用户记录摘要上下文需要用户在 App 内授权。
-- 原图默认不长期保存。
+- 原图默认不长期保存；服务器已接受的异步图片分析只短期保存压缩图，供云端 worker 恢复和重试。
 - 登录后的云端 chat history 会保存文本 turn、轻量 artifact/evidence snapshot 和摘要。
 - AI 输出不是医疗建议。
 - AI 不能自动修改目标、策略、Profile 或正式记录。
@@ -179,7 +180,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - Food logging: manual entry, AI Food Analysis, Food Draft preview/edit, copy-to-date, and delete.
 - Workout logging: workout drafts, official workout records, custom exercises, and strength/cardio calorie estimates.
 - Profile and targets: Cloud Profile, diet phase, `energy_ratio`, `gram_per_kg`, carb cycling, carb tapering, and body metrics.
-- AI Chat: centered AI page; the current release uses Qwen for natural Chinese/English text and up to three current images, one Chat decision selects an answer or editable draft, and resumable typed clarification advances only genuinely missing information. The ChatGPT/OpenAI adapter remains available for a future legally configured release.
+- AI Chat: centered AI page; the current release uses Qwen for natural Chinese/English text and up to three current images, one Chat decision selects an answer or editable draft, and resumable typed clarification advances only genuinely missing information. Once the server confirms ownership, returning after backgrounding or killing the app shows processing, success, or a stable retryable failure. The ChatGPT/OpenAI adapter remains available for a future legally configured release.
 - Meal decisions: when users ask what to eat next, AI uses the minimum needed Profile, summary, and context.
 - Weekly review: AI can summarize recent food, training, weight trends, and data gaps, but cannot automatically change goals or strategies.
 - App logic Q&A: Document RAG explains FitLog algorithms, fields, privacy, and Agent boundaries.
@@ -193,7 +194,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - AI outputs are drafts, suggestions, reviews, or explanations until confirmed.
 - AI does not silently write official food, workout, Profile, or goal data.
 - AI does not automatically apply carb tapering, delete records, or change diet goals.
-- Image requests are limited to three images; original images or base64 payloads are not stored long term by default.
+- Image requests are limited to three images; before server acceptance, original images or base64 payloads are not stored long term, and accepted async requests keep compressed images only in private temporary storage for recovery and retry.
 - Clarification options are valid only inside the current session's pending state; planner, provider, and validation failures remain truthful system errors rather than fake user ambiguity.
 - V1 does not create user-business-data vector databases, long-term embeddings, semantic memory, or GraphRAG.
 - V1 is not medical diagnosis, treatment advice, or pediatric treatment guidance.
@@ -228,7 +229,7 @@ Key boundaries:
 
 ### Cloud And Local Data
 
-After sign-in, official Profile, body metrics, food, workout, and daily summaries use the cloud as the source of truth. Local SQLite remains partial cache, draft storage, and runtime acceleration. FitLog_Agent uses a single-active-device policy; a newer login takes over the account, and the older device stops official writes on the next cloud interaction.
+After sign-in, official Profile, body metrics, food, workout, and daily summaries use the cloud as the source of truth. Local SQLite remains partial cache, draft storage, and runtime acceleration. Server-accepted AI Chat and Add Food photo-analysis requests are owned by cloud delivery status instead of the foreground Flutter process. FitLog_Agent uses a single-active-device policy; a newer login takes over the account, and the older device stops official writes on the next cloud interaction.
 
 The full cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair policy live in [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md).
 
@@ -296,6 +297,7 @@ Android cloud-enabled builds depend on the main manifest's `INTERNET` permission
 | [docs/API_CONTRACT_DRAFT.md](docs/API_CONTRACT_DRAFT.md) | Current Flutter-to-service wire contract, field constraints, stable errors, and compatibility boundaries; the legacy filename retains `DRAFT`. |
 | [docs/FitLog_Agent_V1_Implementation.md](docs/FitLog_Agent_V1_Implementation.md) | V1 architecture decisions, implementation background, and historical context that remains useful to maintainers. |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Current phase status, remaining work, release gates, and manual-review boundaries. |
+| [docs/reports/AI_ACCEPTED_DELIVERY_PERFORMANCE_REPORT.md](docs/reports/AI_ACCEPTED_DELIVERY_PERFORMANCE_REPORT.md) | Performance, build, validation, documentation-consistency, and residual-risk report for accepted AI delivery. |
 | [docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md](docs/reports/RAG_RELIABILITY_OPTIMIZATION_REPORT.md) | Professional RAG reliability/performance report covering baseline, root cause, changes, rejected alternatives, speed/quality outcomes, limitations, and raw evidence. |
 | [docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md](docs/history/phase5/PHASE5_AI_RAG_FINAL_ENGINEERING_RECORD.md) | Consolidated final engineering record for Phase 5, Output Contract, RAG foundation, and Chat reliability; it does not define current product behavior. |
 
@@ -305,7 +307,7 @@ The Local version baseline remains under `docs/local/`.
 
 - AI requests may include user text, images, Cloud Profile fields, and necessary cloud summary context.
 - User-record summary context requires in-app user permission.
-- Original images are not stored long term by default.
+- Original images are not stored long term by default; accepted async image analysis keeps compressed images only in private temporary storage for cloud worker recovery and retry.
 - Signed-in cloud chat history stores text turns plus lightweight artifact/evidence snapshots and summaries.
 - AI outputs are not medical advice.
 - AI must not automatically modify goals, strategies, Profile, or official records.

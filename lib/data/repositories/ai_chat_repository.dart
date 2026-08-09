@@ -3,6 +3,7 @@ import 'package:supabase/supabase.dart' as supabase;
 import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_chat_clarification.dart';
 import '../../domain/models/ai_chat_session.dart';
+import '../../domain/models/ai_delivery_request.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/ai_gateway_response.dart';
 import '../remote/ai_gateway_client.dart';
@@ -19,6 +20,20 @@ abstract class AiChatRepository {
   });
 
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request);
+
+  Future<List<AiDeliveryRequest>> listRecentDeliveryRequests({
+    required String accountId,
+  }) async => const <AiDeliveryRequest>[];
+
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async => null;
+
+  Future<void> retryDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async {}
 
   Future<AiChatClarification?> loadActiveClarification({
     required String accountId,
@@ -133,6 +148,73 @@ class SupabaseAiChatRepository extends AiChatRepository {
   @override
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request) {
     return gatewayClient.send(request);
+  }
+
+  @override
+  Future<List<AiDeliveryRequest>> listRecentDeliveryRequests({
+    required String accountId,
+  }) async {
+    if (accountId.isEmpty) {
+      return const <AiDeliveryRequest>[];
+    }
+    try {
+      final rows = await client
+          .from('ai_delivery_requests')
+          .select()
+          .eq('account_id', accountId)
+          .inFilter('kind', const <String>['ai_chat', 'food_photo_analysis'])
+          .order('updated_at', ascending: false)
+          .limit(20);
+      return rows
+          .map(
+            (row) => AiDeliveryRequest.fromMap(Map<String, dynamic>.from(row)),
+          )
+          .toList(growable: false);
+    } catch (error) {
+      throw _aiChatExceptionFor('ai_delivery_requests_load_failed', error);
+    }
+  }
+
+  @override
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async {
+    if (accountId.isEmpty || requestId.isEmpty) {
+      return null;
+    }
+    try {
+      final rows = await client
+          .from('ai_delivery_requests')
+          .select()
+          .eq('account_id', accountId)
+          .eq('request_id', requestId)
+          .limit(1);
+      if (rows.isEmpty) {
+        return null;
+      }
+      return AiDeliveryRequest.fromMap(Map<String, dynamic>.from(rows.first));
+    } catch (error) {
+      throw _aiChatExceptionFor('ai_delivery_requests_load_failed', error);
+    }
+  }
+
+  @override
+  Future<void> retryDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async {
+    if (accountId.isEmpty || requestId.isEmpty) {
+      return;
+    }
+    try {
+      await client.rpc(
+        'retry_ai_delivery_request',
+        params: <String, dynamic>{'input_request_id': requestId},
+      );
+    } catch (error) {
+      throw _aiChatExceptionFor('ai_delivery_retry_failed', error);
+    }
   }
 
   @override

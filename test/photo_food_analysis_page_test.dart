@@ -554,6 +554,7 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     await tester.pump();
+    expect(harness.client.requests.single.asyncDelivery, isTrue);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
@@ -564,7 +565,7 @@ void main() {
     completer.complete(_successResponse());
     await _settleRealAsyncWork(tester);
 
-    expect(find.text('Preview AI Result'), findsNothing);
+    expect(find.byType(FoodPreviewPage), findsNothing);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     await tester.pump();
@@ -572,9 +573,10 @@ void main() {
     await tester.pump();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _settleRealAsyncWork(tester);
+    await _settleRealAsyncWork(tester);
     await tester.pumpAndSettle();
 
-    expect(find.text('Preview AI Result'), findsOneWidget);
+    expect(find.byType(FoodPreviewPage), findsOneWidget);
     expect(harness.client.requests, hasLength(1));
   });
 
@@ -597,11 +599,13 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     await tester.pump();
-    await tester.pump();
+    await _settleRealAsyncWork(tester);
+    await tester.pumpAndSettle();
 
     expect(harness.client.requests.single.images, isEmpty);
     expect(harness.client.requests.single.userNote, '100g 三文鱼');
-    expect(find.text('Preview AI Result'), findsOneWidget);
+    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(find.byType(FoodPreviewPage), findsOneWidget);
   });
 
   testWidgets('restored photo draft keeps recovered image and note', (
@@ -889,7 +893,12 @@ void main() {
     tester,
   ) async {
     final harness = _PhotoHarness();
-    harness.client.handler = (_) async => _successResponse();
+    harness.client.handler = (_) async {
+      final response = _successResponse();
+      expect(response.isAccepted, isFalse);
+      expect(response.draft, isNotNull);
+      return response;
+    };
     addTearDown(harness.dispose);
 
     await tester.pumpWidget(_buildPhotoTestApp(harness));
@@ -899,9 +908,15 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     await tester.pump();
-    await tester.pump();
+    await _settleRealAsyncWork(tester);
+    await tester.pumpAndSettle();
 
-    expect(find.text('Preview AI Result'), findsOneWidget);
+    expect(harness.client.requests, hasLength(1));
+    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _settleRealAsyncWork(tester);
+    await tester.pumpAndSettle();
+    expect(find.byType(FoodPreviewPage), findsOneWidget);
     expect(find.text('Chicken rice'), findsOneWidget);
   });
 
@@ -956,9 +971,11 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     await tester.pump();
-    await tester.pump();
+    await _settleRealAsyncWork(tester);
+    await tester.pumpAndSettle();
 
-    expect(find.text('Preview AI Result'), findsOneWidget);
+    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(find.byType(FoodPreviewPage), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
@@ -1219,7 +1236,7 @@ Future<void> _scrollUntilVisible(WidgetTester tester, Finder finder) async {
 
 Future<void> _settleRealAsyncWork(WidgetTester tester) async {
   await tester.runAsync(() async {
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await Future<void>.delayed(const Duration(milliseconds: 250));
   });
   await tester.pump();
 }

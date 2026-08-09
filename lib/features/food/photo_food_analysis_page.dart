@@ -23,6 +23,7 @@ import '../../domain/models/ai_gateway_error.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/cloud_runtime_context.dart';
 import '../account/account_controller.dart';
+import '../ai/ai_chat_controller.dart';
 import 'food_image_picker.dart';
 import 'food_image_source_sheet.dart';
 import 'food_preview_page.dart';
@@ -119,7 +120,9 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final inForeground = state == AppLifecycleState.resumed;
+    final inForeground =
+        state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
     _appInForeground = inForeground;
     if (inForeground) {
       unawaited(_consumePendingAnalysisResult());
@@ -465,6 +468,13 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       return;
     }
 
+    final analysisClient = _analysisClient(context);
+    await PhotoFoodAnalysisRecoveryStore.savePending(
+      initialDate: widget.initialDate,
+      note: _noteController.text,
+      images: images,
+      selectedImageIndex: _selectedImageIndex,
+    );
     setState(() => _analyzing = true);
     final request = AiFoodPhotoAnalysisRequest(
       images: images
@@ -481,13 +491,15 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       deviceId: deviceId!,
       selectedDate: _analysisDate,
       userNote: userNote,
+      clientRequestId: _nextPhotoClientRequestId(),
+      asyncDelivery: true,
       client: const <String, dynamic>{
         'platform': 'flutter',
         'app_version': 'phase4',
       },
     );
 
-    final response = await _analysisClient(context).analyze(request);
+    final response = await analysisClient.analyze(request);
     if (!mounted) {
       return;
     }
@@ -497,6 +509,22 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       analysisDate: _analysisDate,
       userNote: userNote,
     );
+    if (response.isAccepted) {
+      final deliveryController = _readOptional<AiChatController>();
+      final rootTabController = _readOptional<RootTabController>();
+      await PhotoFoodAnalysisRecoveryStore.clearPending();
+      if (!mounted) {
+        return;
+      }
+      await deliveryController?.loadDeliveryRequests();
+      if (!mounted) {
+        return;
+      }
+      rootTabController?.setIndex(RootTabIndex.ai);
+      FitLogNotifications.info(context, strings.photoAiDeliveryProcessing);
+      Navigator.of(context).pop(false);
+      return;
+    }
     if (!_appInForeground) {
       _pendingAnalysisResult = pendingResult;
       return;
@@ -540,6 +568,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       );
       return;
     }
+    unawaited(PhotoFoodAnalysisRecoveryStore.clearPending());
 
     final record = draft.toFoodRecord(
       date: result.analysisDate,
@@ -559,6 +588,10 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       _restoreFoodLogDestination(savedRecordDate);
       Navigator.of(context).pop(true);
     }
+  }
+
+  String _nextPhotoClientRequestId() {
+    return 'photo_${DateTime.now().toUtc().microsecondsSinceEpoch}';
   }
 
   void _restoreFoodLogDestination(String date) {

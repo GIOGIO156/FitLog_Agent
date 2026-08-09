@@ -10,17 +10,17 @@ FitLog 使用本地 SQLite 保存兼容状态、确定性本地服务数据、�
 
 | 存储 | 用途 | 权威与生命周期 |
 | --- | --- | --- |
-| SQLite / `sqflite` | 本地兼容 profile/cache、校准、策略复盘、自定义动作、训练草稿、训练提交 ledger、账号绑定 confirmed read model 和选中日期 `daily_summary_cache`。 | Schema v18。登录后正式记录在这里不具权威；confirmed cache 可重建且有界。 |
+| SQLite / `sqflite` | 本地兼容 profile/cache、校准、策略复盘、自定义动作、训练草稿、训练提交 ledger、账号绑定 confirmed read model 和选中日期 `daily_summary_cache`。 | Schema v20。登录后正式记录在这里不具权威；confirmed cache 可重建且有界。 |
 | Supabase Cloud Records | `body_metric_logs`、`food_records`/`food_items`、`workout_sessions`/`workout_sets`、`workout_plan_commits` 和 `daily_summaries`。 | 登录后正式记录的权威来源；cloud-backed repository 协调写入和本地 read-model 更新。 |
 | SharedPreferences | 语言/主题和轻量 UI preference、每账号记录摘要权限、Cloud Profile/subscription display cache、注册 PKCE verifier 和小型 picker-recovery marker。 | 设备本地运行期/显示状态，不是业务记录同步。 |
 | 本地文件 | App documents directory 中的 XLSX 和 CSV ZIP 导出。 | 用户控制的派生文件，不是 cloud source of truth。 |
-| 云端账号与 AI 存储 | Supabase Auth identity、subscription entitlement、Cloud Profile、AI chat sessions/messages、request logs、compact debug summaries、evidence/artifact snapshots 和 document chunks。 | 账号绑定或 service-owned cloud data，由 RLS/RPC/service boundary 保护。 |
+| 云端账号与 AI 存储 | Supabase Auth identity、subscription entitlement、Cloud Profile、AI chat sessions/messages、可靠交付请求、临时 AI 图片对象、request logs、compact debug summaries、evidence/artifact snapshots 和 document chunks。 | 账号绑定或 service-owned cloud data，由 RLS/RPC/service boundary 保护；临时图片对象私有且短期保留。 |
 | AI 文档索引 | 面向 Document RAG 的版本化 active-build 稳定文档 chunks 与 embeddings。 | Supabase Postgres lexical/vector candidate retrieval，只允许 service role staging、activation、search 与 rollback。 |
 | In-memory providers | 选中日期、刷新版本、App services、语言状态和运行时摘要。 | 只用于短暂运行期协调。 |
 
 当前本地数据库名：`fitlog_local.db`。
 
-当前本地 SQLite schema version：`18`。
+当前本地 SQLite schema version：`20`。
 
 Foreign keys 启用方式：
 
@@ -52,6 +52,8 @@ PRAGMA foreign_keys = ON
 | 16 | 删除旧 `edit_record` 训练草稿，使草稿恢复只适用于用户手动或 AI 创建的新训练记录。 |
 | 17 | 为 `workout_record_drafts` 增加训练保存状态字段，并新增只含 hash 的 `workout_plan_commits` ledger。幂等 upgrade 与 open-time repair 能修复中间 v17 测试构建，无需清除用户数据。 |
 | 18 | 为本地训练 mutation ledger 增加进程启动恢复所用的 `abandoned` 终态；幂等 upgrade 与 open-time repair 会保留已有 committed rows。 |
+| 19 | 中间 AI 交付实验曾保留该版本；最终产品范围不使用其中的临时表。 |
+| 20 | 如果存在已退役的中间表 `ai_pending_operations`，则删除该表。该兼容清理只移除临时 AI 交付 metadata，不影响正式记录、Profile、Chat history 或 cache。 |
 
 兼容规则：
 
@@ -610,7 +612,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 规则：
 
 - 账号级 RLS 保护客户端读取。
-- Gateway 每个通过校验的 turn 写一条 user message 和一条 assistant message。图片 Chat 仍以文本消息持久化，最多三张图片只在本次 Gateway request 中转发。
+- Gateway 每个通过校验的 Chat turn 写一条 user message 和一条 assistant message。Accepted 异步图片 Chat 只把图片 bytes 作为私有临时 delivery asset 保存；最终 Chat history 仍是文本/artifact metadata，`ai_chat_messages` 永不保存图片 bytes 或 base64。
 - `final_answer_json` 可以保存轻量 `ai_chat_artifacts.v2` snapshot，例如合法 `food_draft.v2` 或 `workout_draft.v3`，同时保存解析后的 `target_date`、日期解析来源、`ai_chat_evidence.v1` 或概括 retrieved context 的 `evidence` object。Artifact snapshot 只在 review 后重建 Preview；evidence 只用于只读显示/debug context。两者都不是正式记录或后台草稿队列。History reader 继续兼容 v1/v2 artifact：legacy draft 没有自身日期时使用其中保存的 selected date。
 - `role` 限定为 `user` 和 `assistant`；持久化的 chat history 仍为 text message。`ai_chat_messages` 不保存图片 bytes 或 base64。
 - 消息顺序以 `message_sequence` 为确定性主顺序，timestamp 和 id 作为稳定辅助字段。
@@ -634,6 +636,49 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 - `attachment_policy` 只说明 Flutter 能否重新绑定当前运行期像素。历史重载、进程重启、清空本地数据、退出或切换账号后，不可用像素进入 `resend_required`，不能从云端重建。
 - 该 cloud-only additive migration 不改变 SQLite `AppDatabase.dbVersion`，也不改变本地 `workout_record_drafts` 的权威地位。
 
+### `ai_delivery_requests`
+
+用途：为 accepted 后必须跨后台/进程丢失恢复的 AI 请求保存窄范围云端生命周期。它不是通用 workflow engine。
+
+字段：
+
+- `request_id`
+- `account_id`
+- `kind`：`ai_chat` 或 `food_photo_analysis`
+- `client_request_id`
+- `status`：`queued`、`running`、`succeeded` 或 `failed`
+- Chat 可选 `session_id`
+- 脱敏后的 `request_payload_json`
+- `asset_refs_json`，保存私有临时对象路径和图片 metadata
+- 成功后的 `result_json`，保存既有业务 response envelope
+- `error_code`、`failure_stage` 和 `retryable`
+- `attempt_count`、`max_attempts`、`lease_owner`、`lease_expires_at` 和 `reclaimed_after_lease`
+- `accepted_at`、`started_at`、`completed_at`、`expires_at`、`created_at` 和 `updated_at`
+- trace/app/edge/provider/count metadata 和 duplicate-submit count 等紧凑观测字段
+
+规则：
+
+- `account_id + kind + client_request_id` 唯一，accept 时使用 advisory transaction lock 串行化，因此重复提交会返回同一请求状态。
+- Authenticated client 只能读取自己的 rows。Insert、claim、完成、retry transition 和 stale-running recovery 由 RPC/service role 控制。
+- `claim_ai_delivery_request` 原子地把一条 queued 或 lease-expired running row 变成带有有界租约的 `running`。Worker 可以 at-least-once 执行，但业务写入必须保持幂等。
+- `finish_ai_delivery_request` 成功时保存既有业务结果 envelope；可重试失败在 `max_attempts` 内重新排队；达到重试边界后写稳定 `failed` 终态。
+- `retry_ai_delivery_request` 只允许 row 所属账号调用，把 failed row 重置为 `queued`，不创建新的业务请求。
+- Chat 成功通过 `record_ai_chat_turn_v3` 写现有 chat 表，并使用 `request_id` 与 `client_request_id` 避免重复可见消息。
+- 图片成功只保存临时的既有 Food Draft response envelope；不会写正式 `food_records` 或 `food_items`。
+- 默认过期时间为 accepted 后 72 小时。清理必须删除过期 delivery rows 和临时对象，但不能触碰 chat history 或正式记录。
+
+### `fitlog-ai-temp-assets` Storage bucket
+
+用途：保存已 accepted AI Chat/image 和 Add Food 图片分析在重试时需要访问的临时图片。
+
+规则：
+
+- 对象路径由 Edge 生成，按账号/request 作用域组织，不能使用客户端任意提交的 path。
+- Bucket 是私有的；普通客户端不会为了 worker processing 获得 public URL 或 signed URL。
+- 数据库日志只保存 MIME type 和 byte length 等 metadata，不保存图片 base64。
+- Accepted duplicate submit 会清理本次重复上传的新临时对象；过期清理负责 abandoned objects。
+- 该 bucket 只用于重试 accepted 请求，不是长期照片历史，也不是 food-record storage。
+
 ### `ai_request_logs`
 
 用途：审计、可靠性、订阅校验、成本追踪和滥用防护。
@@ -641,6 +686,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 字段：
 
 - `request_id`
+- `client_request_id`
 - `account_id`
 - `session_id`
 - `workflow_type`
@@ -690,6 +736,7 @@ Supabase 只保存兑换码 hash。客户端不能读取或更新该表。登录
 - Additive migration `202607150002_ai_chat_turn_rag_workflows.sql` 让 `record_ai_chat_turn` RPC validation 与 table contract 对 `workout_logging`、`general_chat` 和 `safety_boundary` 的支持保持一致；既有 workflow 与 service-role-only 执行边界不变。
 - Chat 使用 `prompt_version = chat_orchestration_v2` 与 `schema_version = ai_chat_response.v3`；Add Food 使用 `workflow_type = food_logging` 与 `schema_version = food_draft.v2`。Additive workflow constraints 在保留 legacy values 的同时，也接受服务端规划的 `workout_logging`、`general_chat` 与 `safety_boundary`。
 - Additive migrations `202607190001_ai_chat_clarification_state.sql` 与 `202607190002_ai_chat_orchestration_observability.sql` 增加服务端权威 clarification 状态/RPC，以及紧凑 decision、clarification、attachment、failure、write-guard 和 shadow-mismatch 分类；这些字段不保存 request-time pixels、完整 provider output 或 prompt。后续 migration `202607190003_ai_chat_clarification_digest_search_path.sql` 为 security-definer turn RPC 明确加入 Supabase `extensions` schema，使 `pgcrypto.digest` 在新建和升级项目中都能计算 progress signature。
+- Additive migration `202608090001_ai_async_delivery_requests.sql` 增加 `client_request_id` 幂等字段、可靠交付 rows、私有临时 AI asset bucket，以及 service-owned accept/claim/finish/retry RPCs。它是 cloud-only migration，不改变 SQLite `AppDatabase.dbVersion`。
 - 文字/图片路径只保存紧凑 output-contract 状态，不保存 raw provider output、correction payload、图片 bytes/base64、provider secret 或不受限 notes。
 - `selected_output_type` 只在 provider 结果通过 contract validation 后写入；issue codes 是固定分类，不保存 field value、用户 prompt 或 provider 原文。
 - Authenticated client 没有直接 table read policy。
@@ -848,8 +895,8 @@ cache 容量、淘汰资格、cache-first 读取、`auth_required` 处理和修�
 - Workout commit schema: `supabase/migrations/202607220001_workout_plan_commit_protocol.sql`
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
-- AI chat 和 AI 食物分析 contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`, `supabase/migrations/202607190001_ai_chat_clarification_state.sql`, `supabase/migrations/202607190002_ai_chat_orchestration_observability.sql`, `supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql`
+- AI chat 和 AI 食物分析 contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_delivery_request.dart`, `lib/domain/models/ai_delivery_transport.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`, `supabase/migrations/202607190001_ai_chat_clarification_state.sql`, `supabase/migrations/202607190002_ai_chat_orchestration_observability.sql`, `supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql`, `supabase/migrations/202608090001_ai_async_delivery_requests.sql`
 - Supabase AI Gateway: `supabase/functions/_shared/ai_output_contract.ts`, `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
 - Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat 和 AI 食物分析 repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`

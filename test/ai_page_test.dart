@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:fitlog_local/app.dart';
+import 'package:fitlog_local/core/localization/app_language.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
 import 'package:fitlog_local/core/theme/fitlog_theme.dart';
 import 'package:fitlog_local/core/widgets/fitlog_notifications.dart';
@@ -128,7 +129,7 @@ void main() {
 
     expect(harness.repository.lastRequest?.messageText, '你能做什么');
     expect(harness.repository.lastRequest?.deviceId, 'device-a');
-    expect(harness.repository.lastRequest?.language, 'zh');
+    expect(harness.repository.lastRequest?.language, 'en');
     expect(
       harness.repository.lastRequest?.modelChoice,
       AiGatewayModelChoice.qwen,
@@ -180,6 +181,88 @@ void main() {
       harness.repository.lastRequest?.messageText,
       contains('carb tapering'),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('English app keeps English response language for Chinese input', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    harness.repository.sendHandler = (request) async {
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'Chinese input'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        _message(
+          'u1',
+          'session_1',
+          1,
+          AiChatMessageRole.user,
+          request.messageText,
+        ),
+        _message('a1', 'session_1', 2, AiChatMessageRole.assistant, 'Done.'),
+      ];
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: 'Done.',
+      );
+    };
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(_buildReadyAiTestApp(harness));
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      '今天训练前吃什么？',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.repository.lastRequest?.language, 'en');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Chinese app keeps Chinese response language for English input', (
+    tester,
+  ) async {
+    final harness = _readyAiHarness();
+    harness.repository.sendHandler = (request) async {
+      harness.repository.sessions = <AiChatSession>[
+        _session('session_1', 'English input'),
+      ];
+      harness.repository.messages['session_1'] = <AiChatMessage>[
+        _message(
+          'u1',
+          'session_1',
+          1,
+          AiChatMessageRole.user,
+          request.messageText,
+        ),
+        _message('a1', 'session_1', 2, AiChatMessageRole.assistant, '完成。'),
+      ];
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        assistantMessageId: 'a1',
+        messageText: '完成。',
+      );
+    };
+    addTearDown(harness.dispose);
+
+    await tester.pumpWidget(
+      _buildReadyAiTestApp(harness, language: AppLanguage.chinese),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('ai_composer_field')),
+      'What should I eat before training?',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('ai_send_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.repository.lastRequest?.language, 'zh');
     expect(tester.takeException(), isNull);
   });
 
@@ -2333,9 +2416,16 @@ Widget _buildAiTestApp(
   bool resizeToAvoidBottomInset = true,
   FitLogThemeKey themeKey = FitLogThemeKey.green,
   Brightness brightness = Brightness.light,
+  AppLanguage language = AppLanguage.english,
 }) {
   return ChangeNotifierProvider<LanguageController>(
-    create: (_) => LanguageController(),
+    create: (_) {
+      final controller = LanguageController();
+      if (language != AppLanguage.english) {
+        unawaited(controller.setLanguage(language));
+      }
+      return controller;
+    },
     child: MaterialApp(
       theme: buildFitLogTheme(brightness, themeKey: themeKey),
       home: Scaffold(
@@ -2353,6 +2443,7 @@ Widget _buildReadyAiTestApp(
   bool resizeToAvoidBottomInset = true,
   FitLogThemeKey themeKey = FitLogThemeKey.green,
   Brightness brightness = Brightness.light,
+  AppLanguage language = AppLanguage.english,
 }) {
   return _buildAiTestApp(
     MultiProvider(
@@ -2376,6 +2467,7 @@ Widget _buildReadyAiTestApp(
     resizeToAvoidBottomInset: resizeToAvoidBottomInset,
     themeKey: themeKey,
     brightness: brightness,
+    language: language,
   );
 }
 

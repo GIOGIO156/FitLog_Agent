@@ -2,6 +2,7 @@ import 'package:fitlog_local/core/constants/app_constants.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
 import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_transport.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_evidence.dart';
@@ -227,6 +228,24 @@ void main() {
       expect(json.containsKey('evidence'), isFalse);
     });
 
+    test('serializes async delivery as transport metadata only', () {
+      const request = AiGatewayRequest(
+        messageText: '后台也要继续处理',
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'dev_1',
+        clientRequestId: 'ai_request_accepted_1',
+        asyncDelivery: true,
+      );
+
+      final json = request.toJson();
+
+      expect(json['client_request_id'], 'ai_request_accepted_1');
+      expect(json['client'], <String, dynamic>{'delivery_mode': 'async_v1'});
+      expect(json.containsKey('draft'), isFalse);
+      expect(json.containsKey('transport'), isFalse);
+    });
+
     test('serializes up to three image attachments for multimodal chat', () {
       const request = AiGatewayRequest(
         messageText: '帮我看看这张图能不能作为晚餐',
@@ -352,6 +371,32 @@ void main() {
       );
       expect(response.debugSummaryId, 'dbg_1');
       expect(response.hasUnsupportedDraftPayload, isFalse);
+    });
+
+    test('parses accepted transport without requiring assistant text', () {
+      final response = AiGatewayResponse.fromJson(<String, dynamic>{
+        'session_id': 'chat_1',
+        'message': null,
+        'needs_clarification': false,
+        'clarification_questions': <String>[],
+        'draft': null,
+        'error': null,
+        'transport': <String, dynamic>{
+          'schema_version': 'ai_delivery_transport.v1',
+          'request_id': 'req_1',
+          'kind': 'ai_chat',
+          'status': 'queued',
+          'accepted': true,
+          'retryable': true,
+          'duplicate_submit': false,
+        },
+      });
+
+      expect(response.isSuccess, isTrue);
+      expect(response.isAccepted, isTrue);
+      expect(response.canShowAssistantText, isFalse);
+      expect(response.transport?.kind, AiDeliveryKind.aiChat);
+      expect(response.transport?.status, AiDeliveryStatus.queued);
     });
 
     test('parses a clarification payload without a false draft success', () {
@@ -527,6 +572,25 @@ void main() {
       expect(json['official_record_write'], isNull);
     });
 
+    test('serializes async photo delivery as transport metadata only', () {
+      const request = AiFoodPhotoAnalysisRequest(
+        images: <AiFoodPhotoImagePayload>[],
+        language: 'zh',
+        deviceId: 'device-a',
+        selectedDate: '2026-07-01',
+        userNote: '100g 三文鱼',
+        clientRequestId: 'photo_request_1',
+        asyncDelivery: true,
+      );
+
+      final json = request.toJson();
+
+      expect(json['client_request_id'], 'photo_request_1');
+      expect(json['client'], <String, dynamic>{'delivery_mode': 'async_v1'});
+      expect(json.containsKey('draft'), isFalse);
+      expect(json.containsKey('transport'), isFalse);
+    });
+
     test('parses a valid food draft response', () {
       final response = AiFoodPhotoAnalysisResponse.fromJson(<String, dynamic>{
         'model_choice': 'qwen',
@@ -543,6 +607,29 @@ void main() {
       expect(response.draft?.totalWeightG, 320);
       expect(response.draft?.caloriesKcal, 520);
       expect(response.draft?.items, hasLength(2));
+    });
+
+    test('parses accepted photo transport without a draft result', () {
+      final response = AiFoodPhotoAnalysisResponse.fromJson(<String, dynamic>{
+        'model_choice': 'qwen',
+        'needs_clarification': false,
+        'clarification_questions': <String>[],
+        'draft': null,
+        'transport': <String, dynamic>{
+          'schema_version': 'ai_delivery_transport.v1',
+          'request_id': 'photo_req_1',
+          'kind': 'food_photo_analysis',
+          'status': 'queued',
+          'accepted': true,
+          'retryable': true,
+          'duplicate_submit': false,
+        },
+      });
+
+      expect(response.isSuccess, isTrue);
+      expect(response.isAccepted, isTrue);
+      expect(response.draft, isNull);
+      expect(response.transport?.kind, AiDeliveryKind.foodPhotoAnalysis);
     });
 
     test('rejects invalid numeric draft fields', () {

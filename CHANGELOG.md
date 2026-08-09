@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-09 Reliable Accepted AI Delivery
+
+### Changed
+
+- Added a narrow accepted-delivery layer for AI Chat and Add Food photo analysis. Once Edge returns `202 accepted`, `ai_delivery_requests` owns `queued` / `running` / `succeeded` / `failed` lifecycle, idempotency, retry, lease reclaim, duplicate-submit handling, and private temporary image assets; before acceptance, the client still owns local retry input.
+- Preserved product-specific landing behavior instead of adding a generic task engine: Chat success still writes canonical `ai_chat_sessions` / `ai_chat_messages`, while photo-analysis success remains a temporary Food Draft card until the user opens Food Preview and saves.
+- Advanced the app to `1.0.37+41` and local SQLite schema to v20. v20 only drops the retired intermediate `ai_pending_operations` table if a prior test build created it; no official records, Profile data, chat history, or caches are rewritten.
+- AI Chat now sends the active App language as the target response language, so Chinese text in the English app still requests English output, and English text in the Chinese app still requests Chinese output.
+
+### Fixed
+
+- Fixed the accepted-request loss class where a provider call could be owned by the server but still disappear from the UI after app backgrounding, process death, or transport interruption.
+- Added accepted transport parsing, delivery polling, resume refresh, failed-row retry, and Add Food handoff to the AI page while keeping official food writes behind the existing Food Preview confirmation.
+
+### Validation
+
+- Added deterministic Flutter coverage for accepted Chat transport, delivery retry, accepted photo-analysis transport, first-turn cloud-history recovery, and App-language selection across mixed-language inputs.
+- Added `docs/reports/AI_ACCEPTED_DELIVERY_PERFORMANCE_REPORT.md` to capture local performance evidence, release build output, documentation consistency checks, removed/rejected scope, and remaining deployment risks.
+- No Document RAG corpus, embedding, activation, or provider output family was changed or regenerated.
+
 ## 2026-08-09 Black Theme Exercise Badge Colors
 
 ### Changed

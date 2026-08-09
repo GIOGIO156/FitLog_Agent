@@ -74,6 +74,7 @@ class AiGatewayRequest {
     this.conversationContext,
     this.exerciseReferences = const <AiExerciseReference>[],
     this.clientRequestId,
+    this.asyncDelivery = false,
     this.clarificationReply,
   });
 
@@ -91,9 +92,14 @@ class AiGatewayRequest {
   final AiGatewayConversationContext? conversationContext;
   final List<AiExerciseReference> exerciseReferences;
   final String? clientRequestId;
+  final bool asyncDelivery;
   final AiChatClarificationReply? clarificationReply;
 
   Map<String, dynamic> toJson() {
+    final clientPayload = <String, dynamic>{
+      ...client,
+      if (asyncDelivery) 'delivery_mode': 'async_v1',
+    };
     return <String, dynamic>{
       if (sessionId != null) 'session_id': sessionId,
       if ((clientRequestId ?? '').isNotEmpty)
@@ -110,7 +116,7 @@ class AiGatewayRequest {
       if (profileVersion != null) 'profile_version': profileVersion,
       'device_id': deviceId,
       'allow_record_summary_context': allowRecordSummaryContext,
-      if (client.isNotEmpty) 'client': Map<String, dynamic>.from(client),
+      if (clientPayload.isNotEmpty) 'client': clientPayload,
       if (conversationContext?.isNotEmpty == true)
         'conversation_context': conversationContext!.toJson(),
       if (exerciseReferences.isNotEmpty)

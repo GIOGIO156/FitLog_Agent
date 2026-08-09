@@ -8,6 +8,8 @@ import '../../data/repositories/phase2_repository_exception.dart';
 import '../../domain/models/ai_chat_message.dart';
 import '../../domain/models/ai_chat_clarification.dart';
 import '../../domain/models/ai_chat_session.dart';
+import '../../domain/models/ai_delivery_request.dart';
+import '../../domain/models/ai_delivery_transport.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
 import '../../domain/models/ai_exercise_reference.dart';
 import '../../domain/models/ai_gateway_error.dart';
@@ -51,6 +53,8 @@ class AiChatController extends ChangeNotifier {
   int _localDataEpoch = 0;
   AiGatewayError? _lastError;
   AiGatewayResponse? _lastSuccessfulResponse;
+  List<AiDeliveryRequest> _deliveryRequests = const <AiDeliveryRequest>[];
+  Timer? _deliveryPollTimer;
   final Set<String> _deletingSessionIds = <String>{};
 
   String? get accountId => _accountId;
@@ -65,12 +69,45 @@ class AiChatController extends ChangeNotifier {
       _pendingUserAttachments;
   AiGatewayError? get lastError => _lastError;
   AiGatewayResponse? get lastSuccessfulResponse => _lastSuccessfulResponse;
+  List<AiDeliveryRequest> get deliveryRequests => _deliveryRequests;
+  List<AiDeliveryRequest> get selectedChatDeliveryRequests {
+    final sessionId = _selectedSessionId;
+    if ((sessionId ?? '').isEmpty) {
+      return const <AiDeliveryRequest>[];
+    }
+    final messageRequestIds = _messages
+        .map((message) => message.requestId)
+        .whereType<String>()
+        .toSet();
+    return _deliveryRequests
+        .where(
+          (request) =>
+              request.kind == AiDeliveryKind.aiChat &&
+              request.sessionId == sessionId &&
+              request.status != AiDeliveryStatus.succeeded &&
+              !messageRequestIds.contains(request.requestId),
+        )
+        .toList(growable: false);
+  }
+
+  List<AiDeliveryRequest> get visiblePhotoDeliveryRequests {
+    return _deliveryRequests
+        .where(
+          (request) =>
+              request.kind == AiDeliveryKind.foodPhotoAnalysis &&
+              (request.isPending || request.isFailed || request.isSucceeded),
+        )
+        .take(5)
+        .toList(growable: false);
+  }
+
   AiChatClarification? get activeClarification => _activeClarification;
   bool get deletingSession => _deletingSessionIds.isNotEmpty;
   bool isDeletingSession(String sessionId) =>
       _deletingSessionIds.contains(sessionId);
   bool get hasVisibleConversation =>
       _messages.isNotEmpty ||
+      selectedChatDeliveryRequests.isNotEmpty ||
       (_pendingUserText ?? '').isNotEmpty ||
       _pendingUserAttachments.isNotEmpty ||
       _sending ||
@@ -143,12 +180,21 @@ class AiChatController extends ChangeNotifier {
     _clarificationRetryRequestIds = const <String, String>{};
     _activeClarification = null;
     _lastSuccessfulResponse = null;
+    _deliveryRequests = const <AiDeliveryRequest>[];
+    _deliveryPollTimer?.cancel();
     _deletingSessionIds.clear();
     _clearErrorState();
     notifyListeners();
     if (_accountId != null) {
       unawaited(loadSessions());
+      unawaited(loadDeliveryRequests());
     }
+  }
+
+  @override
+  void dispose() {
+    _deliveryPollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> loadSessions() async {
@@ -161,6 +207,7 @@ class AiChatController extends ChangeNotifier {
     notifyListeners();
     try {
       _sessions = await repository.listSessions(accountId: activeAccountId!);
+      await loadDeliveryRequests(notify: false);
       if (_selectedSessionId != null &&
           !_sessions.any((session) => session.id == _selectedSessionId)) {
         _selectedSessionId = null;
@@ -230,6 +277,19 @@ class AiChatController extends ChangeNotifier {
     } finally {
       _loadingMessages = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> refreshAfterAppResume() async {
+    await loadDeliveryRequests();
+    final sessionId = _selectedSessionId;
+    if ((sessionId ?? '').isNotEmpty) {
+      await loadMessages(sessionId!);
+      return;
+    }
+    if (_lastError?.code == AiGatewayErrorCode.networkFailure &&
+        _messages.isEmpty) {
+      await _recoverLatestSessionAfterTransportFailure();
     }
   }
 
@@ -353,6 +413,8 @@ class AiChatController extends ChangeNotifier {
           (continuationClarification == null
               ? _nextClientRequestId()
               : _requestIdForClarification(continuationClarification.id)),
+      asyncDelivery:
+          clarificationReply == null && continuationClarification == null,
       clarificationReply: clarificationReply,
     );
 
@@ -365,6 +427,22 @@ class AiChatController extends ChangeNotifier {
         }
         await _refreshSelectedMessagesAfterFailure();
         return false;
+      }
+      if (response.isAccepted) {
+        final nextSessionId = response.sessionId;
+        if ((nextSessionId ?? '').isNotEmpty) {
+          _selectedSessionId = nextSessionId;
+        }
+        _lastSuccessfulResponse = response;
+        await loadSessions();
+        await loadDeliveryRequests();
+        final deliveryRequestId = response.transport?.requestId;
+        if ((deliveryRequestId ?? '').isNotEmpty) {
+          _startDeliveryPolling(deliveryRequestId!);
+        }
+        _pendingUserText = null;
+        _pendingUserAttachments = const <AiGatewayImageAttachment>[];
+        return true;
       }
       final nextSessionId = response.sessionId;
       if ((nextSessionId ?? '').isEmpty) {
@@ -396,8 +474,7 @@ class AiChatController extends ChangeNotifier {
       _setTransientError(
         _errorFromCode(AiGatewayErrorCode.networkFailure.value),
       );
-      await _refreshSelectedMessagesAfterFailure();
-      return false;
+      return _recoverLatestSessionAfterTransportFailure();
     } finally {
       _sending = false;
       _pendingUserText = null;
@@ -542,6 +619,146 @@ class AiChatController extends ChangeNotifier {
         _lastError = sendError;
       }
     }
+  }
+
+  Future<bool> _recoverLatestSessionAfterTransportFailure() async {
+    final activeAccountId = _accountId;
+    if ((activeAccountId ?? '').isEmpty || _messages.isNotEmpty) {
+      return false;
+    }
+    final sendError = _lastError;
+    await loadSessions();
+    if (_sessions.isEmpty) {
+      if (sendError != null) {
+        _lastError = sendError;
+        notifyListeners();
+      }
+      return false;
+    }
+    await selectSession(_sessions.first.id);
+    final recovered = _messages.any((message) => message.isAssistant);
+    if (recovered) {
+      _clearErrorState();
+      notifyListeners();
+      return true;
+    }
+    if (sendError != null) {
+      _lastError = sendError;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<void> loadDeliveryRequests({bool notify = true}) async {
+    final activeAccountId = _accountId;
+    if ((activeAccountId ?? '').isEmpty) {
+      return;
+    }
+    try {
+      _deliveryRequests = await repository.listRecentDeliveryRequests(
+        accountId: activeAccountId!,
+      );
+      _refreshSelectedSessionFromPendingDelivery();
+      if (notify) {
+        notifyListeners();
+      }
+    } catch (_) {
+      if (notify) {
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> retryDeliveryRequest(String requestId) async {
+    final activeAccountId = _accountId;
+    if ((activeAccountId ?? '').isEmpty || requestId.isEmpty) {
+      return;
+    }
+    try {
+      await repository.retryDeliveryRequest(
+        accountId: activeAccountId!,
+        requestId: requestId,
+      );
+      await loadDeliveryRequests();
+      _startDeliveryPolling(requestId);
+    } catch (_) {
+      _setTransientError(_errorFromCode('ai_delivery_retry_failed'));
+      notifyListeners();
+    }
+  }
+
+  void _refreshSelectedSessionFromPendingDelivery() {
+    if ((_selectedSessionId ?? '').isNotEmpty) {
+      return;
+    }
+    for (final request in _deliveryRequests) {
+      if (request.kind == AiDeliveryKind.aiChat &&
+          (request.sessionId ?? '').isNotEmpty &&
+          (request.isPending || request.isFailed)) {
+        _selectedSessionId = request.sessionId;
+        return;
+      }
+    }
+  }
+
+  void _startDeliveryPolling(String requestId) {
+    _deliveryPollTimer?.cancel();
+    var ticks = 0;
+    _deliveryPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      ticks += 1;
+      if (ticks > 40) {
+        timer.cancel();
+        return;
+      }
+      unawaited(_pollDeliveryRequest(requestId, timer));
+    });
+  }
+
+  Future<void> _pollDeliveryRequest(String requestId, Timer timer) async {
+    final activeAccountId = _accountId;
+    if ((activeAccountId ?? '').isEmpty) {
+      timer.cancel();
+      return;
+    }
+    try {
+      final request = await repository.getDeliveryRequest(
+        accountId: activeAccountId!,
+        requestId: requestId,
+      );
+      if (request == null) {
+        return;
+      }
+      _upsertDeliveryRequest(request);
+      if (!request.isPending) {
+        timer.cancel();
+        await loadSessions();
+        final sessionId = request.sessionId ?? _selectedSessionId;
+        if ((sessionId ?? '').isNotEmpty) {
+          await loadMessages(sessionId!);
+        }
+      } else {
+        notifyListeners();
+      }
+    } catch (_) {
+      // Foreground polling is best-effort; resume/load paths perform repair.
+    }
+  }
+
+  void _upsertDeliveryRequest(AiDeliveryRequest request) {
+    final next = <AiDeliveryRequest>[];
+    var replaced = false;
+    for (final existing in _deliveryRequests) {
+      if (existing.requestId == request.requestId) {
+        next.add(request);
+        replaced = true;
+      } else {
+        next.add(existing);
+      }
+    }
+    if (!replaced) {
+      next.insert(0, request);
+    }
+    _deliveryRequests = List<AiDeliveryRequest>.unmodifiable(next);
   }
 
   void _rememberRuntimeAttachmentsForLatestUserMessage({

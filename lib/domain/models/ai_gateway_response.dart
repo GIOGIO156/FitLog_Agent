@@ -1,5 +1,6 @@
 import 'ai_gateway_error.dart';
 import 'ai_chat_clarification.dart';
+import 'ai_delivery_transport.dart';
 import 'ai_gateway_evidence.dart';
 import 'ai_gateway_request.dart';
 import 'ai_food_photo_analysis.dart';
@@ -32,6 +33,7 @@ class AiGatewayResponse {
     this.foodDraft,
     this.workoutDraft,
     this.evidence,
+    this.transport,
     this.debugSummaryId,
     this.error,
     this.hasUnsupportedDraftPayload = false,
@@ -51,11 +53,13 @@ class AiGatewayResponse {
   final AiFoodDraft? foodDraft;
   final AiWorkoutDraft? workoutDraft;
   final AiGatewayEvidence? evidence;
+  final AiDeliveryTransport? transport;
   final String? debugSummaryId;
   final AiGatewayError? error;
   final bool hasUnsupportedDraftPayload;
 
   bool get isSuccess => error == null;
+  bool get isAccepted => transport?.isAccepted == true;
   bool get canShowAssistantText =>
       isSuccess && (messageText ?? '').trim().isNotEmpty;
 
@@ -77,6 +81,18 @@ class AiGatewayResponse {
       'clarification': clarification?.toJson(),
       'draft': foodDraft != null ? foodDraft!.toJson() : workoutDraft?.toJson(),
       'evidence': evidence?.toJson(),
+      if (transport != null)
+        'transport': <String, dynamic>{
+          'request_id': transport!.requestId,
+          'kind': transport!.kind == AiDeliveryKind.aiChat
+              ? 'ai_chat'
+              : 'food_photo_analysis',
+          'status': transport!.status.name,
+          'accepted': transport!.accepted,
+          'retryable': transport!.retryable,
+          'duplicate_submit': transport!.duplicateSubmit,
+          'error_code': transport!.errorCode,
+        },
       if (debugSummaryId != null) 'debug_summary_id': debugSummaryId,
       'error': error?.toJson(),
     };
@@ -109,7 +125,10 @@ class AiGatewayResponse {
     }
 
     final error = AiGatewayError.fromJsonOrNull(json['error']);
-    if (error == null && (message['text']?.toString().trim() ?? '').isEmpty) {
+    final transport = AiDeliveryTransport.fromJsonOrNull(json['transport']);
+    if (error == null &&
+        transport?.isAccepted != true &&
+        (message['text']?.toString().trim() ?? '').isEmpty) {
       throw const FormatException(
         'Successful AI response requires message.text.',
       );
@@ -119,7 +138,7 @@ class AiGatewayResponse {
       needsClarification: json['needs_clarification'] == true,
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
-      allowMissing: error != null,
+      allowMissing: error != null || transport?.isAccepted == true,
     );
     if (hasUnsupportedDraftPayload) {
       throw const FormatException('Unsupported AI draft payload.');
@@ -148,6 +167,7 @@ class AiGatewayResponse {
       foodDraft: foodDraft,
       workoutDraft: workoutDraft,
       evidence: AiGatewayEvidence.fromJsonOrNull(json['evidence']),
+      transport: transport,
       debugSummaryId: json['debug_summary_id']?.toString(),
       error: error,
       hasUnsupportedDraftPayload: hasUnsupportedDraftPayload,

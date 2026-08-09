@@ -34,6 +34,56 @@ FitLog 不在设备端运行模型。远程调用统一通过使用服务端 pro
 
 每条 AI 路径分离四层职责。Surface orchestration 负责入口、目标语言、本地 provider preference、允许的终态和 UI 确认；版本化 Capability Core 负责任务、Food/Workout 草稿边界和 Context 需要；OpenAI/Qwen adapter 只把同一能力编码为 provider-specific 文字、图片、schema 和 tool protocol，不能重新定义产品规则；Shared validation 强制执行结构、日期、数值、grounding、安全和确认边界。更换 provider 不能扩大 Context、绕过校验或写正式数据。
 
+## 可靠 AI 交付
+
+对普通 AI Chat turn 和 Add Food 图片分析而言，“用户回来能看到结果”表示 Edge Function 返回 `202 accepted` 之后，请求生命周期由云端接管，不再依赖 Flutter 页面、前台状态或进程是否存活。用户之后回来必须看到三种可恢复状态之一：仍在处理中、已成功并可使用既有业务结果、已失败并提供稳定重试动作。Provider 长时间不可用仍可能导致无法生成合法答案，但已经 accepted 的请求不能消失，也不能永久转圈。
+
+```mermaid
+flowchart TD
+    A["用户发送 Chat 或开始图片分析"] --> B["本地输入和稳定 request ID 已存在"]
+    B --> C["上传完整请求；图片进入私有临时存储"]
+    C --> D["Edge 校验 auth、格式、资源、订阅和 active device"]
+    D --> E{"请求是否已原子持久化"}
+    E -->|否| F["不返回 accepted；客户端保留输入用于重试"]
+    E -->|是| G["202 accepted + request_id"]
+
+    G --> H["App 可以切后台或被杀"]
+    G --> I["EdgeRuntime.waitUntil 尝试立即执行"]
+    G --> J["Service-role worker 稍后处理 queued 或租约超时请求"]
+
+    I --> K["原子 claim 和有界租约"]
+    J --> K
+    K --> L["复用现有 AI Chat 或图片分析管线"]
+    L --> M{"业务类型"}
+
+    M -->|AI Chat| N["幂等写入现有 session/message"]
+    M -->|图片分析| O["保存临时草稿结果"]
+
+    N --> P["请求状态变为 succeeded"]
+    O --> P
+    K -->|可重试失败| Q["记录 attempt 和阶段，在次数内重新排队"]
+    Q --> J
+    K -->|达到重试边界| R["稳定 failed 状态和错误码"]
+
+    H --> S["App 启动、恢复前台或进入相关页面"]
+    S --> T["查询当前用户的 pending 与近期终态请求"]
+    T --> U{"类型和状态"}
+
+    U -->|Chat 处理中| V["在正确会话中显示处理中"]
+    U -->|Chat 完成| W["刷新 canonical session/message"]
+    U -->|图片处理中| X["显示可恢复的分析状态卡"]
+    U -->|图片完成| Y["由用户主动打开 Food Preview"]
+    U -->|失败| Z["显示稳定失败和重试"]
+
+    Y --> AA{"用户决定"}
+    AA -->|确认| AB["沿用现有确认保存写正式食物记录"]
+    AA -->|放弃或过期| AC["按 retention 清理临时草稿/图片"]
+```
+
+共享交付层保持很窄：request 归属、`kind`、`queued`/`running`/`succeeded`/`failed`、原子 claim、租约过期、attempt 上限、稳定错误码、时间戳、隐私安全观测、幂等和短期 retention。它不理解 Chat 答案、Food Draft 字段、provider prompt、RAG 内容或正式记录。
+
+AI Chat 交付继续把 `ai_chat_sessions` 和 `ai_chat_messages` 作为唯一聊天历史。Accepted 路径在返回前持久化或校验目标 session；worker 使用 request/client 幂等键记录 assistant turn，使重复 worker 不会创建重复可见消息。图片交付必须在 accepted 前把请求图片放进私有临时 bucket，把既有 Food Draft response envelope 保存为临时结果，并且在用户打开 Food Preview 并通过现有 editor 保存前，绝不写入 `food_records`。
+
 `chat_decision.v2` 是普通 Chat 唯一 active decision contract。它按固定优先级消费合法 clarification reply，应用 safety 与 fixed-entry constraints，接受少量中英对称的高置信结构规则，其余开放语义只进入一次有界 planner。输出共同固定 capability、允许/选中的 output family、授权 Context 请求、clarification 状态和附件策略。旧 decision 生产分支及其 runtime flags 已退场；对应 comparator 只保留在确定性的历史行为等价测试中，不能影响生产结果。Planner failure 是系统故障，不是用户歧义的证据。
 
 该运行层包含：
@@ -68,7 +118,7 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 | Prompt template copy | 唯一入口位于 Paste AI Result。它建立可复用的外部食物估算对话约束：每个新的外部 chat 只发送一次，之后直接提交图片、描述和修正，并把完整 JSON 粘贴回 App。最高优先级规则要求最终回复只有一个 JSON 对象，并要求模型先完成准备输出的 items，再以这些 items 生成所有顶层总计。模板遵循与应用内 Food Draft 相同的证据原则：文字通常只补充图片的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算。卡片推荐 ChatGPT 中的“FitLog 中文助手”与“FitLog Estimator”。回复保留既有完整扁平 JSON schema；字段名保持英文，自然语言值跟随用户当前使用的主要语言。尾部 `estimation_notes` 通常为空，只允许必要且不重复的补充信息。复制的 Prompt 语言跟随 App 语言。 | 用户中介的外部 AI，不是 App 内部 AI，也不是 Edge prompt。 |
 | 外部 AI JSON 粘贴 | 用户粘贴外部生成的食物 JSON，FitLog 使用既有食物估算 schema 在本地解析。 | 用户中介的外部 AI，不是 App 内部 AI。 |
 | `source = ai_paste` | 标记兼容流程确认后的 food record 来源。 | 只表示 provenance，不证明发生内部模型调用。 |
-| Add Food AI 分析 | 把文字和零到三张图片发送给 `ai-food-photo-analyze`；入口固定 Food Draft family，校验后打开 Food Preview。 | 服务端中介的确定性 draft workflow，不重新判断 Chat 意图。 |
+| Add Food AI 分析 | 把文字和零到三张图片发送给 `ai-food-photo-analyze`；入口固定 Food Draft family，校验后在同步兼容路径直接打开 Food Preview，或返回 accepted delivery row，由完成状态卡在用户点击后打开 Food Preview。 | 服务端中介的确定性 draft workflow，不重新判断 Chat 意图。 |
 | AI Chat | 所有 gates 通过后，通过 Qwen 发送文字和最多三张图片。选择未配置的 ChatGPT 时显示短暂 unavailable error 且不发送 request；Gateway 先处理高置信度意图，无法确定时由已配置模型在受限 output types 中选择。 | 服务端中介的 answer 或 draft generation。 |
 | Structured RAG | 为 routed read-only workflow 构建 typed、最小必要服务端 context。 | 服务端中介的只读 context。 |
 | Document RAG | 为 App 逻辑问题检索稳定双语设计 corpus。 | 服务端中介的只读 evidence。 |
@@ -111,6 +161,8 @@ AI 页面必须让用户看见能力和权限边界，但不暴露 provider inte
 - 明确工作流固定结果 family；普通 Chat 的模型 output selection 只决定 response 形态，不授予写入、删除或修改权限。
 - “回答依据”区分参考文档、已用数据、缺失维度和受限动作；同会话连续性不作为权威 evidence 展示。
 
+生命周期恢复遵循各 surface 的产品事实来源。`202 accepted` 之前，本地恢复只保存足够重试的输入，绝不假装服务端已经接管。`202 accepted` 之后，AI Chat 通过重新加载 canonical `ai_chat_sessions`、`ai_chat_messages` 和匹配的 delivery rows 恢复；pending 或 failed rows 在正确会话中显示。Add Food 图片分析通过 `ai_delivery_requests` 恢复：处理中任务在 AI 页面显示状态卡，完成任务只有用户点击后才打开现有 Food Preview，失败任务显示重试。任何状态都不会在未经确认时写入正式食物记录。
+
 Readiness 与 request activity 分离：
 
 | 状态 | Send 行为 |
@@ -135,11 +187,11 @@ Add Food AI 分析是明确工作流：它绕过普通 Chat 的意图选择，�
 1. AI 提取候选食物、份量、烹饪方式、营养和不确定性。
 2. 会实质影响结果的歧义产生有界 clarification，而不是强行给出确定估算。
 3. Gateway 校验版本化 Food Draft，要求其中日期与解析后的目标日期一致，并从 item totals 归一化 meal totals。
-4. Add Food 在校验后直接打开 Food Preview；Chat 先显示通过校验的日期和 artifact card，只有 review 后才打开 Preview。
+4. Add Food 只在同步完成 response 中直接打开 Food Preview；accepted 异步图片交付先返回 AI 页面状态卡，完成卡片只有用户点击后才打开 Preview。Chat 先显示通过校验的日期和 artifact card，只有 review 后才打开 Preview。
 5. 用户通过跟随主题的日历控件修改日期，并可编辑其它 draft 字段。
 6. 只有普通 confirmed save path 写入正式 food records。
 
-请求结束后不保留原图或 base64 payload。紧凑 metadata 可以记录 image count、input kind、mime type、compressed length、validation result 和 safety/error category。
+Logs、Chat history 和正式记录不保留原图或 base64 payload。Accepted 异步图片请求只把压缩图短期保存在私有临时 Storage，供 worker recovery/retry 和 retention cleanup 使用。紧凑 metadata 可以记录 image count、input kind、mime type、compressed length、validation result 和 safety/error category。
 
 ### Workout Draft Workflow
 
@@ -217,6 +269,7 @@ Backend 可以内部记录 request count 和 model cost。没有独立产品决�
 云端可以保存：
 
 - AI sessions 和已接受的 final chat messages；
+- accepted delivery 使用的短期 `ai_delivery_requests` rows 与私有临时图片对象；
 - Review/history 需要的合法 artifact/evidence snapshots；
 - Reliability、billing audit、abuse prevention 和 debugging 需要的 request metadata；
 - 经过 sanitization 的紧凑 debug summaries。

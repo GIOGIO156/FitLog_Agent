@@ -8,7 +8,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'fitlog_local.db';
-  static const int dbVersion = 18;
+  static const int dbVersion = 20;
 
   Database? _database;
 
@@ -161,6 +161,9 @@ class AppDatabase {
         if (oldVersion < 18) {
           await _createWorkoutPlanCommitTable(db);
           await _repairWorkoutPlanCommitStatuses(db);
+        }
+        if (oldVersion < 20) {
+          await _dropRetiredAiPendingOperationsTable(db);
         }
       },
     );
@@ -764,6 +767,10 @@ class AppDatabase {
     if (!exists) {
       await db.execute('ALTER TABLE $table ADD COLUMN $columnDefinition');
     }
+  }
+
+  Future<void> _dropRetiredAiPendingOperationsTable(Database db) async {
+    await db.execute('DROP TABLE IF EXISTS ai_pending_operations');
   }
 
   Future<void> clearAllLocalData() async {

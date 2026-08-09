@@ -8,7 +8,7 @@ This document is the source of truth for how FitLog_Agent relates cloud data, lo
 
 ## Scope
 
-These rules apply to every signed-in Agent build. They cover the root auth gate, active-device claim/assert, cloud-first body/food/workout writes, account-bound confirmed-cache metadata, cloud-backed repositories, non-blocking startup recovery, first-render account binding, selected-day summary cache, stale-while-revalidate rebuilds, cloud `daily_summaries`, bounded warm cache, cache eviction, and export completeness.
+These rules apply to every signed-in Agent build. They cover the root auth gate, active-device claim/assert, cloud-first body/food/workout writes, account-bound confirmed-cache metadata, cloud-backed repositories, reliable accepted AI delivery, non-blocking startup recovery, first-render account binding, selected-day summary cache, stale-while-revalidate rebuilds, cloud `daily_summaries`, bounded warm cache, cache eviction, and export completeness.
 
 Pre-login compatibility behavior remains local. Offline official-write queues, complete two-way sync, automatic old-device-history migration, and complex cross-device merge UI are outside this boundary. Richer repair presentation may evolve, but it must continue to obey the state, authority, and failure rules below.
 
@@ -20,6 +20,7 @@ Pre-login compatibility behavior remains local. Offline official-write queues, c
 - Pages with confirmed account-bound cache should open from local data without waiting for active-device recovery or cloud refresh once the signed-in auth account is known.
 - Official data must not be lost because local cache is evicted.
 - AI may draft, explain, and review, but official data changes still require user confirmation and cloud success.
+- Before Edge returns `202 accepted`, AI input remains local retry state. After `202 accepted`, `ai_delivery_requests` is the cloud authority for request lifecycle, independent of the Flutter process.
 
 ## Runtime Account State Machine
 
@@ -92,7 +93,8 @@ Transition rules:
 | Workout records | sessions, sets, workout records | Cloud | Confirmed day read model and partial cache |
 | Daily summaries | selected-day totals and compact context | Rebuildable cloud projection | Confirmed summary cache |
 | Local-only app data | theme, runtime UI state, unfinished prompts, local export files | Local | Local authority |
-| Drafts | unsaved prompts, manual/AI new-workout drafts, unconfirmed AI food drafts | Local until confirmed | Draft storage only; saved-workout edits remain page-local |
+| Drafts | unsent prompts, pre-accepted Add Food input, manual/AI new-workout drafts | Local until accepted or confirmed | Draft storage only; saved-workout edits remain page-local |
+| AI delivery requests | accepted Chat turns and accepted photo-analysis drafts | Cloud/service `ai_delivery_requests` | Runtime display cache and polling trigger only |
 | AI records | chat sessions, messages, final answers, request metadata | Cloud/service after their phases | Runtime display cache only |
 
 ## Source Of Truth Rules
@@ -114,6 +116,7 @@ Transition rules:
 - After cloud success, update the local confirmed read model and the affected `daily_summaries` projection/cache.
 - If cloud write fails, preserve the previous official state and keep any user draft/edit in a retryable non-official state.
 - AI cannot silently modify diet goals, apply carb tapering, delete records, or write official records; user confirmation and the official write path are required.
+- AI Chat/photo analysis may return `202 accepted` after auth, subscription, active-device, payload, idempotency, and image persistence succeed. From that point, page disposal, app backgrounding, or process loss must not delete the request; worker recovery is cloud-owned.
 - There is no offline official-write queue. Offline user edits remain drafts until an explicit online save succeeds.
 - Workout lifecycle autosave and official save are ordered mutations of one local draft. Before the official call, the app persists `committing` plus one mutation id, target plan, payload hash, save timestamp, and calculation weight; this state blocks lifecycle autosave, editing, automatic editor restoration, and the workout-in-progress notification.
 - `commit_workout_plan_v1` validates the active device and writes the replacement/create operation, all sessions, all sets, and a hash-only mutation ledger in one PostgreSQL transaction. The account/mutation key is idempotent: the same hash returns the original result, while a different hash is a conflict. The SQLite compatibility path applies the official local rows and its local hash-only ledger in one transaction under the same rule.
@@ -352,6 +355,8 @@ AI:
 
 - AI context must not trust local SQLite cache as the final authority.
 - Use Cloud Profile plus cloud `daily_summaries` or controlled summary/context builders.
+- Accepted AI request lifecycle is cloud-authoritative in `ai_delivery_requests`; client polling, resume refresh, and AI-page status cards are display/repair paths only.
+- Chat success refreshes canonical cloud `ai_chat_sessions`/`ai_chat_messages`; photo-analysis success remains a temporary cloud Food Draft result until the user opens Preview and saves.
 - Official writes from AI drafts require user confirmation and the normal cloud write path.
 
 Export and repair:
@@ -376,6 +381,7 @@ The following components enforce this boundary:
 - Active device claim / guard: Supabase RPCs `claim_active_device`, `assert_active_device`, and `release_active_device`; Flutter repository lives at `lib/data/repositories/active_device_repository.dart`, with runtime state in `lib/domain/models/cloud_runtime_context.dart`.
 - The Profile gate must treat `offline_readonly` and refresh errors with matching cache as renderable states, not full-page errors.
 - The AI page may read subscription display cache for status presentation, while real send capability remains controlled by Gateway and server entitlement checks.
+- Reliable AI delivery: `supabase/migrations/202608090001_ai_async_delivery_requests.sql`, worker actions in `supabase/functions/ai-chat-route/index.ts` and `supabase/functions/ai-food-photo-analyze/index.ts`, plus `lib/data/repositories/ai_chat_repository.dart` and `lib/features/ai/ai_chat_controller.dart`.
 
 ## Verification Invariants
 
@@ -416,6 +422,8 @@ Automated tests and manual acceptance should preserve these invariants:
 - A failed cloud write does not create or overwrite an official local record.
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.
+- Accepted AI Chat/photo requests survive app backgrounding and process loss; returning to the app shows processing, success, or stable failure/retry instead of losing the request.
+- A photo-analysis result remains a temporary draft and does not create official food records until the user saves Food Preview.
 - A successful cloud write updates local read models and affected summaries.
 - Backgrounding during a successful new-workout save cannot recreate the cleared local draft. An ambiguous result remains a locked confirmation item until the original mutation is confirmed or retried; only a definite pre-commit failure becomes editable again.
 - Matching background refresh results do not cause visible loading flashes.

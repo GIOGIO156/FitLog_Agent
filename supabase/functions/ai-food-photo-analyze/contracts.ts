@@ -41,6 +41,9 @@ export interface PhotoAnalysisRequest {
   selectedDate: string;
   schemaVersion: "food_draft.v1" | "food_draft.v2";
   userNote: string | null;
+  deliveryMode: "sync" | "async_v1";
+  clientRequestId: string;
+  deliveryRequestId?: string | null;
 }
 
 export interface ParsedProviderFoodResponse {
@@ -105,6 +108,18 @@ export function parsePhotoAnalysisRequest(
 
   const deviceId = stringOrEmpty(body.device_id).trim();
   const selectedDate = stringOrEmpty(body.selected_date).trim();
+  const client = body.client === undefined || body.client === null
+    ? {}
+    : objectOrThrow(body.client);
+  const deliveryMode = stringOrEmpty(client.delivery_mode).trim() ===
+      "async_v1"
+    ? "async_v1"
+    : "sync";
+  const requestedClientRequestId = nullableString(body.client_request_id);
+  const clientRequestId = requestedClientRequestId ?? crypto.randomUUID();
+  if (!isClientRequestId(clientRequestId)) {
+    throw new PhotoGatewayRequestError("request_schema_mismatch");
+  }
   if (deviceId === "" || !isValidDateKey(selectedDate)) {
     throw new PhotoGatewayRequestError("request_schema_mismatch");
   }
@@ -117,6 +132,9 @@ export function parsePhotoAnalysisRequest(
     selectedDate,
     schemaVersion: requestedSchemaVersion,
     userNote,
+    deliveryMode,
+    clientRequestId,
+    deliveryRequestId: null,
   };
 }
 
@@ -323,6 +341,34 @@ export function photoGatewayResponse(params: {
   };
 }
 
+export function photoGatewayAcceptedResponse(params: {
+  requestId: string;
+  status?: "queued" | "running" | "succeeded" | "failed";
+  duplicateSubmit?: boolean;
+  retryable?: boolean;
+  errorCode?: string | null;
+}): Record<string, unknown> {
+  return {
+    model_choice: null,
+    model_provider: null,
+    draft: null,
+    needs_clarification: false,
+    clarification_questions: [],
+    debug_summary_id: null,
+    error: null,
+    transport: {
+      schema_version: "ai_delivery_transport.v1",
+      request_id: params.requestId,
+      kind: "food_photo_analysis",
+      status: params.status ?? "queued",
+      accepted: true,
+      retryable: params.retryable ?? true,
+      duplicate_submit: params.duplicateSubmit ?? false,
+      error_code: params.errorCode ?? null,
+    },
+  };
+}
+
 export function foodDraftForClient(
   draft: FoodDraft | null,
   requestedSchemaVersion: PhotoAnalysisRequest["schemaVersion"],
@@ -525,6 +571,10 @@ function nullableString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function isClientRequestId(value: string): boolean {
+  return value.length <= 120 && /^[a-z0-9][a-z0-9._:-]*$/i.test(value);
 }
 
 function numberOrNaN(value: unknown): number {

@@ -13,6 +13,8 @@ Provider 输出在 Gateway 完成解析、结构校验、领域归一化、
 workflow 校验和写权限校验前，一律是不可信数据。
 ```
 
+可靠交付不会削弱这条边界。`202 accepted` transport response 只证明服务端已经持久化并接管请求；它不是 provider 输出，不包含 artifact，也不能被渲染成成功回答。最终 succeeded 结果仍必须通过同一份 provider-output contract，才可以写入 Chat history 或暴露为 Food Draft。
+
 ## 执行边界
 
 同一份契约同时约束生成、Gateway 校验、持久化和客户端重建。任何一层都不能把 provider HTTP 请求成功当成业务 payload 已经有效的证明。
@@ -45,6 +47,7 @@ workflow 校验和写权限校验前，一律是不可信数据。
 10. 每次 contract 变化都必须版本化，并在发布前由 fixtures 覆盖。
 11. 每个 Provider 只暴露一个服务端配置的多模态生成模型 ID，统一用于 AI Chat 文字、AI Chat 图片和专用 Food 图片分析。Document RAG Embedding 是独立任务，使用自己的 model 与 endpoint；当前 Qwen 生成和 embedding 复用同一服务端管理的 Qwen credential。
 12. Adapter 支持不等于当前发布可用。当前发布配置 Qwen，并保留 OpenAI adapter 和确定性 tests；未配置 ChatGPT selection 在 Flutter transport 前被拒绝，保留输入、显示短暂 unavailable error，并自动恢复 Qwen UI 选中态。恢复选择不触发 transport，因而不构成 provider fallback。
+13. 异步交付状态与 provider-output success 是两个状态机。`queued`、`running` 或 `failed` delivery row 可以显示给用户，但只有通过校验的终态输出才能创建 assistant message、draft artifact 或 Food Preview 入口。
 
 ## 意图解析与输出类别
 
@@ -238,6 +241,8 @@ Output budget 用于限制成本和延迟，不能让 partial artifact 被接受
 
 客户端只把明确的 socket/timeout transport 异常显示为网络失败。服务端 error envelope 会保留其稳定 code；成功 transport 后的 response 解码或类型重建失败映射为 `provider_output_invalid`，无法分类的 SDK/provider 异常映射为 `provider_failure`，不能误报为断网。
 
+对 accepted 异步交付而言，终态 `failed` delivery row 携带同一组稳定 error-code family 与 retryability metadata。交付失败是可恢复 UI 状态，不是部分 provider result。若 provider 之后成功，写入 Chat history 或图片分析草稿卡片前仍必须满足本契约。
+
 最终结构化输出失败后：
 
 - 不返回 artifact 或保存/审查 action；
@@ -277,8 +282,9 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - 目标回复语言，以及不包含 response 原文的非阻断语言质量分类
 - latency 和 token estimate
 - 是否返回 draft 或 clarification
+- 使用 accepted 异步交付时的 delivery request ID、稳定 client request ID、attempt count、lease reclaim marker 和 duplicate-submit count
 
-不得包含 raw provider responses、chain-of-thought、provider keys、auth tokens、原图、base64 payload、完整记录历史或不受限的用户 notes。
+不得包含 raw provider responses、chain-of-thought、provider keys、auth tokens、原图、base64 payload、完整记录历史或不受限的用户 notes。Accepted 图片分析交付可以为了恢复和重试把压缩图短期保存在私有临时存储；logs 仍只保存 metadata。
 
 必测维度：
 
@@ -295,6 +301,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 模型成功输出仍然只创建可编辑 proposal：
 
 - Food Draft 只有经过相应 review action 后才打开 Food Preview。
+- Add Food 异步交付完成后的临时 Food Draft 卡片，也只有用户点击后才打开 Food Preview。
 - Workout Draft 只有 review 后才重建训练编辑器；已有草稿时还需要 replacement confirmation。
 - 正式记录只由正常 confirmed save path 写入。
 - AI 不能静默修改 Profile、目标、`diet_goal_phase`、`diet_calculation_mode`、`carb_cycling` 或 `carb_tapering`。
@@ -323,11 +330,13 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - Chat Gateway：`supabase/functions/ai-chat-route/index.ts`
 - Canonical schemas/validators：`supabase/functions/_shared/ai_output_contract.ts`
 - Chat request/response contracts：`supabase/functions/ai-chat-route/contracts.ts`
+- 异步交付持久化：`supabase/migrations/202608090001_ai_async_delivery_requests.sql`
 - Expected-output resolver：`supabase/functions/ai-chat-route/expected_output.ts`
 - OpenAI adapter：`supabase/functions/ai-chat-route/openai_provider.ts`
 - Qwen adapter：`supabase/functions/ai-chat-route/qwen_provider.ts`
 - 共享食物 Prompt policy：`supabase/functions/_shared/food_prompt_policy.ts`
 - 专用 Food Analysis：`supabase/functions/ai-food-photo-analyze/index.ts`、`supabase/functions/ai-food-photo-analyze/contracts.ts`
+- Flutter 交付状态模型：`lib/domain/models/ai_delivery_transport.dart`、`lib/domain/models/ai_delivery_request.dart`
 - Flutter Gateway response：`lib/domain/models/ai_gateway_response.dart`
 - Flutter Food Draft：`lib/domain/models/ai_food_photo_analysis.dart`
 - Flutter Workout Draft：`lib/domain/models/ai_workout_draft.dart`

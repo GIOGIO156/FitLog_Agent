@@ -10,17 +10,17 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 
 | Storage | Purpose | Authority and lifecycle |
 | --- | --- | --- |
-| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, workout commit ledger, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v18. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
+| SQLite / `sqflite` | Local compatibility profile/cache, calibration, strategy review, custom exercises, workout drafts, workout commit ledger, account-bound confirmed read models, and selected-day `daily_summary_cache`. | Schema v20. Signed-in official records are not authoritative here; confirmed cache is rebuildable and bounded. |
 | Supabase Cloud Records | `body_metric_logs`, `food_records`/`food_items`, `workout_sessions`/`workout_sets`, `workout_plan_commits`, and `daily_summaries`. | Authoritative for signed-in official records; cloud-backed repositories coordinate writes and local read-model updates. |
 | SharedPreferences | Language/theme and lightweight UI preferences, per-account record-summary permission, Cloud Profile/subscription display cache, registration PKCE verifier state, and tiny picker-recovery markers. | Device-local runtime/display state, not business-record synchronization. |
 | Local files | XLSX and CSV ZIP exports in the app documents directory. | User-controlled derived files; not a cloud source of truth. |
-| Cloud account and AI storage | Supabase Auth identity, subscription entitlement, Cloud Profile, AI chat sessions/messages, request logs, compact debug summaries, evidence/artifact snapshots, and document chunks. | Account-bound or service-owned cloud data protected by RLS/RPC/service boundaries. |
+| Cloud account and AI storage | Supabase Auth identity, subscription entitlement, Cloud Profile, AI chat sessions/messages, reliable delivery requests, temporary AI photo assets, request logs, compact debug summaries, evidence/artifact snapshots, and document chunks. | Account-bound or service-owned cloud data protected by RLS/RPC/service boundaries. Temporary photo assets are private and short-lived. |
 | AI document index | Versioned active-build stable documentation chunks and embeddings for Document RAG. | Supabase Postgres lexical/vector candidate retrieval with service-role-only staging, activation, search, and rollback. |
 | In-memory providers | Selected date, refresh version, app services, language state, and runtime summaries. | Ephemeral runtime coordination only. |
 
 Current local database name: `fitlog_local.db`.
 
-Current local SQLite schema version: `18`.
+Current local SQLite schema version: `20`.
 
 Foreign keys are enabled with:
 
@@ -52,6 +52,8 @@ Local migrations must remain additive and compatible.
 | 16 | Deletes legacy `edit_record` workout drafts so only manually or AI-created new workout records remain resumable. |
 | 17 | Adds workout save-state fields to `workout_record_drafts` and the hash-only `workout_plan_commits` ledger. The idempotent upgrade and open-time repair cover intermediate v17 test builds without clearing user data. |
 | 18 | Extends the local workout mutation ledger with the `abandoned` terminal state used by process-start recovery. The idempotent upgrade and open-time repair preserve existing committed rows. |
+| 19 | Reserved by an intermediate AI delivery experiment; the final product scope does not use its temporary table. |
+| 20 | Drops the retired intermediate `ai_pending_operations` table if present. This compatibility cleanup removes only transient AI delivery metadata and preserves official records, profile data, chat history, and caches. |
 
 Compatibility rules:
 
@@ -610,7 +612,7 @@ Fields:
 Rules:
 
 - Account-bound RLS protects client reads.
-- The Gateway writes one user message and one assistant message per accepted turn. Accepted image Chat persists as text messages while up to three images are forwarded only in the current Gateway request.
+- The Gateway writes one user message and one assistant message per validated Chat turn. Accepted async image Chat persists image bytes only as private temporary delivery assets; final Chat history remains text/artifact metadata, and `ai_chat_messages` never stores image bytes or base64.
 - `final_answer_json` may store a lightweight `ai_chat_artifacts.v2` snapshot for validated artifacts such as `food_draft.v2` or `workout_draft.v3`, plus the resolved `target_date`, date-resolution source, `ai_chat_evidence.v1`, or an `evidence` object that summarizes retrieved context. Artifact snapshots rebuild Preview after review; evidence is read-only display/debug context. Neither is an official record or a background draft queue. The history reader retains compatibility with v1/v2 artifacts by using their stored selected date when the legacy draft lacks its own date.
 - `role` is limited to `user` and `assistant`; `message_type` remains text-only for persisted chat history. Image bytes/base64 are not stored in `ai_chat_messages`.
 - Message order is deterministic by `message_sequence`, with timestamps and ids available as stable secondary fields.
@@ -634,6 +636,49 @@ Rules:
 - `attachment_policy` only tells Flutter whether current runtime pixels can be rebound. History reload, restart, local-data clearing, logout, or account switch makes unavailable pixels `resend_required` rather than reconstructing them from cloud state.
 - This cloud-only additive migration does not change SQLite `AppDatabase.dbVersion` or the local `workout_record_drafts` authority.
 
+### `ai_delivery_requests`
+
+Purpose: narrow cloud lifecycle for AI requests that must survive app backgrounding or process loss after server acceptance. It is not a general workflow engine.
+
+Fields:
+
+- `request_id`
+- `account_id`
+- `kind`: `ai_chat` or `food_photo_analysis`
+- `client_request_id`
+- `status`: `queued`, `running`, `succeeded`, or `failed`
+- optional `session_id` for Chat
+- sanitized `request_payload_json`
+- `asset_refs_json` with private temporary object paths and image metadata
+- `result_json` for the existing business response envelope after success
+- `error_code`, `failure_stage`, and `retryable`
+- `attempt_count`, `max_attempts`, `lease_owner`, `lease_expires_at`, and `reclaimed_after_lease`
+- `accepted_at`, `started_at`, `completed_at`, `expires_at`, `created_at`, and `updated_at`
+- compact observability fields such as trace/app/edge/provider/count metadata and duplicate-submit count
+
+Rules:
+
+- `account_id + kind + client_request_id` is unique and protected by an advisory transaction lock during accept, so duplicate submits return the same request state.
+- Authenticated clients may read only their own rows. Inserts, claims, completion, retry transitions, and stale-running recovery are RPC/service-role controlled.
+- `claim_ai_delivery_request` atomically moves one queued or lease-expired running row to `running` with a bounded lease. At-least-once worker execution is allowed, but business writes must remain idempotent.
+- `finish_ai_delivery_request` stores the existing business result envelope on success, requeues retryable failures within `max_attempts`, and writes stable `failed` terminal state after the retry boundary.
+- `retry_ai_delivery_request` is owner-callable only for the same account and resets a failed row to `queued` without creating a new business request.
+- Chat success writes to the existing chat tables through `record_ai_chat_turn_v3`, using `request_id` and `client_request_id` to avoid duplicate user-visible messages.
+- Photo success stores a temporary existing Food Draft response envelope; it does not write official `food_records` or `food_items`.
+- Default expiry is 72 hours from acceptance. Cleanup must remove expired delivery rows and their temporary objects without touching chat history or official records.
+
+### `fitlog-ai-temp-assets` Storage bucket
+
+Purpose: private temporary storage for images needed to retry accepted AI Chat/image and Add Food photo analysis requests.
+
+Rules:
+
+- Objects are stored under account/request-scoped paths generated by Edge, not arbitrary client-supplied paths.
+- The bucket is private; normal clients do not receive public URLs or signed URLs for worker processing.
+- Stored metadata includes MIME type and byte length, not image base64 in database logs.
+- Accepted duplicate submits clean up any newly uploaded duplicate objects. Expiry cleanup owns abandoned objects.
+- This bucket supports retrying accepted requests only. It is not long-term photo history or food-record storage.
+
 ### `ai_request_logs`
 
 Purpose: audit, reliability, subscription enforcement, cost tracking, and abuse prevention.
@@ -641,6 +686,7 @@ Purpose: audit, reliability, subscription enforcement, cost tracking, and abuse 
 Fields:
 
 - `request_id`
+- `client_request_id`
 - `account_id`
 - `session_id`
 - `workflow_type`
@@ -690,6 +736,7 @@ This table is a server-side operational record:
 - The additive `202607150002_ai_chat_turn_rag_workflows.sql` migration aligns the `record_ai_chat_turn` RPC validation with the table contract for `workout_logging`, `general_chat`, and `safety_boundary`; existing workflow values and the service-role-only execution boundary remain intact.
 - Chat uses `prompt_version = chat_orchestration_v2` and `schema_version = ai_chat_response.v3`; Add Food uses `workflow_type = food_logging` and `schema_version = food_draft.v2`. Additive workflow constraints preserve legacy values and also accept server-planned `workout_logging`, `general_chat`, and `safety_boundary`.
 - Additive migrations `202607190001_ai_chat_clarification_state.sql` and `202607190002_ai_chat_orchestration_observability.sql` add the server-owned clarification state/RPCs and compact decision, clarification, attachment, failure, write-guard, and shadow-mismatch categories. They never persist request-time pixels, full provider output, or prompts in those fields. Follow-up migration `202607190003_ai_chat_clarification_digest_search_path.sql` explicitly includes Supabase's `extensions` schema in the security-definer turn RPC so `pgcrypto.digest` can compute progress signatures on both fresh and upgraded projects.
+- Additive migration `202608090001_ai_async_delivery_requests.sql` adds `client_request_id` idempotency, reliable delivery rows, the private temporary AI asset bucket, and service-owned accept/claim/finish/retry RPCs. It is a cloud-only migration and does not change SQLite `AppDatabase.dbVersion`.
 - Text/image paths store compact output-contract states, never raw provider output, correction payloads, image bytes/base64, provider secrets, or unrestricted notes.
 - `selected_output_type` is written only after provider output passes contract validation. Issue codes are fixed categories and contain no field values, user prompt, or provider text.
 - Authenticated clients have no direct read policy.
@@ -848,8 +895,8 @@ Export correctness comes from cloud official records, cloud summaries, or builde
 - Workout commit schema: `supabase/migrations/202607220001_workout_plan_commit_protocol.sql`
 - Custom exercises: `lib/data/repositories/custom_exercise_repository.dart`
 - Daily summaries: `lib/domain/services/daily_summary_service.dart`
-- AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
-- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`, `supabase/migrations/202607190001_ai_chat_clarification_state.sql`, `supabase/migrations/202607190002_ai_chat_orchestration_observability.sql`, `supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql`
+- AI chat and AI food analysis contract models: `lib/domain/models/ai_chat_session.dart`, `lib/domain/models/ai_chat_message.dart`, `lib/domain/models/ai_delivery_request.dart`, `lib/domain/models/ai_delivery_transport.dart`, `lib/domain/models/ai_gateway_request.dart`, `lib/domain/models/ai_gateway_response.dart`, `lib/domain/models/ai_gateway_evidence.dart`, `lib/domain/models/ai_gateway_error.dart`, `lib/domain/models/ai_food_photo_analysis.dart`, `lib/domain/models/ai_workout_draft.dart`
+- Supabase AI schema: `supabase/migrations/202606290001_phase4_ai_chat_foundation.sql`, `supabase/migrations/202606290002_phase4_step2_gateway_mock.sql`, `supabase/migrations/202606300001_phase4_step3_4_chat_ops_real_providers.sql`, `supabase/migrations/202607010001_phase4_step5_chat_session_rename.sql`, `supabase/migrations/202607080001_phase5_document_rag_index.sql`, `supabase/migrations/202607090001_phase5_structured_rag_service_role_grants.sql`, `supabase/migrations/202607100001_ai_output_contract_observability.sql`, `supabase/migrations/202607130001_rag_foundation_document_hybrid.sql`, `supabase/migrations/202607130002_rag_foundation_exercise_history.sql`, `supabase/migrations/202607130003_rag_foundation_observability.sql`, `supabase/migrations/202607150001_rag_latency_breakdown.sql`, `supabase/migrations/202607150002_ai_chat_turn_rag_workflows.sql`, `supabase/migrations/202607150003_rag_hybrid_indexed_candidates.sql`, `supabase/migrations/202607150004_rag_parallel_candidate_fusion.sql`, `supabase/migrations/202607190001_ai_chat_clarification_state.sql`, `supabase/migrations/202607190002_ai_chat_orchestration_observability.sql`, `supabase/migrations/202607190003_ai_chat_clarification_digest_search_path.sql`, `supabase/migrations/202608090001_ai_async_delivery_requests.sql`
 - Supabase AI Gateway: `supabase/functions/_shared/ai_output_contract.ts`, `supabase/functions/ai-chat-route/index.ts`, `supabase/functions/ai-chat-route/openai_provider.ts`, `supabase/functions/ai-chat-route/qwen_provider.ts`, `supabase/functions/ai-chat-route/workflow_router.ts`, `supabase/functions/ai-chat-route/context_builders.ts`, `supabase/functions/ai-chat-route/document_rag.ts`, `supabase/functions/ai-chat-route/prompt_builder.ts`, `supabase/functions/ai-food-photo-analyze/index.ts`
 - Document RAG seed tooling: `tool/phase5_document_rag/build_document_chunks.mjs`, `supabase/seed_phase5_document_chunks.sql`
 - AI chat and AI food analysis repository/client: `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_gateway_client.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`

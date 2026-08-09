@@ -67,6 +67,8 @@ export interface GatewayRequest {
   messageText: string;
   submittedMessageText?: string;
   clientRequestId?: string;
+  deliveryMode: "sync" | "async_v1";
+  deliveryRequestId?: string | null;
   language: "zh" | "en";
   modelChoice: ModelChoice;
   workflowType: WorkflowType;
@@ -279,6 +281,10 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
   const client = body.client === undefined || body.client === null
     ? {}
     : objectOrThrow(body.client);
+  const deliveryMode = stringOrEmpty(client.delivery_mode).trim() ===
+      "async_v1"
+    ? "async_v1"
+    : "sync";
   const clientDraftSchemaVersion = stringOrEmpty(
     client.draft_schema_version || "v1",
   ).trim();
@@ -294,6 +300,8 @@ export function parseGatewayRequest(value: unknown): GatewayRequest {
     messageText,
     submittedMessageText: messageText,
     clientRequestId,
+    deliveryMode,
+    deliveryRequestId: null,
     language: language as "zh" | "en",
     modelChoice: modelChoice as ModelChoice,
     workflowType: workflowType as WorkflowType,
@@ -422,6 +430,46 @@ export function gatewayResponse(params: {
     evidence: params.evidence ?? null,
     error: params.error ?? null,
     debug_summary_id: params.debugSummaryId ?? null,
+  };
+}
+
+export function gatewayAcceptedResponse(params: {
+  requestId: string;
+  sessionId?: string | null;
+  kind?: "ai_chat";
+  status?: "queued" | "running" | "succeeded" | "failed";
+  duplicateSubmit?: boolean;
+  retryable?: boolean;
+  language?: string | null;
+  errorCode?: string | null;
+}): Record<string, unknown> {
+  return {
+    session_id: params.sessionId ?? null,
+    assistant_message_id: null,
+    model_choice: null,
+    model_provider: null,
+    message: {
+      language: params.language ?? "zh",
+    },
+    workflow: "auto",
+    output_type: null,
+    needs_clarification: false,
+    clarification_questions: [],
+    clarification: null,
+    draft: null,
+    evidence: null,
+    error: null,
+    debug_summary_id: null,
+    transport: {
+      schema_version: "ai_delivery_transport.v1",
+      request_id: params.requestId,
+      kind: params.kind ?? "ai_chat",
+      status: params.status ?? "queued",
+      accepted: true,
+      retryable: params.retryable ?? true,
+      duplicate_submit: params.duplicateSubmit ?? false,
+      error_code: params.errorCode ?? null,
+    },
   };
 }
 

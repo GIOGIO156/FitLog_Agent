@@ -14,8 +14,8 @@ import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('AppDatabase schema version includes workout commit recovery', () {
-    expect(AppDatabase.dbVersion, 18);
+  test('AppDatabase schema version retires temporary AI operation storage', () {
+    expect(AppDatabase.dbVersion, 20);
   });
 
   test(

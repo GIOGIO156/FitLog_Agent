@@ -13,6 +13,8 @@ Provider output is untrusted until the Gateway has parsed, validated, normalized
 and checked it against the routed workflow and write-permission policy.
 ```
 
+Reliable delivery does not weaken this boundary. A `202 accepted` transport response proves only that the server persisted and owns the request; it is not provider output, does not contain an artifact, and cannot be rendered as a successful answer. The eventual succeeded result must pass the same provider-output contract before it is stored in chat history or exposed as a Food Draft.
+
 ## Enforcement Surfaces
 
 The same contract is enforced at generation, Gateway validation, persistence, and client reconstruction. No layer may treat a successful provider HTTP response as proof that the business payload is valid.
@@ -45,6 +47,7 @@ The following rules apply to every provider and model:
 10. Every contract change is versioned and covered by fixtures before rollout.
 11. Each provider exposes one server-configured multimodal generation model ID for AI Chat text, AI Chat images, and dedicated Food image analysis. Document RAG embedding remains an independent task with its own model and endpoint; current Qwen generation and embedding reuse the same server-managed Qwen credential.
 12. Adapter support does not imply release availability. The current release configures Qwen and retains the OpenAI adapter and deterministic tests. An unconfigured ChatGPT selection is rejected in Flutter before transport, with preserved input, a transient unavailable error, and automatic restoration of the Qwen UI selection. Restoring the selector triggers no transport and therefore is not provider fallback.
+13. Async delivery status and provider-output success are separate states. `queued`, `running`, or `failed` delivery rows may be shown to the user, but only a validated terminal output may create an assistant message, draft artifact, or Food Preview entry.
 
 ## Intent Resolution And Output Families
 
@@ -238,6 +241,8 @@ The existing `record_schema_mismatch` remains readable for compatibility with ol
 
 The client reports network failure only for recognizable socket or timeout transport errors. A server error envelope retains its stable code; response decoding or typed reconstruction failures after successful transport map to `provider_output_invalid`, while unclassified SDK/provider failures map to `provider_failure` instead of being mislabeled as offline.
 
+For accepted async delivery, a terminal `failed` delivery row carries the same stable error-code family and retryability metadata. A delivery failure is recoverable UI state, not a partial provider result. If the provider later succeeds, the stored result must satisfy this contract before Chat history or the photo-analysis draft card can expose it.
+
 After final structured-output failure:
 
 - no artifact or save/review action is returned;
@@ -277,8 +282,9 @@ Compact logs may include:
 - target response language and a non-blocking language-quality classification without response text
 - latency and token estimate
 - whether a draft or clarification was returned
+- delivery request ID, stable client request ID, attempt count, lease reclaim marker, and duplicate-submit count when the request used accepted async delivery
 
-They must not include raw provider responses, chain-of-thought, provider keys, auth tokens, original images, base64 payloads, complete record history, or unrestricted user notes.
+They must not include raw provider responses, chain-of-thought, provider keys, auth tokens, original images, base64 payloads, complete record history, or unrestricted user notes. Accepted image-analysis delivery may retain compressed images only in private temporary storage for recovery and retry; logs still store metadata only.
 
 Required evaluation dimensions:
 
@@ -295,6 +301,7 @@ FitLog must not claim a universal error rate such as less than 0.1% without a ve
 Successful model output only creates an editable proposal:
 
 - Food Draft opens Food Preview only after the relevant review action.
+- A completed Add Food async delivery row exposes a temporary Food Draft card; it opens Food Preview only when the user taps it.
 - Workout Draft rebuilds the workout editor only after review and replacement confirmation when another draft exists.
 - Official records are written only by the normal confirmed save path.
 - AI cannot silently change Profile, goals, `diet_goal_phase`, `diet_calculation_mode`, `carb_cycling`, or `carb_tapering`.
@@ -323,11 +330,13 @@ Successful model output only creates an editable proposal:
 - Chat Gateway: `supabase/functions/ai-chat-route/index.ts`
 - Canonical schemas and validators: `supabase/functions/_shared/ai_output_contract.ts`
 - Chat request/response contracts: `supabase/functions/ai-chat-route/contracts.ts`
+- Async delivery persistence: `supabase/migrations/202608090001_ai_async_delivery_requests.sql`
 - Expected-output resolver: `supabase/functions/ai-chat-route/expected_output.ts`
 - OpenAI adapter: `supabase/functions/ai-chat-route/openai_provider.ts`
 - Qwen adapter: `supabase/functions/ai-chat-route/qwen_provider.ts`
 - Shared food prompt policy: `supabase/functions/_shared/food_prompt_policy.ts`
 - Dedicated food analysis: `supabase/functions/ai-food-photo-analyze/index.ts`, `supabase/functions/ai-food-photo-analyze/contracts.ts`
+- Flutter delivery status models: `lib/domain/models/ai_delivery_transport.dart`, `lib/domain/models/ai_delivery_request.dart`
 - Flutter Gateway response: `lib/domain/models/ai_gateway_response.dart`
 - Flutter Food Draft: `lib/domain/models/ai_food_photo_analysis.dart`
 - Flutter Workout Draft: `lib/domain/models/ai_workout_draft.dart`

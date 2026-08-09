@@ -430,6 +430,14 @@ class AppStrings {
     'Network failed. Your message was kept for retry.',
     '网络连接失败，消息已保留，可重试。',
   );
+  String get aiDeliveryProcessing => _t(
+    'The server is still processing this request. You can leave and come back.',
+    '服务器仍在处理这次请求，你可以离开后再回来查看。',
+  );
+  String get aiDeliveryFailed => _t(
+    'The server could not complete this request. Please retry from this state.',
+    '服务器未能完成这次请求，请从此状态重试。',
+  );
   String get aiUnknownFailure =>
       _t('AI request failed. Try again.', 'AI 请求失败，请重试。');
   String get authRequired => _t('Please sign in first.', '请先登录。');
@@ -565,6 +573,12 @@ class AppStrings {
   );
   String get startPhotoAiAnalysis => _t('Analyze food', '开始分析');
   String get photoAiAnalyzing => _t('Analyzing...', '正在分析...');
+  String get photoAiDeliveryProcessing =>
+      _t('Food photo analysis is processing.', '食物图片分析正在处理。');
+  String get photoAiDeliveryReady =>
+      _t('Food photo draft is ready to review.', '食物图片草稿已完成，可查看。');
+  String get photoAiDeliveryFailed =>
+      _t('Food photo analysis failed. Please retry.', '食物图片分析失败，请重试。');
   String get photoAiPickImageFirst =>
       _t('Describe the food or add at least one photo.', '请描述食物，或至少添加一张图片。');
   String get photoAiPickFailed =>

@@ -1,4 +1,5 @@
 import '../../core/constants/app_constants.dart';
+import 'ai_delivery_transport.dart';
 import 'ai_gateway_error.dart';
 import 'ai_gateway_request.dart';
 import 'food_item.dart';
@@ -36,6 +37,8 @@ class AiFoodPhotoAnalysisRequest {
     required this.selectedDate,
     this.userNote,
     this.client = const <String, dynamic>{},
+    this.clientRequestId,
+    this.asyncDelivery = false,
   });
 
   final List<AiFoodPhotoImagePayload> images;
@@ -45,17 +48,25 @@ class AiFoodPhotoAnalysisRequest {
   final String selectedDate;
   final String? userNote;
   final Map<String, dynamic> client;
+  final String? clientRequestId;
+  final bool asyncDelivery;
 
   Map<String, dynamic> toJson() {
+    final clientPayload = <String, dynamic>{
+      ...client,
+      if (asyncDelivery) 'delivery_mode': 'async_v1',
+    };
     return <String, dynamic>{
       'images': images.map((image) => image.toJson()).toList(growable: false),
+      if ((clientRequestId ?? '').isNotEmpty)
+        'client_request_id': clientRequestId,
       'language': language,
       'model_choice': modelChoice.value,
       'device_id': deviceId,
       'selected_date': selectedDate,
       'schema_version': aiFoodDraftSchemaVersion,
       if ((userNote ?? '').trim().isNotEmpty) 'user_note': userNote!.trim(),
-      if (client.isNotEmpty) 'client': Map<String, dynamic>.from(client),
+      if (clientPayload.isNotEmpty) 'client': clientPayload,
     };
   }
 }
@@ -67,6 +78,7 @@ class AiFoodPhotoAnalysisResponse {
     this.draft,
     this.needsClarification = false,
     this.clarificationQuestions = const <String>[],
+    this.transport,
     this.debugSummaryId,
     this.error,
   });
@@ -76,10 +88,12 @@ class AiFoodPhotoAnalysisResponse {
   final AiFoodDraft? draft;
   final bool needsClarification;
   final List<String> clarificationQuestions;
+  final AiDeliveryTransport? transport;
   final String? debugSummaryId;
   final AiGatewayError? error;
 
   bool get isSuccess => error == null;
+  bool get isAccepted => transport?.isAccepted == true;
 
   factory AiFoodPhotoAnalysisResponse.fromJson(
     Map<String, dynamic> json, {
@@ -100,6 +114,7 @@ class AiFoodPhotoAnalysisResponse {
           : null,
       needsClarification: json['needs_clarification'] == true,
       clarificationQuestions: _stringList(json['clarification_questions']),
+      transport: AiDeliveryTransport.fromJsonOrNull(json['transport']),
       debugSummaryId: json['debug_summary_id']?.toString(),
       error: AiGatewayError.fromJsonOrNull(json['error']),
     );

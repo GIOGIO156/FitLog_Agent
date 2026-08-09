@@ -11,8 +11,10 @@ import {
   estimateTokens,
   extractBearerToken,
   extractSessionIdFromAccessToken,
+  gatewayAcceptedResponse,
   type GatewayClarification,
   type GatewayDraft,
+  type GatewayImageAttachment,
   type GatewayRequest,
   GatewayRequestError,
   gatewayResponse,
@@ -178,6 +180,26 @@ Deno.serve(async (request) => {
     const environmentStartedAt = Date.now();
     env = readGatewayEnv();
     stageTelemetry.environmentLatencyMs = Date.now() - environmentStartedAt;
+    if (isDeliveryWorkerRequest(request, env)) {
+      const workerBody = recordValue(await request.json().catch(() => ({})));
+      if (workerBody.worker_action === "process_pending") {
+        const processed = await processAiChatDeliveryQueue(
+          env,
+          boundedWorkerLimit(workerBody.limit),
+        );
+        return jsonResponse({ processed }, 200);
+      }
+      if (workerBody.worker_action === "process_one") {
+        const requestId = typeof workerBody.request_id === "string"
+          ? workerBody.request_id
+          : null;
+        if (requestId === null) {
+          return jsonResponse({ processed: 0 }, 422);
+        }
+        await processAiChatDeliveryRequest(env, requestId);
+        return jsonResponse({ processed: 1 }, 200);
+      }
+    }
     const token = extractBearerToken(request.headers.get("authorization"));
     if (token === null) {
       throw new GatewayHttpError("auth_required", 401);
@@ -208,6 +230,31 @@ Deno.serve(async (request) => {
     ]);
     stageTelemetry.subscriptionDeviceLatencyMs = Date.now() -
       subscriptionDeviceStartedAt;
+
+    if (
+      parsedRequest.deliveryMode === "async_v1" &&
+      parsedRequest.clarificationReply == null
+    ) {
+      const accepted = await acceptChatDeliveryRequest(
+        env,
+        accountId,
+        parsedRequest,
+        body,
+      );
+      waitUntil(processAiChatDeliveryRequest(env, accepted.requestId));
+      return jsonResponse(
+        gatewayAcceptedResponse({
+          requestId: accepted.requestId,
+          sessionId: accepted.sessionId,
+          status: accepted.status,
+          duplicateSubmit: accepted.duplicateSubmit,
+          retryable: accepted.retryable,
+          language: parsedRequest.language,
+          errorCode: accepted.errorCode,
+        }),
+        202,
+      );
+    }
 
     const clarificationResolution = await resolveClarificationContext(
       env,
@@ -704,6 +751,921 @@ Deno.serve(async (request) => {
   }
 });
 
+const deliveryBucket = "fitlog-ai-temp-assets";
+const deliveryEdgeVersion = "ai_async_delivery.v1";
+
+interface AcceptedDelivery {
+  requestId: string;
+  sessionId: string | null;
+  status: "queued" | "running" | "succeeded" | "failed";
+  duplicateSubmit: boolean;
+  retryable: boolean;
+  errorCode: string | null;
+}
+
+interface DeliveryAssetRef {
+  path: string;
+  mime_type: "image/jpeg" | "image/png" | "image/webp";
+  byte_length: number;
+  name: string | null;
+}
+
+async function acceptChatDeliveryRequest(
+  env: GatewayEnv,
+  accountId: string,
+  request: GatewayRequest,
+  rawBody: unknown,
+): Promise<AcceptedDelivery> {
+  const requestId = crypto.randomUUID();
+  const assets = await persistDeliveryAssets(
+    env,
+    accountId,
+    requestId,
+    request.attachments,
+  );
+  const payload = sanitizeDeliveryPayload(rawBody);
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/rpc/accept_ai_delivery_request`,
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_request_id: requestId,
+        input_account_id: accountId,
+        input_kind: "ai_chat",
+        input_client_request_id: request.clientRequestId ?? requestId,
+        input_session_id: request.sessionId,
+        input_request_payload_json: payload,
+        input_asset_refs_json: assets,
+        input_trace_id: requestId,
+        input_app_version: appVersionFromPayload(payload),
+        input_edge_function_version: deliveryEdgeVersion,
+        input_client_image_count: request.attachments.length,
+        input_edge_asset_count: assets.length,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("provider_failure", 502);
+  }
+  const result = recordValue(await response.json());
+  const accepted = {
+    requestId: requiredString(result, "request_id"),
+    sessionId: optionalStringField(result, "session_id"),
+    status: deliveryStatus(result.status),
+    duplicateSubmit: result.duplicate_submit === true,
+    retryable: result.retryable !== false,
+    errorCode: optionalStringField(result, "error_code"),
+  };
+  if (accepted.duplicateSubmit) {
+    await deleteDeliveryAssets(env, assets);
+  }
+  return accepted;
+}
+
+async function processAiChatDeliveryQueue(
+  env: GatewayEnv,
+  limit: number,
+): Promise<number> {
+  let processed = 0;
+  for (let index = 0; index < limit; index += 1) {
+    const didProcess = await processAiChatDeliveryRequest(env, null);
+    if (!didProcess) break;
+    processed += 1;
+  }
+  return processed;
+}
+
+async function processAiChatDeliveryRequest(
+  env: GatewayEnv,
+  requestId: string | null,
+): Promise<boolean> {
+  const claimed = await claimDeliveryRequest(env, "ai_chat", requestId);
+  if (claimed === null) return false;
+  const deliveryRequestId = requiredString(claimed, "request_id");
+  const accountId = requiredString(claimed, "account_id");
+  let parsedRequest: GatewayRequest | null = null;
+  let outputTelemetry = defaultOutputTelemetry();
+  const startedAt = Date.now();
+  const stageTelemetry: RuntimeStageTelemetry = {
+    edgeRuntimeUptimeMsAtStart: startedAt - edgeRuntimeStartedAt,
+    environmentLatencyMs: 0,
+    authLatencyMs: 0,
+    requestParseLatencyMs: 0,
+    subscriptionDeviceLatencyMs: 0,
+    plannerLatencyMs: 0,
+    retrievalLatencyMs: 0,
+    providerFirstPassLatencyMs: 0,
+    firstValidationLatencyMs: 0,
+    correctionLatencyMs: 0,
+    correctionValidationLatencyMs: 0,
+    persistenceLatencyMs: 0,
+  };
+
+  try {
+    const payload = recordValue(claimed.request_payload_json);
+    const attachments = await loadDeliveryAttachments(
+      env,
+      parseDeliveryAssets(claimed.asset_refs_json),
+    );
+    const payloadWithAssets = {
+      ...payload,
+      ...(attachments.length > 0
+        ? {
+          attachments: attachments.map((attachment) => ({
+            kind: "image",
+            mime_type: attachment.mimeType,
+            base64_data: attachment.base64Data,
+            byte_length: attachment.byteLength,
+            ...(attachment.name === null ? {} : { name: attachment.name }),
+          })),
+        }
+        : {}),
+    };
+    parsedRequest = {
+      ...parseGatewayRequest(payloadWithAssets),
+      deliveryMode: "sync",
+      deliveryRequestId,
+    };
+    const result = await runAcceptedChatPipeline({
+      env,
+      accountId,
+      request: parsedRequest,
+      startedAt,
+      stageTelemetry,
+      outputTelemetry,
+    });
+    outputTelemetry = result.outputTelemetry;
+    await finishDeliveryRequest(env, {
+      requestId: deliveryRequestId,
+      succeeded: true,
+      result: result.responseBody,
+      provider: result.providerId,
+      providerRequestCount: 1 + outputTelemetry.correctionAttemptCount,
+      providerImageCount: parsedRequest.attachments.length,
+    });
+    return true;
+  } catch (error) {
+    const gatewayError = toGatewayHttpError(error);
+    await writeGatewayFailureLog(env, {
+      accountId,
+      request: parsedRequest,
+      code: gatewayError.code,
+      status: logStatusForCode(gatewayError.code),
+      latencyMs: Date.now() - startedAt,
+      telemetry: outputTelemetry,
+      stageTelemetry,
+    });
+    await finishDeliveryRequest(env, {
+      requestId: deliveryRequestId,
+      succeeded: false,
+      errorCode: gatewayError.code,
+      failureStage: failureStageForGatewayError(gatewayError.code),
+      retryable: isRetryableDeliveryError(gatewayError.code),
+      result: null,
+      provider: providerIdForChoice(parsedRequest?.modelChoice ?? null),
+      providerRequestCount: outputTelemetry.providerCompletionStatus ===
+          "not_called"
+        ? 0
+        : 1 + outputTelemetry.correctionAttemptCount,
+      providerImageCount: parsedRequest?.attachments.length ?? 0,
+    });
+    return true;
+  }
+}
+
+async function runAcceptedChatPipeline(params: {
+  env: GatewayEnv;
+  accountId: string;
+  request: GatewayRequest;
+  startedAt: number;
+  stageTelemetry: RuntimeStageTelemetry;
+  outputTelemetry: OutputContractTelemetry;
+}): Promise<{
+  responseBody: Record<string, unknown>;
+  outputTelemetry: OutputContractTelemetry;
+  providerId: string | null;
+}> {
+  const env = params.env;
+  const accountId = params.accountId;
+  let parsedRequest = params.request;
+  const startedAt = params.startedAt;
+  const stageTelemetry = params.stageTelemetry;
+  let outputTelemetry = params.outputTelemetry;
+
+  if (parsedRequest.clarificationReply != null) {
+    throw new GatewayHttpError("request_schema_mismatch", 422);
+  }
+
+  const providerConfig = readProviderRuntimeConfig();
+  const plannerStartedAt = Date.now();
+  const chatDecision: ChatDecisionV2 = await buildApprovedChatDecision(
+    parsedRequest,
+    createModelChatDecisionPlanner(parsedRequest.modelChoice, providerConfig),
+  );
+  const taskPlan = chatDecisionToTaskPlan(chatDecision);
+  outputTelemetry = {
+    ...outputTelemetry,
+    decisionVersion: chatDecision.schema_version,
+    decisionSource: chatDecision.source,
+    decisionReason: chatDecision.reasons[0] ?? null,
+    selectedCapability: chatDecision.capability,
+    attachmentPolicy: chatDecision.attachment_policy,
+  };
+  stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
+  const route = planToLegacyRoute(taskPlan);
+  const retrievalStartedAt = Date.now();
+  parsedRequest = {
+    ...parsedRequest,
+    workflowType: route.workflow,
+    chatDecision,
+    taskPlan,
+  };
+  parsedRequest = {
+    ...parsedRequest,
+    phase5Context: await buildPhase5Context(
+      {
+        ...env,
+        retrievalRewritePlanner: createRetrievalRewritePlanner(
+          parsedRequest,
+          providerConfig,
+        ),
+      },
+      accountId,
+      parsedRequest,
+      route,
+    ),
+  };
+  stageTelemetry.retrievalLatencyMs = Date.now() - retrievalStartedAt;
+  const outputSelection = {
+    expectedOutput: chatDecision.selected_output_family,
+    source: chatDecision.source === "model"
+      ? "model" as const
+      : chatDecision.source === "fixed_entry"
+      ? "fixed_workflow" as const
+      : "deterministic" as const,
+    reason: chatDecision.reasons[0] ?? "chat_decision_v2",
+  };
+  const dateResolution = resolveRecordDate(
+    parsedRequest.messageText,
+    parsedRequest.selectedDate,
+  );
+  parsedRequest = {
+    ...parsedRequest,
+    expectedOutput: outputSelection.expectedOutput,
+    targetDate: dateResolution.targetDate,
+    dateResolutionSource: dateResolution.source,
+  };
+  outputTelemetry = {
+    ...outputTelemetry,
+    expectedOutput: parsedRequest.expectedOutput,
+    intentResolutionSource: outputSelection.source,
+  };
+
+  if (taskPlan?.requires_clarification === true) {
+    outputTelemetry = {
+      ...outputTelemetry,
+      selectedOutputType: "clarification",
+      firstPassValidationStatus: "passed",
+      finalValidationStatus: "passed",
+    };
+    const assistantText = plannerClarificationMessage(
+      parsedRequest.language,
+      chatDecision,
+    );
+    outputTelemetry = {
+      ...outputTelemetry,
+      languageValidationStatus: classifyResponseLanguage(
+        parsedRequest.language,
+        [assistantText],
+      ),
+    };
+    const providerId = providerIdForChoice(parsedRequest.modelChoice) ?? "qwen";
+    const evidence = evidenceFromRequest(parsedRequest, "read_only");
+    const persistenceStartedAt = Date.now();
+    const persisted = await recordChatTurn(
+      env,
+      accountId,
+      parsedRequest,
+      providerId,
+      "task_plan.v1",
+      assistantText,
+      finalAnswerSnapshot(null, parsedRequest, evidence),
+      Date.now() - startedAt,
+      pendingClarificationFromDecision(chatDecision, assistantText),
+    );
+    outputTelemetry = {
+      ...outputTelemetry,
+      clarificationId: persisted.clarificationId,
+      clarificationState: "pending",
+      clarificationAttempt: 0,
+    };
+    stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
+    await updateDebugSummary(
+      env,
+      persisted.debugSummaryId,
+      persisted.requestId,
+      parsedRequest,
+      evidence,
+      providerId,
+      stageTelemetry,
+      outputTelemetry,
+    );
+    await updateOutputContractTelemetry(
+      env,
+      persisted.requestId,
+      outputTelemetry,
+    );
+    return {
+      providerId,
+      outputTelemetry,
+      responseBody: gatewayResponse({
+        sessionId: persisted.sessionId,
+        assistantMessageId: persisted.assistantMessageId,
+        modelChoice: parsedRequest.modelChoice,
+        modelProvider: null,
+        messageText: assistantText,
+        language: parsedRequest.language,
+        workflow: parsedRequest.workflowType,
+        outputType: "clarification",
+        draft: null,
+        needsClarification: true,
+        clarificationQuestions: [assistantText],
+        clarification: gatewayClarification(
+          persisted.clarificationId,
+          chatDecision,
+          assistantText,
+          parsedRequest.language,
+        ),
+        debugSummaryId: persisted.debugSummaryId,
+        evidence,
+        error: null,
+      }),
+    };
+  }
+
+  if (route.safety_flags.length > 0) {
+    outputTelemetry = {
+      ...outputTelemetry,
+      firstPassValidationStatus: "blocked",
+      finalValidationStatus: "blocked",
+    };
+    const assistantText = readOnlyBoundaryMessage(parsedRequest.language);
+    outputTelemetry = {
+      ...outputTelemetry,
+      languageValidationStatus: classifyResponseLanguage(
+        parsedRequest.language,
+        [assistantText],
+      ),
+    };
+    const providerId = providerIdForChoice(parsedRequest.modelChoice) ??
+      "openai";
+    const evidence = evidenceFromRequest(parsedRequest, "blocked");
+    const persistenceStartedAt = Date.now();
+    const persisted = await recordChatTurn(
+      env,
+      accountId,
+      parsedRequest,
+      providerId,
+      "phase5-read-only-boundary",
+      assistantText,
+      finalAnswerSnapshot(null, parsedRequest, evidence),
+      Date.now() - startedAt,
+    );
+    stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
+    await updateDebugSummary(
+      env,
+      persisted.debugSummaryId,
+      persisted.requestId,
+      parsedRequest,
+      evidence,
+      providerId,
+      stageTelemetry,
+      outputTelemetry,
+    );
+    await updateOutputContractTelemetry(
+      env,
+      persisted.requestId,
+      outputTelemetry,
+    );
+    return {
+      providerId,
+      outputTelemetry,
+      responseBody: gatewayResponse({
+        sessionId: persisted.sessionId,
+        assistantMessageId: persisted.assistantMessageId,
+        modelChoice: parsedRequest.modelChoice,
+        modelProvider: providerId,
+        messageText: assistantText,
+        language: parsedRequest.language,
+        workflow: parsedRequest.workflowType,
+        outputType: "text",
+        draft: null,
+        needsClarification: false,
+        clarificationQuestions: [],
+        debugSummaryId: persisted.debugSummaryId,
+        evidence,
+        error: null,
+      }),
+    };
+  }
+
+  const provider = providerForChoice(parsedRequest.modelChoice, providerConfig);
+  const deadlineAt = startedAt + providerConfig.timeoutMs;
+  const providerFirstPassStartedAt = Date.now();
+  let completion: ProviderCompletion;
+  try {
+    completion = await provider.generateText(parsedRequest, {
+      timeoutMs: remainingDeadline(deadlineAt),
+    });
+  } finally {
+    stageTelemetry.providerFirstPassLatencyMs = Date.now() -
+      providerFirstPassStartedAt;
+  }
+  outputTelemetry = {
+    ...outputTelemetry,
+    providerCompletionStatus: completion.status,
+  };
+  assertCompleted(completion);
+
+  let parsedProvider;
+  const firstValidationStartedAt = Date.now();
+  try {
+    parsedProvider = parseProviderGatewayBody(
+      completion.content,
+      parsedRequest,
+    );
+    outputTelemetry = {
+      ...outputTelemetry,
+      selectedOutputType: parsedProvider.outputType,
+      firstPassValidationStatus: "passed",
+      finalValidationStatus: "passed",
+    };
+  } catch (error) {
+    stageTelemetry.firstValidationLatencyMs = Date.now() -
+      firstValidationStartedAt;
+    if (!(error instanceof OutputContractError)) throw error;
+    outputTelemetry = {
+      ...outputTelemetry,
+      firstPassValidationStatus: "failed",
+      validationIssueCodes: validationIssueCodes(error.issues),
+    };
+    const remaining = deadlineAt - Date.now();
+    if (remaining < minimumCorrectionBudgetMs) {
+      outputTelemetry = {
+        ...outputTelemetry,
+        finalValidationStatus: "failed",
+      };
+      throw error;
+    }
+    outputTelemetry = { ...outputTelemetry, correctionAttemptCount: 1 };
+    const correctionStartedAt = Date.now();
+    try {
+      completion = await provider.generateText(parsedRequest, {
+        timeoutMs: remaining,
+        correction: {
+          previousOutput: completion.content,
+          issues: error.issues,
+        },
+      });
+    } finally {
+      stageTelemetry.correctionLatencyMs = Date.now() - correctionStartedAt;
+    }
+    outputTelemetry = {
+      ...outputTelemetry,
+      providerCompletionStatus: completion.status,
+    };
+    assertCompleted(completion);
+    const correctionValidationStartedAt = Date.now();
+    try {
+      parsedProvider = parseProviderGatewayBody(
+        completion.content,
+        parsedRequest,
+      );
+      outputTelemetry = {
+        ...outputTelemetry,
+        selectedOutputType: parsedProvider.outputType,
+        finalValidationStatus: "passed",
+      };
+      stageTelemetry.correctionValidationLatencyMs = Date.now() -
+        correctionValidationStartedAt;
+    } catch (correctionError) {
+      stageTelemetry.correctionValidationLatencyMs = Date.now() -
+        correctionValidationStartedAt;
+      outputTelemetry = {
+        ...outputTelemetry,
+        finalValidationStatus: "failed",
+        validationIssueCodes: correctionError instanceof OutputContractError
+          ? validationIssueCodes(correctionError.issues)
+          : outputTelemetry.validationIssueCodes,
+      };
+      throw correctionError;
+    }
+  }
+  if (stageTelemetry.firstValidationLatencyMs === 0) {
+    stageTelemetry.firstValidationLatencyMs = Date.now() -
+      firstValidationStartedAt;
+  }
+  const providerGuard = guardProviderOutput(
+    parsedProvider.messageText,
+    parsedRequest,
+  );
+  if (
+    providerGuard.safetyFlag?.startsWith("provider_claimed_write_blocked:") ===
+      true
+  ) {
+    outputTelemetry = {
+      ...outputTelemetry,
+      writeGuardReason: providerGuard.safetyFlag.split(":")[1] ?? null,
+    };
+  }
+  const draft = providerGuard.allowDraft ? parsedProvider.draft : null;
+  const assistantText = draft !== null
+    ? draftConfirmationMessage(parsedRequest.language, draft)
+    : parsedProvider.outputType === "text"
+    ? prependMealDecisionImageTip(providerGuard.messageText, parsedRequest)
+    : providerGuard.messageText;
+  outputTelemetry = {
+    ...outputTelemetry,
+    languageValidationStatus: classifyResponseLanguage(
+      parsedRequest.language,
+      draft === null
+        ? [assistantText, ...parsedProvider.clarificationQuestions]
+        : [assistantText, ...draftLanguageValues(draft)],
+    ),
+  };
+  const evidence = evidenceFromRequest(
+    parsedRequest,
+    draft === null ? "read_only" : "artifact_returned",
+    providerGuard.safetyFlag,
+  );
+  const pendingClarification = pendingClarificationFromProvider(
+    providerGuard.allowDraft && parsedProvider.needsClarification,
+    parsedProvider.clarificationQuestions,
+    parsedRequest,
+    assistantText,
+  );
+  const persistenceStartedAt = Date.now();
+  const persisted = await recordChatTurn(
+    env,
+    accountId,
+    parsedRequest,
+    provider.providerId,
+    provider.model,
+    assistantText,
+    finalAnswerSnapshot(draft, parsedRequest, evidence),
+    Date.now() - startedAt,
+    pendingClarification,
+  );
+  outputTelemetry = {
+    ...outputTelemetry,
+    clarificationId: persisted.clarificationId ?? null,
+    clarificationState: persisted.clarificationId !== null ? "pending" : null,
+    clarificationAttempt: persisted.clarificationId === null ? null : 0,
+  };
+  stageTelemetry.persistenceLatencyMs = Date.now() - persistenceStartedAt;
+  await updateDebugSummary(
+    env,
+    persisted.debugSummaryId,
+    persisted.requestId,
+    parsedRequest,
+    evidence,
+    provider.providerId,
+    stageTelemetry,
+    outputTelemetry,
+  );
+  await updateOutputContractTelemetry(
+    env,
+    persisted.requestId,
+    outputTelemetry,
+  );
+
+  return {
+    providerId: provider.providerId,
+    outputTelemetry,
+    responseBody: gatewayResponse({
+      sessionId: persisted.sessionId,
+      assistantMessageId: persisted.assistantMessageId,
+      modelChoice: parsedRequest.modelChoice,
+      modelProvider: provider.providerId,
+      messageText: assistantText,
+      language: parsedRequest.language,
+      workflow: parsedRequest.workflowType,
+      outputType: parsedProvider.outputType,
+      draft: draftForClient(draft, parsedRequest),
+      needsClarification: providerGuard.allowDraft
+        ? parsedProvider.needsClarification
+        : false,
+      clarificationQuestions: providerGuard.allowDraft
+        ? parsedProvider.clarificationQuestions
+        : [],
+      clarification: gatewayClarificationFromPending(
+        persisted.clarificationId,
+        pendingClarification,
+        parsedRequest.language,
+      ),
+      debugSummaryId: persisted.debugSummaryId,
+      evidence,
+      error: null,
+    }),
+  };
+}
+
+async function claimDeliveryRequest(
+  env: GatewayEnv,
+  kind: "ai_chat" | "food_photo_analysis",
+  requestId: string | null,
+): Promise<Record<string, unknown> | null> {
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/rpc/claim_ai_delivery_request`,
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_kind: kind,
+        input_request_id: requestId,
+        input_worker_id: `${kind}_${crypto.randomUUID()}`,
+        input_lease_seconds: 120,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("provider_failure", 502);
+  }
+  const body = await response.json();
+  if (body === null) return null;
+  return recordValue(body);
+}
+
+async function finishDeliveryRequest(
+  env: GatewayEnv,
+  params: {
+    requestId: string;
+    succeeded: boolean;
+    result: Record<string, unknown> | null;
+    errorCode?: string | null;
+    failureStage?: string | null;
+    retryable?: boolean;
+    provider?: string | null;
+    providerRequestCount: number;
+    providerImageCount: number;
+  },
+): Promise<void> {
+  await fetch(`${env.supabaseUrl}/rest/v1/rpc/finish_ai_delivery_request`, {
+    method: "POST",
+    headers: serviceHeaders(env),
+    body: JSON.stringify({
+      input_request_id: params.requestId,
+      input_succeeded: params.succeeded,
+      input_result_json: params.result,
+      input_error_code: params.errorCode ?? null,
+      input_failure_stage: params.failureStage ?? null,
+      input_retryable: params.retryable ?? false,
+      input_provider: params.provider ?? null,
+      input_provider_request_count: params.providerRequestCount,
+      input_provider_image_count: params.providerImageCount,
+    }),
+  });
+}
+
+async function persistDeliveryAssets(
+  env: GatewayEnv,
+  accountId: string,
+  requestId: string,
+  attachments: GatewayImageAttachment[],
+): Promise<DeliveryAssetRef[]> {
+  const refs: DeliveryAssetRef[] = [];
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    const path = `${accountId}/${requestId}/${index}${
+      extensionForMime(attachment.mimeType)
+    }`;
+    const response = await fetch(storageObjectUrl(env, path), {
+      method: "PUT",
+      headers: {
+        apikey: env.supabaseServiceRoleKey,
+        authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+        "content-type": attachment.mimeType,
+        "x-upsert": "false",
+      },
+      body: base64ToBlob(attachment.base64Data, attachment.mimeType),
+    });
+    if (!response.ok) {
+      throw new GatewayHttpError("provider_failure", 502);
+    }
+    refs.push({
+      path,
+      mime_type: attachment.mimeType,
+      byte_length: attachment.byteLength,
+      name: attachment.name,
+    });
+  }
+  return refs;
+}
+
+async function deleteDeliveryAssets(
+  env: GatewayEnv,
+  assets: DeliveryAssetRef[],
+): Promise<void> {
+  await Promise.all(
+    assets.map((asset) =>
+      fetch(storageObjectUrl(env, asset.path), {
+        method: "DELETE",
+        headers: {
+          apikey: env.supabaseServiceRoleKey,
+          authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+        },
+      }).catch(() => null)
+    ),
+  );
+}
+
+async function loadDeliveryAttachments(
+  env: GatewayEnv,
+  assets: DeliveryAssetRef[],
+): Promise<GatewayImageAttachment[]> {
+  const attachments: GatewayImageAttachment[] = [];
+  for (const asset of assets) {
+    const response = await fetch(storageObjectUrl(env, asset.path), {
+      headers: {
+        apikey: env.supabaseServiceRoleKey,
+        authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+      },
+    });
+    if (!response.ok) {
+      throw new GatewayHttpError("attachment_unavailable", 409);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength !== asset.byte_length) {
+      throw new GatewayHttpError("attachment_unavailable", 409);
+    }
+    attachments.push({
+      kind: "image",
+      mimeType: asset.mime_type,
+      base64Data: bytesToBase64(bytes),
+      byteLength: bytes.byteLength,
+      name: asset.name,
+    });
+  }
+  return attachments;
+}
+
+function sanitizeDeliveryPayload(value: unknown): Record<string, unknown> {
+  const payload = { ...recordValue(value) };
+  delete payload.attachments;
+  const client = { ...recordValue(payload.client) };
+  client.delivery_mode = "sync";
+  payload.client = client;
+  return payload;
+}
+
+function parseDeliveryAssets(value: unknown): DeliveryAssetRef[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    const row = recordValue(item);
+    const path = requiredString(row, "path");
+    const mime = requiredString(row, "mime_type");
+    if (
+      mime !== "image/jpeg" && mime !== "image/png" && mime !== "image/webp"
+    ) {
+      throw new GatewayHttpError("attachment_unavailable", 409);
+    }
+    const byteLength = Number(row.byte_length);
+    if (!Number.isInteger(byteLength) || byteLength <= 0) {
+      throw new GatewayHttpError("attachment_unavailable", 409);
+    }
+    return {
+      path,
+      mime_type: mime,
+      byte_length: byteLength,
+      name: typeof row.name === "string" ? row.name : null,
+    };
+  });
+}
+
+function appVersionFromPayload(
+  payload: Record<string, unknown>,
+): string | null {
+  const client = recordValue(payload.client);
+  return typeof client.app_version === "string" ? client.app_version : null;
+}
+
+function waitUntil(promise: Promise<unknown>): void {
+  const runtime = (globalThis as unknown as {
+    EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (typeof runtime?.waitUntil === "function") {
+    runtime.waitUntil(promise);
+    return;
+  }
+  promise.catch((error) => {
+    console.warn("ai_delivery_wait_until_failed", String(error));
+  });
+}
+
+function isDeliveryWorkerRequest(request: Request, env: GatewayEnv): boolean {
+  const token = extractBearerToken(request.headers.get("authorization"));
+  if (token !== null && token === env.supabaseServiceRoleKey) {
+    return true;
+  }
+  const secret = Deno.env.get("FITLOG_AI_WORKER_SECRET")?.trim() ?? "";
+  return secret !== "" &&
+    request.headers.get("x-fitlog-worker-secret") === secret;
+}
+
+function boundedWorkerLimit(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 10) : 3;
+}
+
+function deliveryStatus(value: unknown): AcceptedDelivery["status"] {
+  return value === "running" || value === "succeeded" || value === "failed"
+    ? value
+    : "queued";
+}
+
+function isRetryableDeliveryError(code: AiGatewayErrorCode): boolean {
+  return code === "gateway_timeout" ||
+    code === "provider_unavailable" ||
+    code === "provider_failure" ||
+    code === "provider_incomplete";
+}
+
+function failureStageForGatewayError(code: AiGatewayErrorCode): string {
+  switch (code) {
+    case "request_schema_mismatch":
+    case "record_schema_mismatch":
+      return "schema_validation";
+    case "provider_output_invalid":
+      return "output_validation";
+    case "gateway_timeout":
+    case "provider_unavailable":
+    case "provider_failure":
+    case "provider_refusal":
+    case "provider_incomplete":
+      return "provider";
+    case "attachment_unavailable":
+      return "asset_load";
+    default:
+      return "preflight";
+  }
+}
+
+function storageObjectUrl(env: GatewayEnv, path: string): string {
+  return `${env.supabaseUrl}/storage/v1/object/${deliveryBucket}/${
+    path.split("/").map(encodeURIComponent).join("/")
+  }`;
+}
+
+function extensionForMime(mime: string): string {
+  switch (mime) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/webp":
+      return ".webp";
+    default:
+      return ".img";
+  }
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function base64ToBlob(value: string, mimeType: string): Blob {
+  const bytes = base64ToBytes(value);
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return new Blob([body], { type: mimeType });
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function requiredString(
+  value: Record<string, unknown>,
+  key: string,
+): string {
+  const text = typeof value[key] === "string" ? value[key].trim() : "";
+  if (text === "") {
+    throw new GatewayHttpError("record_schema_mismatch", 422);
+  }
+  return text;
+}
+
 interface GatewayEnv {
   supabaseUrl: string;
   supabaseAnonKey: string;
@@ -1156,7 +2118,7 @@ async function recordChatTurn(
     .trim() ||
     imageOnlyMessage(request);
   const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/record_ai_chat_turn_v2`,
+    `${env.supabaseUrl}/rest/v1/rpc/record_ai_chat_turn_v3`,
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -1186,6 +2148,8 @@ async function recordChatTurn(
         input_pending_clarification_json: pendingClarification,
         input_supersede_pending: request.resolvedClarification === null ||
           request.resolvedClarification === undefined,
+        input_delivery_request_id: request.deliveryRequestId ?? null,
+        input_client_request_id: request.clientRequestId ?? null,
       }),
     },
   );

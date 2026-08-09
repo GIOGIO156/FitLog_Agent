@@ -5,6 +5,8 @@ import 'package:fitlog_local/data/repositories/phase2_repository_exception.dart'
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
 import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_request.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_transport.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_response.dart';
@@ -83,6 +85,78 @@ void main() {
     expect(controller.messages.last.contentText, 'Choose fish and vegetables.');
   });
 
+  test('accepted send exposes recoverable server delivery state', () async {
+    final repository = _FakeAiChatRepository();
+    repository.sendHandler = (request) async {
+      repository.sessions = <AiChatSession>[
+        _session('session_1', 'Plan dinner'),
+      ];
+      repository.deliveryRequests = <AiDeliveryRequest>[
+        AiDeliveryRequest(
+          requestId: 'delivery_req_1',
+          kind: AiDeliveryKind.aiChat,
+          clientRequestId: request.clientRequestId ?? '',
+          status: AiDeliveryStatus.queued,
+          sessionId: 'session_1',
+          messageText: request.messageText,
+        ),
+      ];
+      return const AiGatewayResponse(
+        sessionId: 'session_1',
+        transport: AiDeliveryTransport(
+          requestId: 'delivery_req_1',
+          kind: AiDeliveryKind.aiChat,
+          status: AiDeliveryStatus.queued,
+          accepted: true,
+          retryable: true,
+        ),
+      );
+    };
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+    addTearDown(controller.dispose);
+    await _flushAsync();
+
+    final success = await controller.sendText(
+      text: 'Plan dinner',
+      language: 'en',
+      modelChoice: AiGatewayModelChoice.chatgpt,
+      deviceId: 'device-a',
+    );
+
+    expect(success, isTrue);
+    expect(repository.lastRequest?.asyncDelivery, isTrue);
+    expect(controller.selectedSessionId, 'session_1');
+    expect(controller.messages, isEmpty);
+    expect(controller.selectedChatDeliveryRequests, hasLength(1));
+    expect(
+      controller.selectedChatDeliveryRequests.single.requestId,
+      'delivery_req_1',
+    );
+  });
+
+  test('retryDeliveryRequest requeues the same server request', () async {
+    final repository = _FakeAiChatRepository();
+    repository.deliveryRequests = const <AiDeliveryRequest>[
+      AiDeliveryRequest(
+        requestId: 'delivery_req_failed',
+        kind: AiDeliveryKind.aiChat,
+        clientRequestId: 'client_req_1',
+        status: AiDeliveryStatus.failed,
+        sessionId: 'session_1',
+        messageText: 'Retry this',
+      ),
+    ];
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+    addTearDown(controller.dispose);
+    await _flushAsync();
+
+    await controller.retryDeliveryRequest('delivery_req_failed');
+
+    expect(repository.retryRequestIds, <String>['delivery_req_failed']);
+  });
+
   test(
     'failed send keeps canonical messages clean and exposes stable error',
     () async {
@@ -110,6 +184,43 @@ void main() {
       expect(controller.pendingUserText, isNull);
       expect(controller.messages, isEmpty);
       expect(controller.lastError?.code, AiGatewayErrorCode.providerFailure);
+    },
+  );
+
+  test(
+    'transport failure after a first turn can recover the cloud session',
+    () async {
+      final repository = _FakeAiChatRepository();
+      repository.sendHandler = (_) async {
+        repository.sessions = <AiChatSession>[_session('session_1', '训练前饮食')];
+        repository.messages['session_1'] = <AiChatMessage>[
+          _message('u1', 'session_1', 1, AiChatMessageRole.user, '训练前吃什么'),
+          _message(
+            'a1',
+            'session_1',
+            2,
+            AiChatMessageRole.assistant,
+            '训练前可以选择容易消化的碳水搭配蛋白质。',
+          ),
+        ];
+        throw TimeoutException('client callback lost');
+      };
+      final controller = AiChatController(repository: repository)
+        ..syncAccount(accountId: 'acct_1', canUseAi: true);
+      await _flushAsync();
+
+      final success = await controller.sendText(
+        text: '训练前吃什么',
+        language: 'zh',
+        modelChoice: AiGatewayModelChoice.qwen,
+        deviceId: 'device-a',
+      );
+
+      expect(success, isTrue);
+      expect(controller.selectedSessionId, 'session_1');
+      expect(controller.messages, hasLength(2));
+      expect(controller.messages.last.contentText, '训练前可以选择容易消化的碳水搭配蛋白质。');
+      expect(controller.lastError, isNull);
     },
   );
 
@@ -737,11 +848,13 @@ void main() {
 class _FakeAiChatRepository extends AiChatRepository {
   List<AiChatSession> sessions = const <AiChatSession>[];
   Map<String, List<AiChatMessage>> messages = <String, List<AiChatMessage>>{};
+  List<AiDeliveryRequest> deliveryRequests = const <AiDeliveryRequest>[];
   Future<AiGatewayResponse> Function(AiGatewayRequest request)? sendHandler;
   AiGatewayRequest? lastRequest;
   final Set<String> archivedSessionIds = <String>{};
   final Set<String> deletedSessionIds = <String>{};
   final Map<String, String> renamedSessions = <String, String>{};
+  final List<String> retryRequestIds = <String>[];
   bool renameThrows = false;
   String? listSessionsFailureCode;
   Completer<void>? deleteCompleter;
@@ -772,6 +885,32 @@ class _FakeAiChatRepository extends AiChatRepository {
     required String accountId,
     required String sessionId,
   }) async => activeClarification;
+
+  @override
+  Future<List<AiDeliveryRequest>> listRecentDeliveryRequests({
+    required String accountId,
+  }) async => deliveryRequests;
+
+  @override
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async {
+    for (final request in deliveryRequests) {
+      if (request.requestId == requestId) {
+        return request;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<void> retryDeliveryRequest({
+    required String accountId,
+    required String requestId,
+  }) async {
+    retryRequestIds.add(requestId);
+  }
 
   @override
   Future<AiGatewayResponse> sendMessage(AiGatewayRequest request) {
