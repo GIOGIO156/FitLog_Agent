@@ -165,6 +165,12 @@ Transition rules:
 - `auth_required` for an official foreground write blocks that write and should surface a clear retry/login path.
 - If no signed-in account or no matching account-bound cache exists, cloud-backed official-record areas should show the login gate or first-load state.
 
+### Home Selected-Day Summary Read Order
+
+When Home opens or refreshes the selected date, it first reads `DailySummaryService.getCachedSummaryForDate` for the current signed-in account and date. If matching confirmed local summary cache exists, Home renders that snapshot immediately; then `getSummaryForDateAndCache` runs in the background, rebuilds the summary with the deterministic builder over official records/profile, updates local `daily_summary_cache`, and attempts to upsert the cloud `daily_summaries` projection. If the background result matches the visible snapshot, no visible refresh occurs; if real data changed, only the affected values update and the page must not return to full-page loading.
+
+If no matching confirmed cache exists, Home may show a first-load state until the selected-day summary is truly computed. After a successful compute, the app writes confirmed local cache, attempts the cloud summary projection upsert, and then renders the real dashboard. This path must not show a fake zero-summary or require the user to switch dates to recover today. Cloud `daily_summaries` is a rebuildable projection/read model; official authority remains Cloud Profile, food/workout/body records, and controlled builders, while local cache only serves startup experience and stale-while-revalidate.
+
 ## Warm Cache Rules
 
 Warm cache runs after the first visible page has rendered stably. It improves the next app open, date switches, trend windows, and history navigation, but it is not a startup blocking condition.

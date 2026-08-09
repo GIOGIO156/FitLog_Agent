@@ -165,6 +165,12 @@
 - 前台正式写入遇到 `auth_required` 时，应阻断该写入，并给出清晰的重试/登录路径。
 - 没有登录账号或没有匹配账号 cache 时，cloud-backed 正式记录区域应显示登录 gate 或首次加载状态。
 
+### Home 选中日期 summary 读取顺序
+
+Home 打开或选中日期刷新时，先按当前登录账号和日期读取 `DailySummaryService.getCachedSummaryForDate`。如果存在匹配账号的 confirmed local summary cache，Home 立即渲染该 snapshot；随后在后台运行 `getSummaryForDateAndCache`，用正式 records/profile 的确定性 builder 重建 summary，更新本地 `daily_summary_cache`，并尝试 upsert 云端 `daily_summaries` projection。后台结果与当前 snapshot 一致时不产生可见刷新；有真实数据变化时只更新受影响数值，不能整页回到 loading。
+
+如果没有匹配 confirmed cache，Home 可以显示首次加载，直到选中日期 summary 被真实计算出来；计算成功后先写入本地 confirmed cache，再尝试写云端 summary projection，最后渲染真实 dashboard。这个路径不得显示假的 0 summary，也不得要求用户切换日期来恢复今天内容。云端 `daily_summaries` 是可重建 projection/read model；正式记录权威仍是 Cloud Profile、food/workout/body records 和受控 builder，本地 cache 只负责启动体验和 stale-while-revalidate。
+
 ## Warm Cache 规则
 
 Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开、切换日期、切换趋势窗口和历史浏览，但不是启动阻塞条件。
