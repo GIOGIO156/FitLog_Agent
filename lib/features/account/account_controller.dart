@@ -341,20 +341,11 @@ class AccountController extends ChangeNotifier {
     }
     notifyListeners();
 
-    await Future.wait<void>(<Future<void>>[
-      _loadSubscriptionStatus(accountId),
-      _loadCloudProfileState(accountId, previousCloudProfileState),
-    ]);
-  }
+    await _loadSubscriptionStatus(accountId);
 
-  Future<void> _loadCloudProfileState(
-    String accountId,
-    CloudProfileState previousCloudProfileState,
-  ) async {
     try {
-      final permissionFuture = _loadLocalContextPermission(accountId);
       var profile = await cloudProfileRepository.fetch(accountId);
-      localContextPermission = await permissionFuture;
+      localContextPermission = await _loadLocalContextPermission(accountId);
       profile ??= await cloudProfileRepository.save(
         mapper.defaultForAccount(accountId),
       );
@@ -426,12 +417,9 @@ class AccountController extends ChangeNotifier {
       return;
     }
     try {
+      final profile = await profileRepository.getProfile();
       final accountId = authSession.accountId;
       final profileVersion = cachedCloudProfileVersion;
-      if (accountId != null) {
-        await profileRepository.adoptLegacyProfileCacheForAccount(accountId);
-      }
-      final profile = await profileRepository.getProfile();
       if (profile == null || accountId == null || profileVersion == null) {
         return;
       }

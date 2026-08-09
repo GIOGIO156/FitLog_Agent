@@ -417,6 +417,7 @@ Rules:
 - `model_choice` can be `chatgpt` or `qwen`. UI labels can be `ChatGPT` and `千问`; backend provider ids should remain stable as `openai` and `qwen`.
 - Wire compatibility retains both enum values, but the current client sends only `qwen`. Selecting unconfigured ChatGPT produces no HTTP request; the selector automatically returns to Qwen, but that UI recovery does not submit or transform the attempted ChatGPT request.
 - `workflow_hint` can be `auto`, `food_logging`, `workout_logging`, `meal_decision`, `weekly_review`, or `app_logic_answer`. `general_chat` and `safety_boundary` are server-planned response workflows, not accepted client hints.
+- Server routing reserves `app_logic_answer` for FitLog behavior, persistence, privacy, or calculation-rule questions. A "not eaten yet + training later" request should route to `meal_decision` when it asks about the current day/next meal and authorized context is available; otherwise it remains an ordinary read-only answer.
 - `attachments` is optional. The current Chat route accepts up to three image attachments for either explicitly selected image-capable `chatgpt` or `qwen` routing and never silently changes the provider.
 - Supported attachment MIME types are `image/jpeg`, `image/png`, and `image/webp`; compressed payloads above 4 MB are rejected.
 - `conversation_context` is optional and limited to compact same-chat text turns plus Food Draft / Workout Draft artifact summaries. It must not contain raw SQL rows, raw images, base64 payloads, provider secrets, or full business history.

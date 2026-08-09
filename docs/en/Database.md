@@ -54,7 +54,7 @@ Local migrations must remain additive and compatible.
 | 18 | Extends the local workout mutation ledger with the `abandoned` terminal state used by process-start recovery. The idempotent upgrade and open-time repair preserve existing committed rows. |
 | 19 | Reserved by an intermediate AI delivery experiment; the final product scope does not use its temporary table. |
 | 20 | Drops the retired intermediate `ai_pending_operations` table if present. This compatibility cleanup removes only transient AI delivery metadata and preserves official records, profile data, chat history, and caches. |
-| 21 | Adds nullable `user_profile.account_id` so the local Cloud Profile display cache is bound to the recovered account. Legacy rows are adopted only when the saved Cloud Profile cache metadata already matches the current auth account. |
+| 21 | Adds nullable `user_profile.account_id` as additive compatibility for intermediate builds that wrote this column. The current runtime keeps the legacy singleton Profile compatibility path; signed-in Cloud Profile authority and display-cache account metadata live outside this SQLite column. |
 
 Compatibility rules:
 
@@ -76,7 +76,7 @@ Important fields:
 | Field | Meaning |
 | --- | --- |
 | `id` | Singleton profile id. |
-| `account_id` | Nullable account scope for the local Cloud Profile display cache. `NULL` remains the pre-login/legacy local profile scope; signed-in reads require the active account unless the account controller explicitly adopts a metadata-matched legacy row. |
+| `account_id` | Nullable compatibility column reserved for intermediate builds and future account-scoped Profile cache work. The current runtime does not treat this column as the Cloud Profile source of truth. |
 | `nickname` | Local-only UI nickname in the copied Local implementation. In Agent V1, account display name belongs to Cloud Profile. |
 | `age` | BMR and under-18 protection. |
 | `height_cm` | BMR input. |
@@ -108,7 +108,7 @@ Important fields:
 | `last_macro_self_check_at` | Self-check cooldown timestamp/date. |
 | `created_at`, `updated_at` | ISO timestamps. |
 
-Agent V1 note: after login, Cloud Profile becomes authoritative. The local `user_profile` table may remain as compatibility/cache/migration surface, but formal account-bound profile changes should be saved to cloud. Signed-in display reads are account-scoped so one account's cached profile is not shown as another account's Home/Profile context.
+Agent V1 note: after login, Cloud Profile becomes authoritative. The local `user_profile` table remains a compatibility/cache/migration surface for deterministic local services and legacy data, while formal account-bound Profile changes should be saved to cloud. The v21 `account_id` column is retained to avoid schema downgrade for devices that opened an intermediate build; it is not the current source-of-truth mechanism for signed-in Cloud Profile display.
 
 ### `food_records`
 

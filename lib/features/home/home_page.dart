@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -16,7 +17,7 @@ import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../domain/models/daily_summary.dart';
 import '../../domain/models/user_profile.dart';
-import '../../domain/services/home_dashboard_coordinator.dart';
+import '../account/account_controller.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -26,7 +27,103 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  String? _lastCoordinatorDateRequest;
+  Future<_HomePageData>? _dataFuture;
+  String? _loadedDate;
+  int? _loadedRefreshVersion;
+  String? _backgroundRefreshKey;
+  _HomePageData? _lastSuccessfulData;
+  String? _lastSuccessfulDate;
+
+  Future<_HomePageData> _loadData(
+    BuildContext context,
+    String day,
+    int refreshVersion,
+  ) async {
+    final services = context.read<AppServices>();
+    final accountId = _accountIdFor(context);
+    DailySummary? cachedSummary;
+    try {
+      cachedSummary = await services.dailySummaryService
+          .getCachedSummaryForDate(accountId: accountId, day: day);
+    } catch (_) {
+      cachedSummary = null;
+    }
+    if (cachedSummary != null) {
+      final profile = await services.profileRepository.getProfile();
+      _refreshDataInBackground(
+        services: services,
+        day: day,
+        accountId: accountId,
+        refreshVersion: refreshVersion,
+      );
+      return _HomePageData(summary: cachedSummary, profile: profile);
+    }
+
+    final results = await Future.wait<Object?>(<Future<Object?>>[
+      services.dailySummaryService.getSummaryForDateAndCache(
+        day: day,
+        accountId: accountId,
+      ),
+      services.profileRepository.getProfile(),
+    ]);
+
+    return _HomePageData(
+      summary: results[0]! as DailySummary,
+      profile: results[1] as UserProfile?,
+    );
+  }
+
+  String? _accountIdFor(BuildContext context) {
+    try {
+      return context.read<AccountController>().authSession.accountId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _refreshDataInBackground({
+    required AppServices services,
+    required String day,
+    required String? accountId,
+    required int refreshVersion,
+  }) {
+    final key = '${accountId ?? 'local'}|$day|$refreshVersion';
+    if (_backgroundRefreshKey == key) {
+      return;
+    }
+    _backgroundRefreshKey = key;
+    unawaited(
+      Future<void>(() async {
+        try {
+          final results = await Future.wait<Object?>(<Future<Object?>>[
+            services.dailySummaryService.getSummaryForDateAndCache(
+              day: day,
+              accountId: accountId,
+            ),
+            services.profileRepository.getProfile(),
+          ]);
+          if (!mounted ||
+              _loadedDate != day ||
+              _loadedRefreshVersion != refreshVersion) {
+            return;
+          }
+          final data = _HomePageData(
+            summary: results[0]! as DailySummary,
+            profile: results[1] as UserProfile?,
+          );
+          setState(() {
+            _lastSuccessfulData = data;
+            _lastSuccessfulDate = day;
+            _dataFuture = Future<_HomePageData>.value(data);
+          });
+        } catch (_) {
+          if (_backgroundRefreshKey == key) {
+            _backgroundRefreshKey = null;
+          }
+        }
+      }),
+    );
+  }
 
   Future<void> _pickDate(
     BuildContext context,
@@ -58,147 +155,157 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final selectedDateNotifier = context.watch<SelectedDateNotifier>();
-    final coordinator = context.watch<HomeDashboardCoordinator>();
-    final selectedDate = selectedDateNotifier.selectedDate;
-    if (coordinator.selectedDate != selectedDate &&
-        _lastCoordinatorDateRequest != selectedDate) {
-      _lastCoordinatorDateRequest = selectedDate;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          return;
-        }
-        context.read<HomeDashboardCoordinator>().setSelectedDate(selectedDate);
-      });
-    }
 
     return SafeArea(
-      child: _buildContent(
-        context: context,
-        strings: strings,
-        selectedDateNotifier: selectedDateNotifier,
-        selectedDate: selectedDate,
-        coordinator: coordinator,
+      child: Consumer2<RefreshNotifier, SelectedDateNotifier>(
+        builder: (context, refresh, selectedDateNotifier, _) {
+          refresh.version;
+          final selectedDate = selectedDateNotifier.selectedDate;
+          if (_dataFuture == null ||
+              _loadedDate != selectedDate ||
+              _loadedRefreshVersion != refresh.version) {
+            _loadedDate = selectedDate;
+            _loadedRefreshVersion = refresh.version;
+            _dataFuture = _loadData(context, selectedDate, refresh.version);
+          }
+
+          return FutureBuilder<_HomePageData>(
+            future: _dataFuture,
+            builder: (context, snapshot) {
+              final snapshotData = snapshot.data;
+              final freshData =
+                  snapshotData != null &&
+                      snapshotData.summary.date == selectedDate
+                  ? snapshotData
+                  : null;
+              if (freshData != null) {
+                _lastSuccessfulData = freshData;
+                _lastSuccessfulDate = selectedDate;
+              }
+              final retainedData = _lastSuccessfulDate == selectedDate
+                  ? _lastSuccessfulData
+                  : null;
+              final data = freshData ?? retainedData;
+              if (data == null) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(strings.summaryError(snapshot.error!)),
+                  );
+                }
+                return Center(child: Text(strings.noSummaryData));
+              }
+
+              final profile = data.profile;
+              final summary = data.summary;
+              final effectiveProfile = profile ?? UserProfile.defaults;
+              final isGramPerKgMode =
+                  summary.dietCalculationMode ==
+                  AppConstants.dietCalculationModeGramPerKg;
+              final nickname = ((profile?.nickname ?? '').trim().isEmpty)
+                  ? strings.nicknameFallback
+                  : profile!.nickname!.trim();
+              final greetingPrefix = _greetingForNow(strings);
+
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final firstScreenBottomReserve =
+                      FitLogBottomNavBar.homeFirstScreenBottomReserveFor(
+                        context,
+                      );
+                  final firstScreenHeight = math.max(
+                    0.0,
+                    constraints.maxHeight - firstScreenBottomReserve,
+                  );
+                  return ListView(
+                    padding: EdgeInsets.only(
+                      bottom: FitLogBottomNavBar.scrollBottomPaddingFor(
+                        context,
+                      ),
+                    ),
+                    children: <Widget>[
+                      SizedBox(
+                        height: firstScreenHeight,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            FitLogPageHeader(
+                              title: '',
+                              titleWidget: _HomeGreeting(
+                                greetingPrefix: greetingPrefix,
+                                nickname: nickname,
+                                isChinese: strings.isChinese,
+                              ),
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                              trailing: FitLogActionIconButton(
+                                icon: Icons.calendar_today_outlined,
+                                tooltip: strings.change,
+                                onPressed: () =>
+                                    _pickDate(context, selectedDateNotifier),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                              child: Text(
+                                DateUtilsX.formatReadable(
+                                  summary.date,
+                                  isChinese: strings.isChinese,
+                                ),
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: context.fitLogTheme.mutedText,
+                                    ),
+                              ),
+                            ),
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, dashboardConstraints) {
+                                  final dashboardHeight =
+                                      dashboardConstraints.maxHeight;
+
+                                  return isGramPerKgMode
+                                      ? _GramPerKgDashboard(
+                                          summary: summary,
+                                          strings: strings,
+                                          height: dashboardHeight,
+                                        )
+                                      : _EnergyRatioDashboard(
+                                          summary: summary,
+                                          strings: strings,
+                                          height: dashboardHeight,
+                                        );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: firstScreenBottomReserve),
+                      if (isGramPerKgMode) ...<Widget>[
+                        const SizedBox(height: 20),
+                        _StrategyCard(
+                          summary: summary,
+                          profile: effectiveProfile,
+                          strings: strings,
+                        ),
+                      ] else ...<Widget>[
+                        _StrategyCard(
+                          summary: summary,
+                          profile: effectiveProfile,
+                          strings: strings,
+                        ),
+                        _TodayRecordsCard(summary: summary, strings: strings),
+                      ],
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
       ),
-    );
-  }
-
-  Widget _buildContent({
-    required BuildContext context,
-    required AppStrings strings,
-    required SelectedDateNotifier selectedDateNotifier,
-    required String selectedDate,
-    required HomeDashboardCoordinator coordinator,
-  }) {
-    final snapshot = coordinator.snapshot;
-    if (snapshot == null || snapshot.date != selectedDate) {
-      final error = coordinator.error;
-      if (error != null && !coordinator.isInitialLoading) {
-        return Center(child: Text(strings.summaryError(error)));
-      }
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    final data = _HomePageData(
-      summary: snapshot.summary,
-      profile: snapshot.profile,
-    );
-    final profile = data.profile;
-    final summary = data.summary;
-    final effectiveProfile = profile ?? UserProfile.defaults;
-    final isGramPerKgMode =
-        summary.dietCalculationMode ==
-        AppConstants.dietCalculationModeGramPerKg;
-    final nickname = ((profile?.nickname ?? '').trim().isEmpty)
-        ? strings.nicknameFallback
-        : profile!.nickname!.trim();
-    final greetingPrefix = _greetingForNow(strings);
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final firstScreenBottomReserve =
-            FitLogBottomNavBar.homeFirstScreenBottomReserveFor(context);
-        final firstScreenHeight = math.max(
-          0.0,
-          constraints.maxHeight - firstScreenBottomReserve,
-        );
-        return ListView(
-          padding: EdgeInsets.only(
-            bottom: FitLogBottomNavBar.scrollBottomPaddingFor(context),
-          ),
-          children: <Widget>[
-            SizedBox(
-              height: firstScreenHeight,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  FitLogPageHeader(
-                    title: '',
-                    titleWidget: _HomeGreeting(
-                      greetingPrefix: greetingPrefix,
-                      nickname: nickname,
-                      isChinese: strings.isChinese,
-                    ),
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                    trailing: FitLogActionIconButton(
-                      icon: Icons.calendar_today_outlined,
-                      tooltip: strings.change,
-                      onPressed: () => _pickDate(context, selectedDateNotifier),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                    child: Text(
-                      DateUtilsX.formatReadable(
-                        summary.date,
-                        isChinese: strings.isChinese,
-                      ),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: context.fitLogTheme.mutedText,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, dashboardConstraints) {
-                        final dashboardHeight = dashboardConstraints.maxHeight;
-
-                        return isGramPerKgMode
-                            ? _GramPerKgDashboard(
-                                summary: summary,
-                                strings: strings,
-                                height: dashboardHeight,
-                              )
-                            : _EnergyRatioDashboard(
-                                summary: summary,
-                                strings: strings,
-                                height: dashboardHeight,
-                              );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: firstScreenBottomReserve),
-            if (isGramPerKgMode) ...<Widget>[
-              const SizedBox(height: 20),
-              _StrategyCard(
-                summary: summary,
-                profile: effectiveProfile,
-                strings: strings,
-              ),
-            ] else ...<Widget>[
-              _StrategyCard(
-                summary: summary,
-                profile: effectiveProfile,
-                strings: strings,
-              ),
-              _TodayRecordsCard(summary: summary, strings: strings),
-            ],
-          ],
-        );
-      },
     );
   }
 }

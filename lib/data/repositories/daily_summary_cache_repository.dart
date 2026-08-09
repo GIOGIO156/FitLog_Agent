@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-import '../../domain/models/daily_summary_entry.dart';
 import '../../domain/models/daily_summary.dart';
 import '../db/app_database.dart';
 
@@ -14,14 +13,6 @@ class DailySummaryCacheRepository {
   final AppDatabase _database;
 
   Future<DailySummary?> getCachedSummary({
-    required String accountId,
-    required String date,
-  }) async {
-    final entry = await getCachedEntry(accountId: accountId, date: date);
-    return entry?.summary;
-  }
-
-  Future<DailySummaryEntry?> getCachedEntry({
     required String accountId,
     required String date,
   }) async {
@@ -44,17 +35,12 @@ class DailySummaryCacheRepository {
     if (decoded is! Map) {
       return null;
     }
-    final summary = DailySummary.fromCacheMap(
-      Map<String, dynamic>.from(decoded),
-    );
-    return dailySummaryEntryFromCacheRow(rows.first, summary: summary);
+    return DailySummary.fromCacheMap(Map<String, dynamic>.from(decoded));
   }
 
   Future<void> upsertConfirmedSummary({
     required String accountId,
     required DailySummary summary,
-    DateTime? sourceUpdatedAt,
-    DateTime? cloudUpdatedAt,
   }) async {
     final db = await _database.database;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -63,8 +49,6 @@ class DailySummaryCacheRepository {
       'date': summary.date,
       'summary_json': jsonEncode(summary.toCacheMap()),
       'summary_version': summaryVersion,
-      'source_updated_at': sourceUpdatedAt?.toUtc().toIso8601String(),
-      'cloud_updated_at': cloudUpdatedAt?.toUtc().toIso8601String(),
       'cache_confirmed': 1,
       'cached_at': now,
       'created_at': now,

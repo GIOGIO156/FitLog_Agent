@@ -158,7 +158,7 @@
 - 已恢复登录态并进入五栏时，App 必须先把 Food、Workout 和 Profile repositories 绑定到 auth session 中的账号 id，再等待 active-device 运行期上下文 claim 或刷新完成。这样 Home、Food、Workout 首次渲染当前日期时可以读取匹配账号的本地 cache，不会先显示空白记录并且只有切换日期后才恢复。
 - 首屏必需数据不属于 warm cache。如果没有匹配的已确认 Home cache，第一次登录后的 Home 首次渲染可以等待一个很小的首屏数据包：账号/Cloud Profile 基础状态、选中日期 Home summary/read model，以及默认可见展示面必需的数据。App 不应先渲染空 Home，再在用户注视下替换成真实 Home。
 - 如果存在匹配的已确认 Home cache，应立即渲染并在后台校验云端。云端数据一致时不应可见刷新 Home；云端数据变化时，也只更新受影响数值，不做整页 loading reset。
-- Home 选中日期数据由一个按账号和日期 keyed 的 dashboard coordinator 负责。它先读取本地 confirmed summary entry，在 revalidation 期间保持已显示 snapshot 挂载，并且只有 account epoch 与选中日期仍匹配时才接受云端/计算结果。如果登录态没有匹配 Home cache 且 official cloud 还未 ready，Home 保持首次加载状态，而不是渲染假的 0 summary。
+- Home 选中日期数据使用既有 cache-first `DailySummaryService` 路径。一旦 Home 已为选中日期得到过成功 snapshot，app resume、写入触发或用户显式刷新都必须在下一次读取 pending 或失败时继续挂载该 snapshot。没有匹配登录态 Home cache 或真实可计算的选中日期 summary 时，Home 可以显示首次加载；不得渲染假的 0 summary，也不得要求用户切换日期才能恢复当天内容。
 - 如果存在匹配的本地 cache，Supabase session 恢复、订阅刷新、Cloud Profile 刷新和当前可见窗口 Cloud Records 刷新应在后台进行。
 - Cloud Profile 恢复和订阅恢复是独立启动 slice。订阅查询可以继续 gate AI 发送，但不能延迟已经成功的 Cloud Profile load，或依赖该 Profile 的 Home/Profile context。
 - 后台刷新期间的 `auth_required` 是 cache-backed UI 的可恢复同步/session 状态，不能把已确认 Home 或 Body Trends 内容替换成整页错误。
@@ -201,7 +201,7 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - 数据变化时，只对当前可见展示面应用最小本地 read-model 更新。
 - 后台刷新失败时，保留已显示的已确认 read model，并记录刷新失败状态。
 - refresh loop 应节流/防抖，避免启动和 resume 反复查询未变化的可见数据。
-- Home 选中日期 coordinator 对每个 `(account_id, date)` 只允许一个前台请求，confirmed summary freshness window 为 5 分钟，自动失败退避为 45 秒。App resume 和 active-device ready 通过该 coordinator 请求 revalidation，而不是广播会重置页面的全局 refresh。
+- Home refresh 必须限定在选中日期，并且在 pending read 期间保留上一份成功 dashboard。App resume 和 active-device ready 不得通过会清空可见 Home 的全局 refresh 把页面打回整页 loading。
 - 账号级 Cloud Profile 和订阅刷新必须有 freshness 和失败退避。默认实现可使用约 5 分钟成功 freshness 和约 45 秒失败退避；用户显式刷新可以绕过 freshness，但仍要记录失败时间，避免自动循环。
 - 后台刷新不能把 `recovering_cached` 页面重置为整页 loading。刷新结果一致时不触发可见刷新；结果变化时只更新对应字段或卡片。
 
@@ -378,6 +378,7 @@ AI：
 - Cloud records repositories：`CloudBackedFoodRepository`、`CloudBackedWorkoutRepository`、`CloudBackedProfileRepository` 分别位于 `lib/data/repositories/food_repository.dart`、`workout_repository.dart`、`profile_repository.dart`。
 - Daily summaries：`lib/domain/services/daily_summary_service.dart` 按需从 cloud-backed repositories 构建，通过 `lib/data/repositories/daily_summary_cloud_repository.dart` 读写云端 `daily_summaries` projection，并通过 `lib/data/repositories/daily_summary_cache_repository.dart` 更新本地选中日期 confirmed summary cache；Home 对选中日期使用 stale-while-revalidate。
 - Warm cache 与淘汰：`lib/domain/services/warm_cache_coordinator.dart` 在五栏 shell 稳定渲染后预热最近 30 天 summaries；`lib/domain/services/cache_maintenance_service.dart` 淘汰旧的 cloud-confirmed 本地 cache，不删除云端正式 records。
+- Home 选中日期渲染：`lib/features/home/home_page.dart` 负责当前 page-level cache-first 读取，并在 refresh 期间保持上一份成功的选中日期 dashboard 挂载。
 - 写入/read-model 协调：当前写入成功后由 cloud-backed repository 更新本地 confirmed cache，页面通过 `RefreshNotifier` 刷新，food/workout/Profile 成功写入后会调度受影响日期 summary cache 和云端 projection 刷新。
 - 导出正确性：`lib/export/export_table_builder.dart` 在生成 CSV/XLSX 前通过 cloud-backed all-record loaders 补齐 food、workout 和 body metric 正式记录，并包含 Body Metrics 表。
 - Root auth gate、首屏账号绑定和 cache-backed 页面：`lib/app.dart`、`profile_page.dart`、`home_page.dart`、`food_log_page.dart`、`workout_log_page.dart`。

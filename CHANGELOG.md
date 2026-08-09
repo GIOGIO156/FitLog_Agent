@@ -1,27 +1,32 @@
 # Changelog
 
-## 2026-08-09 Home Startup Data Orchestration
+## 2026-08-10 Home Startup Recovery And AI Routing Fix
 
 ### Changed
 
-- Moved Home selected-day loading from page-owned `FutureBuilder` resets to an account/date dashboard coordinator. Matching confirmed cache now renders immediately, background revalidation keeps the dashboard mounted, repeated startup/resume triggers single-flight per `(account_id, date)`, and unchanged payloads do not publish a visible refresh.
-- Split summary reads into explicit local-cache entry, cloud projection entry, and force-revalidated rebuild paths. Food and workout cloud-backed repositories can now refresh the selected day from official cloud records even when local confirmed rows already exist.
-- Decoupled Cloud Profile recovery from subscription loading, delayed warm summary cache until Home has a stable snapshot and official cloud runtime is ready, and lazily mounts non-visited root tabs so hidden tabs do not participate in first Home refresh.
-- Bumped local SQLite to v21 with `user_profile.account_id` so cached Cloud Profile display data is account-bound. Legacy rows are adopted only when saved Cloud Profile cache metadata already matches the recovered account.
-- Added a concise Release APK build rule to `AGENTS.md`: run the configured Release split build in an environment that can write Flutter tool state and SDK cache, check for active build processes after interrupted attempts, and remove only confirmed orphan Flutter lock files before rebuilding.
+- Forward-recovered the signed-in Home path from the reverted dashboard-coordinator rewrite to the previous cache-first/local-compute behavior that coexisted with the reliable AI delivery release.
+- Kept the local SQLite schema at v21 and retained the nullable `user_profile.account_id` column as additive compatibility for devices that already opened the previous APK; runtime Profile reads return to the stable compatibility path.
+- Preserved the last successful selected-day Home dashboard while a resume/background refresh is pending or fails, so lifecycle refreshes no longer replace visible content with a full-page loading spinner.
+- Narrowed AI Chat routing so "not eaten yet + training later" day-arrangement advice is handled as a read-only meal decision instead of a FitLog app-rule answer that requires Document RAG grounding. FitLog workout calculation questions such as reps-per-side or training volume still route to app logic with exercise-definition context.
 
 ### Fixed
 
-- Fixed the signed-in Home startup/recovery experience where local cache, active-device bind, Cloud Profile recovery, write repair, warm cache, and global refresh events could replace an already rendered dashboard with full-page loading.
-- Fixed the summary revalidation gap where selected-day cloud refresh could silently use only local food/workout rows when any local row existed.
+- Fixed the regression where Home could remain stuck on a spinner after the previous orchestration rewrite.
+- Fixed the resume flicker class where returning from another app triggered a global refresh and temporarily removed an already rendered Home dashboard.
+- Fixed the AI "provider_output_invalid" path for ordinary pre-workout meal/day-arrangement advice that had been misclassified as a grounded FitLog rule answer.
 
 ### Validation
 
-- Added Home regression coverage proving a legacy global refresh event no longer removes the rendered dashboard.
-- Ran targeted `flutter test test\home_page_test.dart test\phase2_account_controller_test.dart test\daily_summary_cloud_cache_test.dart test\daily_summary_cache_test.dart`.
-- Ran `dart format lib test`, `flutter analyze`, and `flutter test`; analysis reported no issues and all 301 Flutter tests passed.
-- Regenerated the local stable-document corpus as build `991d4101ce8089cefa69d95d` with 633 chunks from 21 sources; local embeddings reached 633/633 parity, and no Document RAG upload or cloud activation was performed.
-- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; after removing orphan Flutter lock files from an interrupted build, the elevated Gradle build completed in 34.5 seconds and produced `armeabi-v7a`, `arm64-v8a`, and `x86_64` APKs. The outputs were copied to `artifacts/release-apks/` as versioned `1.0.37+41` binaries, and `SHA256SUMS.txt` was refreshed.
+- Added Home regression coverage proving a global refresh keeps the rendered dashboard visible while the next summary read is still pending.
+- Added deterministic AI planner coverage for the pre-workout meal-advice case and preserved workout-rule calculation coverage.
+- Ran targeted Flutter tests: `flutter test test\home_page_test.dart test\daily_summary_cache_test.dart test\phase2_account_controller_test.dart`; all 42 tests passed.
+- Ran targeted AI planner tests: `npm.cmd exec --yes deno -- test supabase/functions/ai-chat-route/planning/chat_decision_test.ts supabase/functions/ai-chat-route/planning/task_planner_test.ts`; all 26 tests passed.
+- Ran `flutter analyze`; no issues found.
+- Ran AGENTS-required Edge checks: `npm.cmd exec --yes deno -- check supabase/functions/ai-chat-route/index.ts supabase/functions/ai-food-photo-analyze/index.ts` and `npm.cmd exec --yes deno -- test supabase/functions/_shared/ai_output_contract_test.ts supabase/functions/ai-chat-route/expected_output_test.ts supabase/functions/ai-chat-route/index_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts`; all 65 tests passed.
+- Ran `flutter test`; all 301 Flutter tests passed.
+- Confirmed the required stable documentation tree exists, searched stable docs for withdrawn coordinator wording/date-style headings/replacement characters, and regenerated the local stable-document corpus as build `991d4101ce8089cefa69d95d` with 633/633 local embedding parity. No Document RAG upload or cloud activation was performed.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; after checking active Flutter/Dart/Gradle/Java processes and removing only the confirmed orphan Flutter lock files, the elevated Gradle build completed in 30.9 seconds and produced `armeabi-v7a`, `arm64-v8a`, and `x86_64` APKs. Versioned copies and `SHA256SUMS.txt` were refreshed under `artifacts/release-apks/`.
+- Deployed `ai-chat-route` to Supabase project `dyacqajcinjwrkbngeif`; after the routing-boundary audit, redeployed the corrected function and `supabase functions list` reported `ai-chat-route` as `ACTIVE` version 74. `ai-food-photo-analyze` was not redeployed because this task did not change that function.
 
 ## 2026-08-09 Reliable Accepted AI Delivery
 

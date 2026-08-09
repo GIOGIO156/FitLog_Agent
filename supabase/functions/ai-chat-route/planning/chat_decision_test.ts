@@ -86,6 +86,17 @@ Deno.test("legacy implicit food quantities remain a deterministic food draft", a
   assertEquals(result.reasons, ["implicit_food_draft_intent"]);
 });
 
+Deno.test("pre-workout meal advice is not routed as FitLog rule grounding", async () => {
+  const result = await buildApprovedChatDecision(
+    request(
+      "今天一餐都还没吃。休息3到4个小时之后，我就会去做腿部的力量训练。所以你觉得我现在应该怎么安排？",
+    ),
+  );
+  assertEquals(result.planned_workflow, "meal_decision");
+  assertEquals(result.selected_output_family, "text");
+  assertEquals(result.reasons, ["meal_decision_terms"]);
+});
+
 Deno.test("typed answer selection restores the origin capability", async () => {
   const result = await buildApprovedChatDecision(
     request("回答问题", {
@@ -169,6 +180,7 @@ function request(
     language: /[\u3400-\u9fff]/u.test(messageText) ? "zh" : "en",
     modelChoice: "qwen",
     workflowType: "auto",
+    deliveryMode: "sync",
     attachments: options.withImage
       ? [{
         kind: "image",

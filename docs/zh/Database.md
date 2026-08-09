@@ -54,7 +54,7 @@ PRAGMA foreign_keys = ON
 | 18 | 为本地训练 mutation ledger 增加进程启动恢复所用的 `abandoned` 终态；幂等 upgrade 与 open-time repair 会保留已有 committed rows。 |
 | 19 | 中间 AI 交付实验曾保留该版本；最终产品范围不使用其中的临时表。 |
 | 20 | 如果存在已退役的中间表 `ai_pending_operations`，则删除该表。该兼容清理只移除临时 AI 交付 metadata，不影响正式记录、Profile、Chat history 或 cache。 |
-| 21 | 新增 nullable `user_profile.account_id`，让本地 Cloud Profile 展示 cache 绑定到恢复出的账号。旧 rows 只有在已保存的 Cloud Profile cache metadata 已经匹配当前 auth 账号时，才会被采纳到该账号。 |
+| 21 | 新增 nullable `user_profile.account_id`，作为曾写入该列的中间构建的加法兼容字段。当前运行时保留 legacy singleton Profile 兼容路径；登录态 Cloud Profile 权威和展示 cache 的账号 metadata 不以该 SQLite 列为来源。 |
 
 兼容规则：
 
@@ -76,7 +76,7 @@ PRAGMA foreign_keys = ON
 | Field | Meaning |
 | --- | --- |
 | `id` | Singleton profile id。 |
-| `account_id` | 本地 Cloud Profile 展示 cache 的 nullable 账号作用域。`NULL` 保留给登录前/legacy 本地 profile；登录态读取必须匹配 active account，除非账号控制器明确采纳 metadata 已匹配的 legacy row。 |
+| `account_id` | 为中间构建和未来账号作用域 Profile cache 预留的 nullable 兼容列。当前运行时不把该列作为 Cloud Profile 的 source of truth。 |
 | `nickname` | 复制来的 Local 实现中的本地 UI 昵称。Agent V1 中账号展示名属于 Cloud Profile。 |
 | `age` | BMR 和未成年人保护。 |
 | `height_cm` | BMR 输入。 |
@@ -108,7 +108,7 @@ PRAGMA foreign_keys = ON
 | `last_macro_self_check_at` | self-check 冷却日期/时间。 |
 | `created_at`, `updated_at` | ISO 时间戳。 |
 
-Agent V1 说明：登录后 Cloud Profile 成为权威版本。Local `user_profile` 可以作为兼容、缓存或迁移表保留，但正式账号绑定 Profile 修改应保存到云端。登录态展示读取按账号过滤，避免一个账号的 cached profile 被当成另一个账号的 Home/Profile 上下文。
+Agent V1 说明：登录后 Cloud Profile 成为权威版本。Local `user_profile` 仍作为确定性本地服务和 legacy 数据的兼容/cache/migration surface；正式账号绑定 Profile 修改应保存到云端。v21 的 `account_id` 列用于避免安装过中间构建的设备发生 schema 降级，并不是当前登录态 Cloud Profile 展示的权威机制。
 
 ### `food_records`
 

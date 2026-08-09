@@ -155,6 +155,18 @@ function deterministicDecision(request: GatewayRequest): ChatDecisionV2 | null {
       "deterministic",
     );
   }
+  if (route.workflow === "meal_decision" && isPreWorkoutMealDecision(text)) {
+    return decision(
+      request,
+      "meal_decision",
+      "meal_decision",
+      "text",
+      route.required_context as PlannedContextType[],
+      route.reasons,
+      route.confidence ?? 0.8,
+      "deterministic",
+    );
+  }
   if (
     route.workflow === "app_logic_answer" ||
     isAppLogicPersistenceQuestion(text) ||
@@ -402,6 +414,12 @@ function isImplicitWorkoutDraft(text: string): boolean {
 function isWorkoutRuleQuestion(text: string): boolean {
   return /(?:训练|深蹲|分腿蹲|卧推|硬拉|组|次数|重量|容量|workout|exercise|reps?|sets?|volume)/i
     .test(text) && isQuestionLike(text);
+}
+
+function isPreWorkoutMealDecision(text: string): boolean {
+  return /(?:一餐都还没吃|一餐都沒吃|还没吃饭|還沒吃飯|没吃饭|沒吃飯|没吃东西|沒吃東西|haven't eaten|have not eaten)/i
+    .test(text) &&
+    /(?:训练|訓練|力量|练腿|練腿|workout|training|lift)/i.test(text);
 }
 
 function isAppLogicPersistenceQuestion(text: string): boolean {

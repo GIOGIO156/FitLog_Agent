@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fitlog_local/app.dart';
 import 'package:fitlog_local/core/constants/app_constants.dart';
 import 'package:fitlog_local/core/localization/language_controller.dart';
@@ -18,7 +20,6 @@ import 'package:fitlog_local/domain/services/cache_maintenance_service.dart';
 import 'package:fitlog_local/domain/services/carb_taper_review_service.dart';
 import 'package:fitlog_local/domain/services/daily_summary_service.dart';
 import 'package:fitlog_local/domain/services/diet_plan_strategy_service.dart';
-import 'package:fitlog_local/domain/services/home_dashboard_coordinator.dart';
 import 'package:fitlog_local/domain/services/training_frequency_self_check_service.dart';
 import 'package:fitlog_local/domain/services/warm_cache_coordinator.dart';
 import 'package:fitlog_local/export/csv_export_service.dart';
@@ -148,42 +149,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('home keeps rendered dashboard after legacy refresh event', (
+  testWidgets('home keeps the loaded dashboard visible during refresh', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    final refreshNotifier = RefreshNotifier();
+    final readGate = _ReadGate();
+
     await tester.pumpWidget(
       _buildHomeTestApp(
-        profile: UserProfile.defaults.copyWith(nickname: 'Chris'),
-        foodRecords: const <FoodRecord>[
-          FoodRecord(
+        profile: UserProfile.defaults.copyWith(
+          nickname: 'Chris',
+          dietCalculationMode: AppConstants.dietCalculationModeEnergyRatio,
+        ),
+        foodRecords: <FoodRecord>[
+          const FoodRecord(
             date: _referenceDay,
-            mealName: 'Lunch',
-            totalWeightG: 300,
-            caloriesKcal: 720,
-            proteinG: 45,
-            carbsG: 90,
-            fatG: 20,
+            mealName: 'Dinner',
+            totalWeightG: 450,
+            caloriesKcal: 820,
+            proteinG: 48,
+            carbsG: 72,
+            fatG: 24,
             estimationNotes: '',
             source: 'manual',
           ),
         ],
         workoutSessions: const <WorkoutSession>[],
+        refreshNotifier: refreshNotifier,
+        readGate: readGate,
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.byType(ListView), findsOneWidget);
+    expect(find.text('Calories'), findsOneWidget);
 
-    final context = tester.element(find.byType(HomePage));
-    context.read<RefreshNotifier>().markDataChanged();
+    final pendingRead = Completer<void>();
+    readGate.future = pendingRead.future;
+    refreshNotifier.markDataChanged();
     await tester.pump();
 
     expect(find.byType(ListView), findsOneWidget);
-    expect(find.textContaining('720', findRichText: true), findsWidgets);
+    expect(find.text('Calories'), findsOneWidget);
+
+    pendingRead.complete();
+    readGate.future = null;
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ListView), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -396,9 +413,11 @@ Widget _buildHomeTestApp({
   required UserProfile profile,
   required List<FoodRecord> foodRecords,
   required List<WorkoutSession> workoutSessions,
+  RefreshNotifier? refreshNotifier,
+  _ReadGate? readGate,
 }) {
   final database = AppDatabase.instance;
-  final foodRepository = _FakeFoodRepository(database)
+  final foodRepository = _FakeFoodRepository(database, readGate: readGate)
     ..recordsByDate[_referenceDay] = foodRecords;
   final customExerciseRepository = CustomExerciseRepository(database);
   final workoutRepository = _FakeWorkoutRepository(database)
@@ -423,10 +442,6 @@ Widget _buildHomeTestApp({
     trainingFrequencySelfCheckService: trainingFrequencySelfCheckService,
     dietPlanStrategyService: dietPlanStrategyService,
   );
-  final homeDashboardCoordinator = HomeDashboardCoordinator(
-    dailySummaryService: dailySummaryService,
-    profileRepository: profileRepository,
-  );
   final dailySummaryCacheRepository = DailySummaryCacheRepository(database);
   final selectedDateNotifier = SelectedDateNotifier()..setDate(_referenceDay);
   final languageController = LanguageController();
@@ -441,7 +456,6 @@ Widget _buildHomeTestApp({
           workoutDraftRepository: workoutDraftRepository,
           profileRepository: profileRepository,
           dailySummaryService: dailySummaryService,
-          homeDashboardCoordinator: homeDashboardCoordinator,
           xlsxExportService: XlsxExportService(
             foodRepository: foodRepository,
             customExerciseRepository: customExerciseRepository,
@@ -469,9 +483,8 @@ Widget _buildHomeTestApp({
           database: database,
         ),
       ),
-      ChangeNotifierProvider<RefreshNotifier>(create: (_) => RefreshNotifier()),
-      ChangeNotifierProvider<HomeDashboardCoordinator>.value(
-        value: homeDashboardCoordinator,
+      ChangeNotifierProvider<RefreshNotifier>.value(
+        value: refreshNotifier ?? RefreshNotifier(),
       ),
       ChangeNotifierProvider<RootTabController>(
         create: (_) => RootTabController(),
@@ -494,20 +507,29 @@ Widget _buildHomeTestApp({
   );
 }
 
+class _ReadGate {
+  Future<void>? future;
+}
+
 class _FakeFoodRepository extends FoodRepository {
-  _FakeFoodRepository(super.database);
+  _FakeFoodRepository(super.database, {this.readGate});
+
+  final _ReadGate? readGate;
 
   Map<String, List<FoodRecord>> recordsByDate = <String, List<FoodRecord>>{};
 
   @override
-  Future<List<FoodRecord>> getFoodRecordsByDate(String day) async =>
-      recordsByDate[day] ?? const <FoodRecord>[];
+  Future<List<FoodRecord>> getFoodRecordsByDate(String day) async {
+    await readGate?.future;
+    return recordsByDate[day] ?? const <FoodRecord>[];
+  }
 
   @override
   Future<Map<String, double>> getDailyCaloriesBetween({
     required String startDate,
     required String endDate,
   }) async {
+    await readGate?.future;
     return <String, double>{
       for (final entry in recordsByDate.entries)
         entry.key: entry.value.fold<double>(

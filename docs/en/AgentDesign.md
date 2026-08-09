@@ -207,7 +207,7 @@ Inputs may include a workout description, selected date, optional current-reques
 
 The routed read-only workflow may use Cloud Profile, selected-day summaries, saved phase/mode/strategy, remaining kcal or macro targets, and the user's request.
 
-It may answer questions such as what to eat next or whether an order fits the day. It must respect `energy_ratio` versus `gram_per_kg`, explain its evidence and missing data, and never recalculate or change the official plan.
+It may answer questions such as what to eat next, whether an order fits the day, or how to arrange food before a planned workout. It must respect `energy_ratio` versus `gram_per_kg`, explain its evidence and missing data, and never recalculate or change the official plan.
 
 ### Weekly Review Workflow
 
@@ -217,7 +217,7 @@ It may summarize patterns, limitations, likely blockers, and small next actions.
 
 ### App Logic Q&A Workflow
 
-Document RAG answers how FitLog works, including diet modes, workout calorie rules, strategies, storage, export, and privacy boundaries. Chinese questions retrieve Chinese documents; English questions retrieve English documents. A missing relevant source produces an explicit limitation rather than an invented product rule.
+Document RAG answers how FitLog itself works, including diet modes, workout calorie rules, strategy rules, storage, export, and privacy boundaries. FitLog workout calculation questions remain app-logic grounding requests; "not eaten yet + training later" day-arrangement questions belong to `meal_decision` when they ask what to eat or how to arrange the current day. Chinese questions retrieve Chinese documents; English questions retrieve English documents. A missing relevant source produces an explicit limitation rather than an invented product rule.
 
 ## Context And RAG Boundary
 

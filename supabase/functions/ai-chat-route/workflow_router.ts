@@ -42,7 +42,9 @@ export function routeGatewayWorkflow(
     };
   }
 
-  if (isAppLogicQuestion(lower)) {
+  const preWorkoutMealDecision = isPreWorkoutMealDecision(lower);
+
+  if (isAppLogicQuestion(lower) && !preWorkoutMealDecision) {
     return {
       workflow: "app_logic_answer",
       confidence: 0.82,
@@ -250,7 +252,12 @@ function isAppLogicQuestion(lower: string): boolean {
 }
 
 function isMealDecision(lower: string, imageCount: number): boolean {
-  if (imageCount > 0 && includesAny(lower, ["晚餐", "dinner", "meal", "can this"])) {
+  if (
+    imageCount > 0 && includesAny(lower, ["晚餐", "dinner", "meal", "can this"])
+  ) {
+    return true;
+  }
+  if (isPreWorkoutMealDecision(lower)) {
     return true;
   }
   return includesAny(lower, [
@@ -268,6 +275,38 @@ function isMealDecision(lower: string, imageCount: number): boolean {
     "for dinner",
     "next meal",
     "protein gap",
+  ]);
+}
+
+function isPreWorkoutMealDecision(lower: string): boolean {
+  return mentionsMealGap(lower) && mentionsUpcomingTraining(lower);
+}
+
+function mentionsMealGap(lower: string): boolean {
+  return includesAny(lower, [
+    "一餐都还没吃",
+    "一餐都沒吃",
+    "还没吃饭",
+    "還沒吃飯",
+    "没吃饭",
+    "沒吃飯",
+    "没吃东西",
+    "沒吃東西",
+    "haven't eaten",
+    "have not eaten",
+  ]);
+}
+
+function mentionsUpcomingTraining(lower: string): boolean {
+  return includesAny(lower, [
+    "训练",
+    "訓練",
+    "力量",
+    "练腿",
+    "練腿",
+    "workout",
+    "training",
+    "lift",
   ]);
 }
 

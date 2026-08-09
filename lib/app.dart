@@ -36,7 +36,6 @@ import 'domain/services/cache_maintenance_service.dart';
 import 'domain/services/daily_summary_service.dart';
 import 'domain/services/diet_plan_strategy_service.dart';
 import 'domain/services/carb_taper_review_service.dart';
-import 'domain/services/home_dashboard_coordinator.dart';
 import 'domain/services/training_frequency_self_check_service.dart';
 import 'domain/services/warm_cache_coordinator.dart';
 import 'export/csv_export_service.dart';
@@ -213,10 +212,6 @@ class _FitLogAppState extends State<FitLogApp> {
       dailySummaryCacheRepository: dailySummaryCacheRepository,
       dailySummaryCloudRepository: dailySummaryCloudRepository,
     );
-    final homeDashboardCoordinator = HomeDashboardCoordinator(
-      dailySummaryService: dailySummaryService,
-      profileRepository: profileRepository,
-    );
     final warmCacheCoordinator = WarmCacheCoordinator(
       dailySummaryService: dailySummaryService,
     );
@@ -232,7 +227,6 @@ class _FitLogAppState extends State<FitLogApp> {
       workoutDraftRepository: workoutDraftRepository,
       profileRepository: profileRepository,
       dailySummaryService: dailySummaryService,
-      homeDashboardCoordinator: homeDashboardCoordinator,
       xlsxExportService: XlsxExportService(
         foodRepository: foodRepository,
         customExerciseRepository: customExerciseRepository,
@@ -363,9 +357,6 @@ class _FitLogAppState extends State<FitLogApp> {
         ),
         ChangeNotifierProvider<RefreshNotifier>(
           create: (_) => RefreshNotifier(),
-        ),
-        ChangeNotifierProvider<HomeDashboardCoordinator>.value(
-          value: _services.homeDashboardCoordinator,
         ),
         ChangeNotifierProvider<RootTabController>(
           create: (_) => RootTabController(),
@@ -640,15 +631,16 @@ class _RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
-  late final List<Widget> _pageCache = const <Widget>[
+  late final List<Widget> _pages = const <Widget>[
     HomePage(),
     FoodLogPage(),
     AiPage(),
     WorkoutLogPage(),
     ProfilePage(),
   ];
-  final Set<int> _visitedTabs = <int>{RootTabIndex.home};
   String? _lastBackgroundAccountId;
+  String? _lastRecordHydrationKey;
+  bool _recordHydrationRefreshScheduled = false;
   bool _restoringLostPickerImages = false;
   bool _checkedWorkoutEditorResume = false;
   bool _reconcilingWorkoutCommit = false;
@@ -691,9 +683,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) {
       return;
     }
-    context.read<HomeDashboardCoordinator>().refreshVisible(
-      reason: 'app_resumed',
-    );
+    _scheduleSelectedDateHydrationRefresh();
     unawaited(_restoreLostPickerImagesIfNeeded());
     if (_initialWorkoutCommitRecoveryComplete) {
       _scheduleWorkoutCommitRecovery();
@@ -708,38 +698,16 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     final runtimeContext = context.watch<CloudRuntimeContext>();
     final accountId = accountController.authSession.accountId;
     _bindLocalRecordAccount(accountId);
-    context.read<HomeDashboardCoordinator>().bindAccountContext(
-      accountId: accountId,
-      canUseOfficialCloud: runtimeContext.canUseOfficialCloud,
-      profileVersion:
-          accountController.cloudProfileState.cloudProfile?.profileVersion ??
-          accountController.cachedCloudProfileVersion,
-      accountEpoch: accountController.accountChangeEpoch,
-    );
     if (_initialWorkoutCommitRecoveryComplete &&
         (accountId ?? '').isNotEmpty &&
         runtimeContext.canUseOfficialCloud) {
       _scheduleWorkoutCommitRecovery();
     }
-  }
-
-  void _bindLocalRecordAccount(String? accountId) {
-    final services = context.read<AppServices>();
-    services.foodRepository.setActiveAccountId(accountId);
-    services.workoutRepository.setActiveAccountId(accountId);
-    services.profileRepository.setActiveAccountId(accountId);
-    services.warmCacheCoordinator.setActiveAccount(accountId);
-  }
-
-  void _scheduleWarmCacheIfReady({
-    required String? accountId,
-    required bool canUseOfficialCloud,
-    required bool homeReady,
-  }) {
-    if ((accountId ?? '').isEmpty || !canUseOfficialCloud || !homeReady) {
-      return;
-    }
-    if (accountId == _lastBackgroundAccountId) {
+    _scheduleHydrationRefreshWhenContextChanges(
+      accountId: accountId,
+      runtimeContext: runtimeContext,
+    );
+    if ((accountId ?? '').isEmpty || accountId == _lastBackgroundAccountId) {
       return;
     }
     _lastBackgroundAccountId = accountId;
@@ -748,6 +716,45 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       services.warmCacheCoordinator.warmRecentWindow(accountId: accountId),
     );
     unawaited(services.cacheMaintenanceService.pruneForAccount(accountId));
+  }
+
+  void _bindLocalRecordAccount(String? accountId) {
+    final services = context.read<AppServices>();
+    services.foodRepository.setActiveAccountId(accountId);
+    services.workoutRepository.setActiveAccountId(accountId);
+    services.profileRepository.setActiveAccountId(accountId);
+  }
+
+  void _scheduleHydrationRefreshWhenContextChanges({
+    required String? accountId,
+    required CloudRuntimeContext runtimeContext,
+  }) {
+    final key = [
+      accountId ?? '',
+      runtimeContext.accountId ?? '',
+      runtimeContext.deviceId ?? '',
+      runtimeContext.sessionId ?? '',
+      runtimeContext.deviceReplaced ? 'replaced' : 'active',
+    ].join('|');
+    if (key == _lastRecordHydrationKey) {
+      return;
+    }
+    _lastRecordHydrationKey = key;
+    _scheduleSelectedDateHydrationRefresh();
+  }
+
+  void _scheduleSelectedDateHydrationRefresh() {
+    if (_recordHydrationRefreshScheduled) {
+      return;
+    }
+    _recordHydrationRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _recordHydrationRefreshScheduled = false;
+      if (!mounted) {
+        return;
+      }
+      context.read<RefreshNotifier>().markDataChanged();
+    });
   }
 
   Future<void> _runInitialRecoveryThenAllowFirstFrame() async {
@@ -1039,15 +1046,6 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     final strings = context.strings;
     final navController = context.watch<RootTabController>();
     final interactionLock = context.watch<RootInteractionLockController>();
-    final accountController = context.watch<AccountController>();
-    final runtimeContext = context.watch<CloudRuntimeContext>();
-    final homeCoordinator = context.watch<HomeDashboardCoordinator>();
-    _visitedTabs.add(navController.index);
-    _scheduleWarmCacheIfReady(
-      accountId: accountController.authSession.accountId,
-      canUseOfficialCloud: runtimeContext.canUseOfficialCloud,
-      homeReady: homeCoordinator.hasSnapshot,
-    );
     final items = <FitLogNavItem>[
       FitLogNavItem(
         label: strings.navHome,
@@ -1079,13 +1077,6 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         navController.index != RootTabIndex.ai &&
         navController.index != RootTabIndex.profile;
     final fitLogTheme = context.fitLogTheme;
-    final pages = <Widget>[
-      for (var i = 0; i < _pageCache.length; i++)
-        if (_visitedTabs.contains(i))
-          _pageCache[i]
-        else
-          const SizedBox.shrink(),
-    ];
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: resizeForKeyboard,
@@ -1094,7 +1085,7 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
         child: Stack(
           children: <Widget>[
             Positioned.fill(
-              child: IndexedStack(index: navController.index, children: pages),
+              child: IndexedStack(index: navController.index, children: _pages),
             ),
             Positioned(
               left: 0,
@@ -1147,56 +1138,12 @@ class _RootLockedNavigationSurface extends StatelessWidget {
   }
 }
 
-enum AppDataDomain { food, workout, profile, bodyMetrics, workoutDraft, ai }
-
-class AppDataChange {
-  const AppDataChange({
-    required this.accountId,
-    required this.dates,
-    required this.domains,
-    required this.reason,
-  });
-
-  final String? accountId;
-  final Set<String> dates;
-  final Set<AppDataDomain> domains;
-  final String reason;
-
-  bool affectsDate(String? accountId, String date) {
-    if ((this.accountId ?? '') != (accountId ?? '')) {
-      return false;
-    }
-    return dates.isEmpty || dates.contains(date);
-  }
-}
-
 class RefreshNotifier extends ChangeNotifier {
   int _version = 0;
-  AppDataChange? _lastChange;
 
   int get version => _version;
-  AppDataChange? get lastChange => _lastChange;
 
-  void markDataChanged({String reason = 'legacy_global'}) {
-    markDataChangedForDates(
-      dates: const <String>{},
-      domains: const <AppDataDomain>{},
-      reason: reason,
-    );
-  }
-
-  void markDataChangedForDates({
-    required Iterable<String> dates,
-    required Set<AppDataDomain> domains,
-    required String reason,
-    String? accountId,
-  }) {
-    _lastChange = AppDataChange(
-      accountId: accountId,
-      dates: dates.where((date) => date.isNotEmpty).toSet(),
-      domains: domains,
-      reason: reason,
-    );
+  void markDataChanged() {
     _version++;
     notifyListeners();
   }
@@ -1280,7 +1227,6 @@ class AppServices {
     required this.workoutDraftRepository,
     required this.profileRepository,
     required this.dailySummaryService,
-    required this.homeDashboardCoordinator,
     required this.xlsxExportService,
     required this.csvExportService,
     required this.carbTaperReviewService,
@@ -1298,7 +1244,6 @@ class AppServices {
   final WorkoutDraftRepository workoutDraftRepository;
   final ProfileRepository profileRepository;
   final DailySummaryService dailySummaryService;
-  final HomeDashboardCoordinator homeDashboardCoordinator;
   final XlsxExportService xlsxExportService;
   final CsvExportService csvExportService;
   final CarbTaperReviewService carbTaperReviewService;
@@ -1320,10 +1265,22 @@ class AppServices {
     if (uniqueDays.isEmpty) {
       return;
     }
-    homeDashboardCoordinator.invalidateDates(
-      days: uniqueDays,
-      accountId: accountId,
-      reason: 'official_write',
-    );
+    unawaited(_refreshDailySummaryCacheForDates(uniqueDays, accountId!));
+  }
+
+  Future<void> _refreshDailySummaryCacheForDates(
+    List<String> days,
+    String accountId,
+  ) async {
+    for (final day in days) {
+      try {
+        await dailySummaryService.getSummaryForDateAndCache(
+          day: day,
+          accountId: accountId,
+        );
+      } catch (_) {
+        // Summary cache refresh is a read-model repair path, not the write result.
+      }
+    }
   }
 }

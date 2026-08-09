@@ -207,7 +207,7 @@ Logs、Chat history 和正式记录不保留原图或 base64 payload。Accepted 
 
 Routed read-only workflow 可以使用 Cloud Profile、选中日期 summary、已保存 phase/mode/strategy、remaining kcal 或 macro targets，以及用户请求。
 
-它可以回答下一餐吃什么或某份外卖是否适合当天。它必须保持 `energy_ratio` 与 `gram_per_kg` 语义、说明 evidence 和缺失数据，并且不能重算或修改正式计划。
+它可以回答下一餐吃什么、某份外卖是否适合当天，或计划训练前应该怎样安排饮食。它必须保持 `energy_ratio` 与 `gram_per_kg` 语义、说明 evidence 和缺失数据，并且不能重算或修改正式计划。
 
 ### Weekly Review Workflow
 
@@ -217,7 +217,7 @@ Routed read-only workflow 可以使用有界 7/14 天 summaries、记录 coverag
 
 ### App Logic Q&A Workflow
 
-Document RAG 回答 FitLog 如何工作，包括饮食模式、训练热量规则、策略、存储、导出和隐私边界。中文问题检索中文文档，英文问题检索英文文档。没有匹配来源时必须明确说明限制，不能编造产品规则。
+Document RAG 回答 FitLog 自身如何工作，包括饮食模式、训练热量规则、策略规则、存储、导出和隐私边界。FitLog 训练计算规则问题仍然是 app-logic grounding 请求；“还没吃饭 + 稍后训练”并询问当天或下一餐怎么安排的问题，在请求饮食安排时属于 `meal_decision`。中文问题检索中文文档，英文问题检索英文文档。没有匹配来源时必须明确说明限制，不能编造产品规则。
 
 ## Context 与 RAG 边界
 

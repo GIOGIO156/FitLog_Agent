@@ -25,11 +25,8 @@ class ProfileRepository {
 
   Future<UserProfile?> getProfile() async {
     final db = await _database.database;
-    final accountId = _activeAccountId;
     final rows = await db.query(
       'user_profile',
-      where: accountId == null ? 'account_id IS NULL' : 'account_id = ?',
-      whereArgs: accountId == null ? null : <Object?>[accountId],
       orderBy: 'updated_at DESC',
       limit: 1,
     );
@@ -39,16 +36,6 @@ class ProfileRepository {
     }
 
     return UserProfile.fromMap(rows.first);
-  }
-
-  Future<void> adoptLegacyProfileCacheForAccount(String accountId) async {
-    if (accountId.isEmpty) {
-      return;
-    }
-    final db = await _database.database;
-    await db.update('user_profile', <String, Object?>{
-      'account_id': accountId,
-    }, where: 'account_id IS NULL');
   }
 
   Future<void> saveProfile(UserProfile profile, {String? accountId}) async {
@@ -63,7 +50,7 @@ class ProfileRepository {
 
     await db.insert(
       'user_profile',
-      _profileToLocalMap(payload, accountId: accountId ?? _activeAccountId),
+      payload.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
 
@@ -96,7 +83,7 @@ class ProfileRepository {
 
     await db.insert(
       'user_profile',
-      _profileToLocalMap(payload, accountId: _activeAccountId),
+      payload.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -133,7 +120,7 @@ class ProfileRepository {
       );
       await txn.insert(
         'user_profile',
-        _profileToLocalMap(updatedProfile, accountId: _activeAccountId),
+        updatedProfile.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
@@ -382,13 +369,6 @@ class ProfileRepository {
       payload.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
-  }
-
-  Map<String, dynamic> _profileToLocalMap(
-    UserProfile profile, {
-    required String? accountId,
-  }) {
-    return profile.toMap()..['account_id'] = accountId;
   }
 }
 

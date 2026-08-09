@@ -4,8 +4,6 @@ import 'package:supabase/supabase.dart' as supabase;
 
 import '../../domain/models/cloud_runtime_context.dart';
 import '../../domain/models/daily_summary.dart';
-import '../../domain/models/daily_summary_entry.dart';
-import 'daily_summary_cache_repository.dart';
 import 'active_device_repository.dart';
 import 'phase2_repository_exception.dart';
 
@@ -17,36 +15,10 @@ abstract class DailySummaryCloudRepository {
     required String date,
   });
 
-  Future<DailySummaryEntry?> fetchSummaryEntry({
-    required String accountId,
-    required String date,
-  }) async {
-    final summary = await fetchSummary(accountId: accountId, date: date);
-    if (summary == null) {
-      return null;
-    }
-    return DailySummaryEntry(
-      accountId: accountId,
-      summary: summary,
-      summaryVersion: DailySummaryCacheRepository.summaryVersion,
-      cacheConfirmed: true,
-    );
-  }
-
   Future<void> upsertSummary({
     required String accountId,
     required DailySummary summary,
   });
-
-  Future<void> upsertSummaryEntry({
-    required String accountId,
-    required DailySummary summary,
-    DateTime? sourceUpdatedAt,
-    int? profileVersion,
-    String? algorithmVersion,
-  }) async {
-    await upsertSummary(accountId: accountId, summary: summary);
-  }
 }
 
 class NoopDailySummaryCloudRepository extends DailySummaryCloudRepository {
@@ -83,15 +55,6 @@ class SupabaseDailySummaryCloudRepository extends DailySummaryCloudRepository {
     required String accountId,
     required String date,
   }) async {
-    final entry = await fetchSummaryEntry(accountId: accountId, date: date);
-    return entry?.summary;
-  }
-
-  @override
-  Future<DailySummaryEntry?> fetchSummaryEntry({
-    required String accountId,
-    required String date,
-  }) async {
     if (accountId.isEmpty) {
       return null;
     }
@@ -108,10 +71,7 @@ class SupabaseDailySummaryCloudRepository extends DailySummaryCloudRepository {
       if (rows.isEmpty) {
         return null;
       }
-      return _entryFromCloudRow(
-        accountId: accountId,
-        row: Map<String, dynamic>.from(rows.first),
-      );
+      return _summaryFromCloudRow(Map<String, dynamic>.from(rows.first));
     } on Phase2RepositoryException {
       rethrow;
     } catch (error) {
@@ -123,17 +83,6 @@ class SupabaseDailySummaryCloudRepository extends DailySummaryCloudRepository {
   Future<void> upsertSummary({
     required String accountId,
     required DailySummary summary,
-  }) async {
-    await upsertSummaryEntry(accountId: accountId, summary: summary);
-  }
-
-  @override
-  Future<void> upsertSummaryEntry({
-    required String accountId,
-    required DailySummary summary,
-    DateTime? sourceUpdatedAt,
-    int? profileVersion,
-    String? algorithmVersion,
   }) async {
     if (accountId.isEmpty) {
       return;
@@ -148,10 +97,9 @@ class SupabaseDailySummaryCloudRepository extends DailySummaryCloudRepository {
             'account_id': accountId,
             'date': summary.date,
             'summary_json': summary.toCacheMap(),
-            'source_updated_at':
-                sourceUpdatedAt?.toUtc().toIso8601String() ?? now,
-            'profile_version': profileVersion ?? 1,
-            'algorithm_version': algorithmVersion ?? 'daily_summary_v1',
+            'source_updated_at': now,
+            'profile_version': 1,
+            'algorithm_version': 'daily_summary_v1',
             'built_at': now,
             'deleted_at': null,
           }, onConflict: 'account_id,date')
@@ -165,30 +113,6 @@ class SupabaseDailySummaryCloudRepository extends DailySummaryCloudRepository {
     } catch (error) {
       throw _cloudRecordExceptionFor('daily_summary_save_failed', error);
     }
-  }
-
-  DailySummaryEntry _entryFromCloudRow({
-    required String accountId,
-    required Map<String, dynamic> row,
-  }) {
-    final summary = _summaryFromCloudRow(row);
-    return DailySummaryEntry(
-      accountId: accountId,
-      summary: summary,
-      summaryVersion: DailySummaryCacheRepository.summaryVersion,
-      cacheConfirmed: true,
-      cachedAt: parseDailySummaryEntryTime(row['built_at']),
-      sourceUpdatedAt: parseDailySummaryEntryTime(row['source_updated_at']),
-      cloudUpdatedAt: parseDailySummaryEntryTime(row['updated_at']),
-      profileVersion: row['profile_version'] == null
-          ? null
-          : parseDailySummaryEntryInt(row['profile_version']),
-      algorithmVersion: row['algorithm_version']?.toString(),
-      recordVersion: row['record_version'] == null
-          ? null
-          : parseDailySummaryEntryInt(row['record_version']),
-      builtAt: parseDailySummaryEntryTime(row['built_at']),
-    );
   }
 
   DailySummary _summaryFromCloudRow(Map<String, dynamic> row) {

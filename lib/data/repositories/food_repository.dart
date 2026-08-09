@@ -131,8 +131,6 @@ class FoodRepository {
     return _recordsFromRows(rows);
   }
 
-  Future<void> refreshOfficialRecordsForDate(String day) async {}
-
   Future<List<FoodItem>> getFoodItemsByRecordId(int foodRecordId) async {
     final db = await _database.database;
     final rows = await db.query(
@@ -449,35 +447,6 @@ class CloudBackedFoodRepository extends FoodRepository {
   }
 
   @override
-  Future<void> refreshOfficialRecordsForDate(String day) async {
-    final accountId = _requireAccountId();
-    setActiveAccountId(accountId);
-    await activeDeviceRepository.assertActive();
-    try {
-      final rows = await _fetchCloudFoodRecordsByDate(
-        day,
-        accountId: accountId,
-      );
-      await _deleteStaleConfirmedFoodRowsForDate(
-        accountId: accountId,
-        day: day,
-        keepCloudIds: rows.map((row) => row['id'].toString()).toSet(),
-      );
-      for (final row in rows) {
-        await cacheConfirmedFoodRecord(
-          _foodRecordFromCloudRow(row),
-          accountId: accountId,
-          cloudId: row['id'].toString(),
-          recordVersion: _recordVersion(row),
-          cloudUpdatedAt: _updatedAt(row),
-        );
-      }
-    } catch (error) {
-      throw _cloudRecordExceptionFor('food_revalidate_failed', error);
-    }
-  }
-
-  @override
   Future<List<FoodRecord>> getAllFoodRecords() async {
     final accountId = runtimeContext.accountId;
     if ((accountId ?? '').isEmpty) {
@@ -578,81 +547,17 @@ class CloudBackedFoodRepository extends FoodRepository {
   }
 
   Future<List<Map<String, dynamic>>> _fetchCloudFoodRecordsByDate(
-    String day, {
-    String? accountId,
-  }) async {
-    var query = client
+    String day,
+  ) async {
+    final rows = await client
         .from('food_records')
         .select('*, food_items(*)')
-        .eq('date', day);
-    if ((accountId ?? '').isNotEmpty) {
-      query = query.eq('account_id', accountId!);
-    }
-    final rows = await query
+        .eq('date', day)
         .filter('deleted_at', 'is', null)
         .order('created_at', ascending: false);
     return rows
         .map<Map<String, dynamic>>((row) => Map<String, dynamic>.from(row))
         .toList();
-  }
-
-  Future<void> _deleteStaleConfirmedFoodRowsForDate({
-    required String accountId,
-    required String day,
-    required Set<String> keepCloudIds,
-  }) async {
-    final db = await _database.database;
-    if (keepCloudIds.isEmpty) {
-      await db.transaction((txn) async {
-        await txn.delete(
-          'food_items',
-          where: '''
-            food_record_id IN (
-              SELECT id FROM food_records
-              WHERE account_id = ?
-                AND date = ?
-                AND cache_confirmed = 1
-                AND cloud_id IS NOT NULL
-            )
-          ''',
-          whereArgs: <Object?>[accountId, day],
-        );
-        await txn.delete(
-          'food_records',
-          where:
-              'account_id = ? AND date = ? AND cache_confirmed = 1 AND cloud_id IS NOT NULL',
-          whereArgs: <Object?>[accountId, day],
-        );
-      });
-      return;
-    }
-
-    final placeholders = List<String>.filled(
-      keepCloudIds.length,
-      '?',
-    ).join(',');
-    final args = <Object?>[accountId, day, ...keepCloudIds];
-    await db.transaction((txn) async {
-      await txn.rawDelete('''
-        DELETE FROM food_items
-        WHERE food_record_id IN (
-          SELECT id FROM food_records
-          WHERE account_id = ?
-            AND date = ?
-            AND cache_confirmed = 1
-            AND cloud_id IS NOT NULL
-            AND cloud_id NOT IN ($placeholders)
-        )
-        ''', args);
-      await txn.rawDelete('''
-        DELETE FROM food_records
-        WHERE account_id = ?
-          AND date = ?
-          AND cache_confirmed = 1
-          AND cloud_id IS NOT NULL
-          AND cloud_id NOT IN ($placeholders)
-        ''', args);
-    });
   }
 
   Future<List<Map<String, dynamic>>> _fetchAllCloudFoodRecords() async {
