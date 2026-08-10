@@ -42,9 +42,9 @@ export function routeGatewayWorkflow(
     };
   }
 
-  const preWorkoutMealDecision = isPreWorkoutMealDecision(lower);
+  const trainingMealDecision = isTrainingMealDecision(lower);
 
-  if (isAppLogicQuestion(lower) && !preWorkoutMealDecision) {
+  if (isAppLogicQuestion(lower) && !trainingMealDecision) {
     return {
       workflow: "app_logic_answer",
       confidence: 0.82,
@@ -257,7 +257,7 @@ function isMealDecision(lower: string, imageCount: number): boolean {
   ) {
     return true;
   }
-  if (isPreWorkoutMealDecision(lower)) {
+  if (isTrainingMealDecision(lower)) {
     return true;
   }
   return includesAny(lower, [
@@ -278,8 +278,9 @@ function isMealDecision(lower: string, imageCount: number): boolean {
   ]);
 }
 
-function isPreWorkoutMealDecision(lower: string): boolean {
-  return mentionsMealGap(lower) && mentionsUpcomingTraining(lower);
+function isTrainingMealDecision(lower: string): boolean {
+  return mentionsUpcomingTraining(lower) &&
+    (mentionsMealGap(lower) || mentionsMealAdvice(lower));
 }
 
 function mentionsMealGap(lower: string): boolean {
@@ -307,6 +308,28 @@ function mentionsUpcomingTraining(lower: string): boolean {
     "workout",
     "training",
     "lift",
+  ]);
+}
+
+function mentionsMealAdvice(lower: string): boolean {
+  return includesAny(lower, [
+    "怎么吃",
+    "吃什么",
+    "吃点什么",
+    "点什么",
+    "外卖",
+    "训练前餐",
+    "訓練前餐",
+    "饭",
+    "餐",
+    "食物",
+    "蛋白",
+    "碳水",
+    "pre-workout meal",
+    "what should i eat",
+    "what can i eat",
+    "eat before",
+    "order",
   ]);
 }
 

@@ -78,6 +78,10 @@ Deno.test("OpenAI and Qwen image adapters share scoped food evidence policy", ()
     assert(json.includes("用户可见自然语言内容使用简洁中文"));
     assert(json.includes("只在对应食物和对应字段上优先"));
     assert(json.includes("不要因为文字未提到就忽略图片中其他"));
+    assert(json.includes("40mm 标准乒乓球"));
+    assert(json.includes("常见标准商品或品牌规格"));
+    assert(json.includes("不得声称进行了网页搜索"));
+    assert(json.includes("不要凭整张图的直觉直接估整餐总重量"));
     assertEquals(json.split(policy).length - 1, 1);
   }
 });

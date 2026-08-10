@@ -38,6 +38,7 @@ export function phase5PromptContext(request: GatewayRequest): string {
     "Document source context_prefix and heading_path define the chunk location and meaning; use them before interpreting the excerpt.",
     "User record summaries are included only when the user enabled record-summary context; if missing because permission is off, say so instead of guessing.",
     "For meal_decision, inspect selected_day_summary.data.diet_calculation_mode before answering. If it is gram_per_kg, lead with macro gram gaps as the decision basis and treat kcal remaining only as an auxiliary monitoring value; do not frame kcal remaining as the gating limit. If it is energy_ratio, lead with kcal remaining as the decision basis and use macros only as secondary structure.",
+    "For meal_decision, give practical food or timing advice from the current request and approved structured context. Do not describe ordinary advice as a FitLog rule, FitLog recommendation, or Document RAG result unless explicit Document sources are present and the user asked about FitLog product behavior.",
     "For app_logic_answer, ground FitLog rule or algorithm explanations in Document sources when available. If document_context is missing for app_logic_answer, say no matching FitLog documentation was found instead of inventing a source.",
     "If a required context dimension is missing, say what is missing instead of inventing it.",
     `Context objects JSON:\n${JSON.stringify(contextObjects)}`,

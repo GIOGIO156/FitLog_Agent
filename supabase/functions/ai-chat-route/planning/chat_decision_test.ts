@@ -97,6 +97,44 @@ Deno.test("pre-workout meal advice is not routed as FitLog rule grounding", asyn
   assertEquals(result.reasons, ["meal_decision_terms"]);
 });
 
+Deno.test("training meal questions are meal decisions, not workout rules", async () => {
+  const result = await buildApprovedChatDecision(
+    request("下午练腿前怎么吃比较好？"),
+  );
+  assertEquals(result.planned_workflow, "meal_decision");
+  assertEquals(result.selected_output_family, "text");
+});
+
+Deno.test("meal decisions do not approve Document RAG by default", async () => {
+  const result = await buildApprovedChatDecision(
+    request("帮我做个选择"),
+    async () => ({
+      schema_version: "chat_decision.v2",
+      capability: "meal_decision",
+      planned_workflow: "meal_decision",
+      allowed_output_families: ["text"],
+      selected_output_family: "text",
+      entities: [],
+      requested_context: [
+        "selected_day_summary",
+        "strategy_context",
+        "document_context",
+      ],
+      retrieval_needs: [
+        "selected_day_summary",
+        "strategy_context",
+        "document_context",
+      ],
+      confidence: 0.74,
+      reasons: ["model_meal_decision"],
+      requires_clarification: false,
+    }),
+  );
+  assertEquals(result.planned_workflow, "meal_decision");
+  assertEquals(result.approved_context.includes("document_context"), false);
+  assertEquals(result.rejected_context.includes("document_context"), true);
+});
+
 Deno.test("typed answer selection restores the origin capability", async () => {
   const result = await buildApprovedChatDecision(
     request("回答问题", {

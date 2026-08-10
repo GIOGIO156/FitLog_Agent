@@ -124,6 +124,8 @@ Item 营养值表示该 item 整份估算结果，不是每 100 g 数值。当 `
 
 Food drafting 把文字和图片视为并列、互补的证据，而不是互相排斥的完整清单。除非用户明确用“只有”“只记录”“不要”或“不包含”等表达关闭范围，文字通常只补充餐食的一部分。用户明确给出且作用对象清楚的食物名称、份量、重量、包装营养或食用量，只在对应食物和对应字段上优先于视觉观察和通用估算；item-specific 事实不能误套到整餐，“大概”“可能”“像是”等不确定表达仍然只是线索。文字未覆盖的食物和字段继续根据本次全部图片识别和估算。视觉缺失不能单独成为删除用户明确食物的理由，图片中合理可识别的额外食物可以加入草稿。文字与图片冲突时，保留用户清楚表达的意图，不把同一实体重复成两个 item，并通过 `confidence` 和 `estimation_notes` 暴露不确定性供用户确认。
 
+份量估算同样属于 Prompt 引导的模型判断。共享 policy 要求 provider 在普通视觉估算前优先使用用户明确数量、可读标签、包装净含量、标准商品或品牌规格知识、用户声明的 40mm 乒乓球等尺度参照物，以及图片中的常见物体。模型应先估算每个 item 的可食重量，再推导营养和整餐 totals，并用可见体积、容器容量、标准商品规格和用户事实静默复核总重量。Gateway 将这些作为生成指导，而不是硬语义 validator，因为照片份量在校验时没有确定真值。
+
 专用 Add Food 路径与 AI Chat 的 OpenAI/千问 adapters 从同一个共享 Prompt 来源读取这套证据策略；各自的路由、上下文、Provider envelope 和日期指令继续独立。Gateway 不再把 regex 派生出的食物事实作为运行时语义 blocker，因为旧规则会把 item-specific protein 或原料重量与整餐 totals比较，从而拒绝正常 C 端草稿。
 
 请求中的 `language` 也是共享的生成指令，而不是 schema gate。JSON 字段名、固定 schema/enum 值、标准单位、品牌名、包装原名和必要专有名词保持其要求或原文；餐名、item 名称、估算说明、message 和 clarification question 等其他用户可见自然语言使用目标语言。普通食物不无必要附加括号内的另一语言翻译，只有保留包装或商品原名有助于消歧时例外。语言分类器可以把结果记为 `matched`、`mixed`、`mismatched` 或 `unscorable`，作为不含原文的质量观测；它不能拒绝原本合法的草稿、触发 correction 或改变 output family。
@@ -166,7 +168,7 @@ Workout clarification 最多一轮。之后 provider 必须返回可编辑的 be
 5. **Output consistency validation**：`output_type`、draft family、clarification 和 `message.text` 必须相互一致，并满足固定或模型选择的 expected output。
 6. **Workflow validation**：实际 payload 必须满足 routed workflow 的授权上下文和安全边界；workflow 名称本身不替代 output selection。
 7. **Domain validation and normalization**：应用 Food item totals 重算、真实日期检查等 FitLog 不变量。
-8. **Grounding validation**：把 FitLog claim 与批准的 evidence registry 对齐；经过审查的中英文 alias 与内部 enum 使用同一 canonical concept normalization 比较，既接受等价表述，也不会把相邻但不同的 concept 当作证据。
+8. **Grounding validation**：把 FitLog 产品规则 claim 与批准的 evidence registry 对齐。普通营养、训练和用餐建议可以基于用户请求和已批准结构化上下文生成；单纯出现 FitLog 品牌名，不足以把回答变成 App 逻辑声明。类似“FitLog 建议”这类无证据官方归因，应通过纠错移除归因但保留有用建议。真正关于产品行为、持久化、隐私、算法或 UI 规则的声明，仍必须有匹配 Document evidence。经过审查的中英文 alias 与内部 enum 使用同一 canonical concept normalization 比较，既接受等价表述，也不会把相邻但不同的 concept 当作证据。
 9. **Safety/write validation**：移除或拒绝不支持的正式写入声明；可审查草稿不能被表述为已保存记录。
 10. **Client compatibility validation**：Flutter 拒绝无法安全重建的 response；历史 artifact 仍按版本化兼容边界读取。
 
@@ -218,7 +220,7 @@ Output budget 用于限制成本和延迟，不能让 partial artifact 被接受
 - repaired output 单独统计；
 - repair 失败绝不生成 draft action。
 
-对于可纠正的结构化输出失败，只要原始 deadline 剩余时间足够，Gateway 最多执行一次服务端 correction attempt。它可在内存中使用紧凑 field-path error list 和受限 previous output，但不持久化 raw provider output。基于图片的食物纠错会再次包含原始请求图片；日志仍只保存紧凑 metadata，绝不保存图片字节或 base64。Refusal、incomplete、safety block、认证/entitlement、active-device 失败和不支持的动作不属于 correction candidate。
+对于可纠正的结构化输出失败，只要原始 deadline 剩余时间足够，Gateway 最多执行一次服务端 correction attempt。它可在内存中使用紧凑 field-path error list 和受限 previous output，但不持久化 raw provider output。基于图片的食物纠错会再次包含原始请求图片；日志仍只保存紧凑 metadata，绝不保存图片字节或 base64。Grounding 纠错必须定向处理：`unsupported_fitlog_attribution` 只移除无证据官方表述并保留合法用户建议；缺失或超出 FitLog evidence 时，只删除或收窄不受支持的产品规则声明。Refusal、incomplete、safety block、认证/entitlement、active-device 失败和不支持的动作不属于 correction candidate。
 
 ## 失败语义
 
@@ -293,6 +295,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - 中文和英文
 - fixed/deterministic/model selection、typed clarification consumption/idempotency、当前图片 planning、普通回答、Food Draft、Workout Draft、假成功声明、refusal、truncation、malformed JSON、错类型、缺字段、额外字段、被动存储说明与不支持的写入声明
 - first-pass success、correction recovery、final success、invalid-artifact escape count、latency 和 cost
+- intent 与 grounding false positive，包括训练前用餐建议、只出现 FitLog 品牌、无证据 FitLog 归因、真正 App 逻辑问题、错误语言 evidence 和无文档限制回答
 
 没有版本化项目评测集以及实际 provider/model/schema 数据前，FitLog 不得声称通用错误率低于 0.1%。
 

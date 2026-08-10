@@ -126,7 +126,7 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 
 Chat persistence, request logs, debug summaries, Gateway transport models, and evidence snapshots are supporting infrastructure. Their presence does not grant the model additional read or write authority.
 
-Add Food and AI Chat keep different Edge Functions, full prompts, and response envelopes, but their food-generation adapters use one shared evidence policy and all adapters consume one small target-language instruction. The evidence policy does not make user text an exhaustive inventory: it preserves clear scoped facts, lets images supply unmentioned foods and missing fields, and leaves conflicts in the editable draft for confirmation. The language instruction keeps user-visible natural-language content in the request language while preserving required keys, units, brands, package names, and necessary proper nouns. Runtime Edge validation remains structural and deterministic; neither food-scope judgment nor response language becomes a regex blocker.
+Add Food and AI Chat keep different Edge Functions, full prompts, and response envelopes, but their food-generation adapters use one shared evidence and portion-estimation policy, and all adapters consume one small target-language instruction. The food policy does not make user text an exhaustive inventory: it preserves clear scoped facts, lets images supply unmentioned foods and missing fields, prioritizes explicit weights, labels, standard product knowledge, and scale references before ordinary visual estimation, and leaves conflicts in the editable draft for confirmation. The language instruction keeps user-visible natural-language content in the request language while preserving required keys, units, brands, package names, and necessary proper nouns. Runtime Edge validation remains structural and deterministic; neither food-scope judgment, portion plausibility, nor response language becomes a regex blocker.
 
 ## Entry Points
 
@@ -182,7 +182,7 @@ Visual layout, animation, scroll anchoring, keyboard geometry, navigation treatm
 
 Add Food AI analysis is an explicit workflow: it bypasses ordinary Chat intent selection, and a successful terminal result must contain an editable Food Draft. Ordinary AI Chat can return a Food Draft through either high-confidence deterministic selection or bounded model selection; both paths use the same canonical schema and confirmation boundary.
 
-Inputs may include a text description, up to three current-request images, selected date, and user corrections. Text and images are treated as complementary evidence for an editable consumer draft: the model should preserve foods explicitly named by the user, use images to refine portions or add reasonably identifiable visual candidates, and expose conflict or uncertainty in confidence and notes rather than deleting user intent because an item is not visible. If Chat contains an explicit supported date, the Gateway resolves it against the selected request date; otherwise the selected date remains the default.
+Inputs may include a text description, up to three current-request images, selected date, and user corrections. Text and images are treated as complementary evidence for an editable consumer draft: the model should preserve foods explicitly named by the user, use images to refine portions or add reasonably identifiable visual candidates, and expose conflict or uncertainty in confidence and notes rather than deleting user intent because an item is not visible. Portion estimation is prompted as a model workflow rather than an Edge semantic gate: explicit user facts, readable labels, package sizes, standard product knowledge, declared scale references such as a 40 mm ping-pong ball, and common visible objects should guide per-item edible-weight estimates before item totals are summed and sanity-checked. If Chat contains an explicit supported date, the Gateway resolves it against the selected request date; otherwise the selected date remains the default.
 
 1. AI extracts candidate foods, portions, cooking method, nutrition, and uncertainty.
 2. Material ambiguity produces a bounded clarification rather than a confident guess.
@@ -209,6 +209,8 @@ The routed read-only workflow may use Cloud Profile, selected-day summaries, sav
 
 It may answer questions such as what to eat next, whether an order fits the day, or how to arrange food before a planned workout. It must respect `energy_ratio` versus `gram_per_kg`, explain its evidence and missing data, and never recalculate or change the official plan.
 
+Meal decisions use the current request plus approved structured context; they do not request Document RAG by default. The assistant may mention that it is operating inside FitLog, but ordinary food or timing advice must not be phrased as a FitLog product rule, official FitLog recommendation, or Document RAG result unless matching Document sources are present and the user actually asked about FitLog behavior.
+
 ### Weekly Review Workflow
 
 The routed read-only workflow may use bounded 7/14-day summaries, log coverage, workout consistency, weight trend when available, and saved strategy state.
@@ -217,7 +219,7 @@ It may summarize patterns, limitations, likely blockers, and small next actions.
 
 ### App Logic Q&A Workflow
 
-Document RAG answers how FitLog itself works, including diet modes, workout calorie rules, strategy rules, storage, export, and privacy boundaries. FitLog workout calculation questions remain app-logic grounding requests; "not eaten yet + training later" day-arrangement questions belong to `meal_decision` when they ask what to eat or how to arrange the current day. Chinese questions retrieve Chinese documents; English questions retrieve English documents. A missing relevant source produces an explicit limitation rather than an invented product rule.
+Document RAG answers how FitLog itself works, including diet modes, workout calorie rules, strategy rules, storage, export, and privacy boundaries. FitLog workout calculation questions remain app-logic grounding requests; "not eaten yet + training later" and "what should I eat before training" day-arrangement questions belong to `meal_decision` when they ask what to eat, whether to order food, or how to arrange the current day. Chinese questions retrieve Chinese documents; English questions retrieve English documents. A missing relevant source produces an explicit limitation rather than an invented product rule.
 
 ## Context And RAG Boundary
 

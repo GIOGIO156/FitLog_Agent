@@ -126,7 +126,7 @@ AI 相关兼容能力与 Agent workflow 必须保持可区分：
 
 Chat persistence、request logs、debug summaries、Gateway transport models 和 evidence snapshots 都是支撑基础设施。它们的存在不会授予模型额外读写权限。
 
-Add Food 与 AI Chat 继续使用不同 Edge Function、完整 prompt 和 response envelope，但食物生成 adapters 共用一套证据 policy，全部 adapters 也使用一条小型目标语言指令。证据 policy 不会把用户文字误当成完整清单：它保留作用范围清楚的明确事实，让图片补充文字未提到的食物和缺失字段，并把冲突留在可编辑草稿中供用户确认。语言指令让用户可见自然语言跟随请求语言，同时保留固定字段名、单位、品牌、包装原名和必要专有名词。Edge 的运行时校验继续只负责结构和确定性不变量；无论食物范围判断还是回复语言，都不能重新成为 regex blocker。
+Add Food 与 AI Chat 继续使用不同 Edge Function、完整 prompt 和 response envelope，但食物生成 adapters 共用一套证据与份量估算 policy，全部 adapters 也使用一条小型目标语言指令。Food policy 不会把用户文字误当成完整清单：它保留作用范围清楚的明确事实，让图片补充文字未提到的食物和缺失字段，并在普通视觉估算前优先使用明确重量、标签、标准商品知识和尺度参照物，冲突则留在可编辑草稿中供用户确认。语言指令让用户可见自然语言跟随请求语言，同时保留固定字段名、单位、品牌、包装原名和必要专有名词。Edge 的运行时校验继续只负责结构和确定性不变量；无论食物范围判断、份量合理性还是回复语言，都不能重新成为 regex blocker。
 
 ## 入口
 
@@ -182,7 +182,7 @@ Readiness 与 request activity 分离：
 
 Add Food AI 分析是明确工作流：它绕过普通 Chat 的意图选择，成功终态必须产生可编辑 Food Draft。普通 AI Chat 则通过高置信度确定性判断或模型选择返回 Food Draft；无论来源，Gateway 都执行同一 canonical schema 和确认边界。
 
-输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。文字和图片被视为可编辑 C 端草稿的互补证据：模型应保留用户明确说出的食物，用图片修正份量或增加合理可识别的视觉候选，并把冲突或不确定性写入 confidence/notes，而不是因为图片没看到某个食物就删除用户意图。Chat 中出现受支持的明确日期时，Gateway 以请求选中日期为基准解析；没有日期表达时继续使用选中日期作为默认值。
+输入可以包含文字描述、最多三张本次请求图片、选中日期和用户修正。文字和图片被视为可编辑 C 端草稿的互补证据：模型应保留用户明确说出的食物，用图片修正份量或增加合理可识别的视觉候选，并把冲突或不确定性写入 confidence/notes，而不是因为图片没看到某个食物就删除用户意图。份量估算以模型工作流而不是 Edge 语义 gate 实现：明确用户事实、可读标签、包装规格、标准商品知识、用户声明的 40mm 乒乓球等尺度参照物和图片中的常见物体，应先用于逐 item 可食重量估算，再由 item totals 合计并静默做合理性复核。Chat 中出现受支持的明确日期时，Gateway 以请求选中日期为基准解析；没有日期表达时继续使用选中日期作为默认值。
 
 1. AI 提取候选食物、份量、烹饪方式、营养和不确定性。
 2. 会实质影响结果的歧义产生有界 clarification，而不是强行给出确定估算。
@@ -209,6 +209,8 @@ Routed read-only workflow 可以使用 Cloud Profile、选中日期 summary、�
 
 它可以回答下一餐吃什么、某份外卖是否适合当天，或计划训练前应该怎样安排饮食。它必须保持 `energy_ratio` 与 `gram_per_kg` 语义、说明 evidence 和缺失数据，并且不能重算或修改正式计划。
 
+用餐决策使用当前请求和已批准的结构化上下文；默认不请求 Document RAG。助手可以说明自己运行在 FitLog 内，但普通食物、外卖或进食时机建议不能被包装成 FitLog 产品规则、FitLog 官方建议或 Document RAG 结论，除非本次有匹配的 Document sources，且用户实际询问的是 FitLog 行为。
+
 ### Weekly Review Workflow
 
 Routed read-only workflow 可以使用有界 7/14 天 summaries、记录 coverage、训练一致性、可用 weight trend 和已保存 strategy state。
@@ -217,7 +219,7 @@ Routed read-only workflow 可以使用有界 7/14 天 summaries、记录 coverag
 
 ### App Logic Q&A Workflow
 
-Document RAG 回答 FitLog 自身如何工作，包括饮食模式、训练热量规则、策略规则、存储、导出和隐私边界。FitLog 训练计算规则问题仍然是 app-logic grounding 请求；“还没吃饭 + 稍后训练”并询问当天或下一餐怎么安排的问题，在请求饮食安排时属于 `meal_decision`。中文问题检索中文文档，英文问题检索英文文档。没有匹配来源时必须明确说明限制，不能编造产品规则。
+Document RAG 回答 FitLog 自身如何工作，包括饮食模式、训练热量规则、策略规则、存储、导出和隐私边界。FitLog 训练计算规则问题仍然是 app-logic grounding 请求；“还没吃饭 + 稍后训练”和“训练前怎么吃/点什么外卖”这类询问当天、下一餐或训练前进食安排的问题属于 `meal_decision`。中文问题检索中文文档，英文问题检索英文文档。没有匹配来源时必须明确说明限制，不能编造产品规则。
 
 ## Context 与 RAG 边界
 

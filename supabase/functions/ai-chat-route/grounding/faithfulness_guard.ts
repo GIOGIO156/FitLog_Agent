@@ -40,29 +40,25 @@ export function validateGroundedText(
   text: string,
   request: GatewayRequest,
 ): OutputValidationIssue[] {
-  if (!isFitLogClaim(text)) return [];
+  const workflow = activeWorkflow(request);
+  if (
+    isUnsupportedFitLogAttribution(text) &&
+    workflow !== "app_logic_answer" &&
+    workflow !== "safety_boundary"
+  ) {
+    return [{
+      path: "$.message.text",
+      reason: "unsupported_fitlog_attribution",
+    }];
+  }
+  if (!isFitLogProductClaim(text)) return [];
+  if (isNoWriteConfirmationClaim(text)) return [];
   const plannedSources = (request.phase5Context?.document_sources ?? [])
     .filter((source) =>
       source.status === "planned" || source.authority === "planned"
     );
   if (plannedSources.length > 0) {
     return [{ path: "$.message.text", reason: "authority_mismatch" }];
-  }
-  const registry = approvedEvidenceRegistry(request);
-  const usable = registry.filter((entry) =>
-    ["implemented", "evidence"].includes(entry.status)
-  );
-  const claimSpecificEvidence = usable.filter((entry) =>
-    entry.id !== "rule:no_official_write_without_confirmation"
-  );
-  if (
-    claimSpecificEvidence.length === 0 &&
-    !/确认|保存|写入|confirm|save|write/i.test(text)
-  ) {
-    return [{
-      path: "$.message.text",
-      reason: "fitlog_claim_without_approved_evidence",
-    }];
   }
   const documentSources = (request.phase5Context?.document_sources ?? [])
     .filter((source) => ["implemented", "evidence"].includes(source.status))
@@ -74,6 +70,21 @@ export function validateGroundedText(
       source.doc_path.includes(`/docs/${request.language}/`) ||
       source.doc_path.includes(`docs/${request.language}/`)
     );
+  if (documentSources.length === 0) {
+    const anyCurrentDocumentSource =
+      (request.phase5Context?.document_sources ?? [])
+        .some((source) =>
+          ["implemented", "evidence"].includes(source.status) &&
+          (source.authority === undefined ||
+            source.authority === "current_product")
+        );
+    return [{
+      path: "$.message.text",
+      reason: anyCurrentDocumentSource
+        ? "fitlog_claim_exceeds_matching_evidence"
+        : "fitlog_claim_without_approved_evidence",
+    }];
+  }
   const structured = request.phase5Context?.context_objects ?? [];
   const normalizedClaim = normalizeRagQuery(text);
   const evidenceText = [
@@ -107,7 +118,23 @@ export function validateGroundedText(
   return [];
 }
 
-function isFitLogClaim(value: string): boolean {
-  return /FitLog|本应用|系统(?:会|使用|规定|默认)|(?:规则|算法|数据库|source of truth)(?:是|为|会)|FitLog's|the app (?:uses|will|always)/i
+function activeWorkflow(request: GatewayRequest): string {
+  return request.taskPlan?.planned_workflow ??
+    request.phase5Context?.route.workflow ??
+    request.workflowType;
+}
+
+function isUnsupportedFitLogAttribution(value: string): boolean {
+  return /(?:根据|按照|依照)\s*FitLog\s*(?:的)?\s*(?:建议|推荐|分析|安排|判断)|FitLog\s*(?:建议|推荐|认为)|according to\s+FitLog|FitLog(?:'s)?\s+(?:recommendation|suggestion|advice)|FitLog\s+(?:recommends|suggests|advises|says)/i
+    .test(value);
+}
+
+function isFitLogProductClaim(value: string): boolean {
+  return /(?:FitLog|本应用|这个应用|系统).{0,24}(?:会|使用|规定|默认|建议|推荐|认为|规则|算法|数据库|保存|写入|读取|权限|直接|自动|source of truth|uses|will|always|stores|saves|requires|allows|recommends|suggests|advises|database|algorithm|rule)|(?:规则|算法|数据库|source of truth)(?:是|为|会)|the app (?:uses|will|always|stores|saves|requires|allows)/i
+    .test(value);
+}
+
+function isNoWriteConfirmationClaim(value: string): boolean {
+  return /(?:不会|不能|不得).{0,24}(?:保存|写入|修改|删除|正式记录|目标|策略)|不是.{0,12}正式记录|(?:必须|需要).{0,16}(?:用户)?确认.{0,24}(?:保存|写入|修改|记录)|(?:never|cannot|does not|doesn't|won't).{0,36}(?:save|write|modify|delete|official records?|goals?|strategies)|requires?.{0,24}(?:user\s+)?confirmation.{0,36}(?:save|write|modify|record)/i
     .test(value);
 }

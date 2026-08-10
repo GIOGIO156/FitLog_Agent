@@ -24,6 +24,10 @@ void main() {
     expect(PromptTemplates.aiFoodPromptZh, contains('并列、互补的证据'));
     expect(PromptTemplates.aiFoodPromptZh, contains('对应食物和对应字段'));
     expect(PromptTemplates.aiFoodPromptZh, contains('文字未提到就忽略图片中其他'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('常见标准商品或品牌规格'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('40mm 标准乒乓球'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('不要声称进行了网页搜索'));
+    expect(PromptTemplates.aiFoodPromptZh, contains('不要凭整张图的直觉直接估整餐总重量'));
     expect(PromptTemplates.aiFoodPromptEn, contains('standing instructions'));
     expect(PromptTemplates.aiFoodPromptEn, contains('complete JSON'));
     expect(
@@ -53,6 +57,22 @@ void main() {
     expect(
       PromptTemplates.aiFoodPromptEn,
       contains('text did not mention them'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('standard product or brand-size knowledge'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('40 mm standard ping-pong ball'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('never claim that you browsed the web'),
+    );
+    expect(
+      PromptTemplates.aiFoodPromptEn,
+      contains('Do not estimate total meal weight'),
     );
 
     expect(

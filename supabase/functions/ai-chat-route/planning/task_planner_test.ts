@@ -22,6 +22,11 @@ for (
       output: "text",
     },
     {
+      text: "下午练腿前怎么吃比较好？",
+      workflow: "meal_decision",
+      output: "text",
+    },
+    {
       text: "保加利亚分腿蹲每侧次数怎么算",
       workflow: "app_logic_answer",
       output: "text",

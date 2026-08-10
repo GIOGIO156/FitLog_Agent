@@ -252,6 +252,8 @@ function correctionPrompt(
     base,
     "Correct the previous response. Return one corrected JSON object only.",
     `Validation errors: ${errors}`,
+    "If an error is unsupported_fitlog_attribution, keep the useful user-facing advice but remove unsupported phrases such as '根据 FitLog 的建议', 'FitLog 建议', or 'FitLog recommends'. Do not switch workflow, output_type, or draft family to satisfy this correction.",
+    "If an error is fitlog_claim_without_approved_evidence or fitlog_claim_exceeds_matching_evidence, remove or narrow only the unsupported FitLog product-rule claim; preserve ordinary nutrition, training, or meal-planning advice that follows from the user message and approved structured context.",
     `Previous response: ${options.correction.previousOutput.slice(0, 12000)}`,
   ].filter((line) => line.trim() !== "").join("\n");
 }

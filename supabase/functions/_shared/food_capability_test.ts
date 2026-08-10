@@ -84,6 +84,15 @@ Deno.test("semantic validator stays non-blocking while prompt owns scoped explic
   assert(policy.includes("只在对应食物和对应字段上优先"));
   assert(policy.includes("不要把局部事实误套到整餐"));
   assert(policy.includes("不要因为文字未提到就忽略图片中其他"));
+  assert(policy.includes("常见标准商品或品牌规格"));
+  assert(policy.includes("40mm 标准乒乓球"));
+  assert(policy.includes("不得声称进行了网页搜索"));
+  assert(policy.includes("不要凭整张图的直觉直接估整餐总重量"));
+  const enPolicy = foodDraftEvidencePolicy("en");
+  assert(enPolicy.includes("standard product or brand-size knowledge"));
+  assert(enPolicy.includes("40 mm standard ping-pong ball"));
+  assert(enPolicy.includes("never claim that you browsed the web"));
+  assert(enPolicy.includes("Do not estimate total meal weight"));
 });
 
 Deno.test("response language policy guides generation without becoming a hard gate", () => {

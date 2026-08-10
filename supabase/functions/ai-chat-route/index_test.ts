@@ -924,6 +924,10 @@ Deno.test("AI Chat OpenAI and Qwen share scoped food evidence policy", async () 
     assert(json.includes(policy));
     assert(json.includes(languagePolicy));
     assert(json.includes("盒饭里还有一杯含20g蛋白质的奶昔"));
+    assert(json.includes("40mm 标准乒乓球"));
+    assert(json.includes("常见标准商品或品牌规格"));
+    assert(json.includes("不得声称进行了网页搜索"));
+    assert(json.includes("不要凭整张图的直觉直接估整餐总重量"));
     assertEquals(json.split(policy).length - 1, 1);
   }
 });

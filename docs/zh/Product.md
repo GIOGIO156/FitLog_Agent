@@ -139,7 +139,7 @@ Add Food 把“AI 食物分析”作为第一入口。页面主体删除重复�
 
 Paste AI Result 兼容路径始终挂载同一个固定尺寸 JSON editor，并由实时 inset 将其作为刚体平移。静止“解析”操作边界附近使用短小的连续交接区，消除硬速度变化，同时不增加计时器、键盘高度缓存或独立 animation controller。设置卡片跟随实时键盘展开 inset 逐步淡出，同时保留 layout footprint 和状态，避免单帧消失，也不会移动或重建 editor；固定的“解析”操作保持挂载、input gating 并由键盘自然覆盖。Editor 右上角的放大操作使用中性、低强调的四角框图标，先进入 pending 状态并清除焦点，在观测到 inset 归零前不打开弹窗；缩小操作使用同一套视觉样式。随后显示的 root modal 使用固定背景雾化和实体 elevated JSON panel，不自动聚焦，也不复制 Prompt 或“解析”操作。临时 controller 接收完整 `TextEditingValue`，不可点击 barrier 关闭的弹窗退出时把编辑后的文字和选区写回原页面。
 
-Qwen 把输入发送到专用 `ai-food-photo-analyze` Gateway 路径；选择未配置 ChatGPT 时显示相同的短暂不可用错误，选择器自动滑回千问，保留文字和图片且不发送。打开系统相机/相册前或 Edge 返回 `202 accepted` 前，App 会保存一个很小的恢复标记，让 Android activity 或进程重建后可以恢复输入供用户明确重试。Accepted 之后，服务端拥有临时图片，AI 页面显示可恢复的图片分析状态卡；完成卡片只有用户点击后才打开现有 Food Preview，只有用户保存才以 `ai_photo` 来源写入正式记录。已配置的 image-capable adapter 与 AI Chat 共用同一 Food 证据 policy：文字通常只补充餐食的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算，图片继续补充文字未提到的食物和缺失数值。运行时校验强制结构、日期、有限数字、items 派生 totals、纠错上限和 no-write 边界，但不再把 regex 派生语义作为 blocker。成功终态必须有通过校验的 Food Draft，不能用普通解释文字冒充成功；accepted 前的非法输出保留表单输入供用户修正。
+Qwen 把输入发送到专用 `ai-food-photo-analyze` Gateway 路径；选择未配置 ChatGPT 时显示相同的短暂不可用错误，选择器自动滑回千问，保留文字和图片且不发送。打开系统相机/相册前或 Edge 返回 `202 accepted` 前，App 会保存一个很小的恢复标记，让 Android activity 或进程重建后可以恢复输入供用户明确重试。Accepted 之后，服务端拥有临时图片，AI 页面显示可恢复的图片分析状态卡；完成卡片只有用户点击后才打开现有 Food Preview，只有用户保存才以 `ai_photo` 来源写入正式记录。已配置的 image-capable adapter 与 AI Chat 共用同一 Food 证据和份量 policy：文字通常只补充餐食的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算，图片继续补充文字未提到的食物和缺失数值，份量估算会在普通视觉判断前优先使用明确数量、可读标签、标准商品、用户声明的尺度参照物和图片中的常见物体。运行时校验强制结构、日期、有限数字、items 派生 totals、纠错上限和 no-write 边界，但不再把 regex 派生语义或份量合理性猜测作为 blocker。成功终态必须有通过校验的 Food Draft，不能用普通解释文字冒充成功；accepted 前的非法输出保留表单输入供用户修正。
 
 草稿应包含：
 

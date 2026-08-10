@@ -6,7 +6,7 @@ const allowedByWorkflow: Record<PlannedWorkflow, PlannedContextType[]> = {
   general_chat: ["document_context"],
   food_logging: [],
   workout_logging: ["exercise_definition", "exercise_history"],
-  meal_decision: ["profile_context", "selected_day_summary", "strategy_context", "document_context"],
+  meal_decision: ["profile_context", "selected_day_summary", "strategy_context"],
   weekly_review: ["profile_context", "recent_food_summary", "recent_workout_summary", "body_metric_summary", "weight_trend_summary", "strategy_context"],
   app_logic_answer: ["document_context", "exercise_definition"],
   safety_boundary: ["document_context"],

@@ -90,13 +90,54 @@ Deno.test("general knowledge does not fabricate document evidence", () => {
   );
 });
 
-function baseRequest(): GatewayRequest {
+Deno.test("brand mentions in meal advice are not FitLog rule claims", () => {
+  const request = baseRequest({
+    workflow: "meal_decision",
+  });
+  assertEquals(
+    validateGroundedText(
+      "FitLog 可以帮你整理这顿怎么吃，但这次建议不是正式记录。",
+      request,
+    ),
+    [],
+  );
+});
+
+Deno.test("meal advice cannot attribute ordinary recommendations to FitLog", () => {
+  const request = baseRequest({
+    workflow: "meal_decision",
+  });
+  assertEquals(
+    validateGroundedText(
+      "根据 FitLog 的建议，你训练前可以点一份鸡胸肉米饭。",
+      request,
+    )[0]?.reason,
+    "unsupported_fitlog_attribution",
+  );
+});
+
+Deno.test("product rule claims still require document evidence outside app logic", () => {
+  const request = baseRequest({
+    workflow: "meal_decision",
+  });
+  assertEquals(
+    validateGroundedText("FitLog 的数据库会保存这类规则。", request)[0]
+      ?.reason,
+    "fitlog_claim_without_approved_evidence",
+  );
+});
+
+function baseRequest(options: {
+  workflow?: GatewayRequest["workflowType"];
+} = {}): GatewayRequest {
+  const workflow = options.workflow ?? "auto";
   return {
     sessionId: null,
     messageText: "",
+    deliveryMode: "sync",
     language: "zh",
     modelChoice: "qwen",
-    workflowType: "auto",
+    workflowType: workflow,
     attachments: [],
     selectedDate: null,
     targetDate: null,
@@ -108,7 +149,7 @@ function baseRequest(): GatewayRequest {
     conversationContext: null,
     phase5Context: {
       route: {
-        workflow: "auto",
+        workflow,
         confidence: 1,
         reasons: [],
         required_context: [],

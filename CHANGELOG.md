@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-08-10 Food Portion Estimation Prompt Alignment
+
+### Changed
+
+- Added one shared portion-estimation method to the internal Food prompt used by Add Food photo analysis and AI Chat Food Draft generation. The model is now prompted to prioritize explicit user quantities, readable labels, package net weights, standard product or brand-size knowledge, user-declared scale references such as a 40 mm ping-pong ball, and common visible reference objects before ordinary visual estimation.
+- Updated the Paste AI Result Chinese and English prompt templates with the same portion workflow so external GPTs-style food estimation, app photo analysis, and AI Chat Food Drafts follow the same product logic.
+- Kept portion plausibility as model guidance rather than an Edge semantic blocker: the Gateway still enforces JSON structure, finite numbers, dates, item-derived totals, correction limits, and no-write boundaries, but it does not mechanically reject a draft because it cannot prove the true food weight from a photo.
+
+### Fixed
+
+- Addressed the consumer-facing failure mode where a photo containing a declared scale object or standard-size food could still receive wildly high or low portion estimates because the prompt only said to estimate honestly and sum items, without first establishing scale or checking against standard product/container cues.
+
+### Validation
+
+- Added deterministic prompt regression coverage for 40 mm ping-pong-ball references, standard product/brand-size knowledge, no-web-browsing attribution, per-item estimation, and meal-level sanity checks across the shared Food policy, Add Food photo adapters, AI Chat adapters, and Paste AI Result templates.
+- Ran targeted prompt tests: `npm.cmd exec --yes deno -- test supabase/functions/_shared/food_capability_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts supabase/functions/ai-chat-route/index_test.ts`; all 56 tests passed. Ran `flutter test test\prompt_templates_test.dart`; passed.
+- Ran AGENTS-required Edge checks: `npm.cmd exec --yes deno -- check supabase/functions/ai-chat-route/index.ts supabase/functions/ai-food-photo-analyze/index.ts` and `npm.cmd exec --yes deno -- test supabase/functions/_shared/ai_output_contract_test.ts supabase/functions/ai-chat-route/expected_output_test.ts supabase/functions/ai-chat-route/index_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts`; type check passed and all 65 deterministic Edge tests passed.
+- Ran `flutter analyze`; no issues found. Ran `flutter test`; all 301 Flutter tests passed.
+- Updated stable design docs but intentionally did not regenerate or upload Document RAG corpus/embeddings in this task, per the planned later batch.
+- Deployed `ai-chat-route` and `ai-food-photo-analyze` to Supabase project `dyacqajcinjwrkbngeif`; `supabase functions list` reported `ai-chat-route` as `ACTIVE` version 76 and `ai-food-photo-analyze` as `ACTIVE` version 41.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; preflight confirmed AppData parent and Flutter cache writability, identified only an idle Gradle Daemon, removed the two confirmed orphan Flutter lock files, and the Gradle release build completed in 40.1 seconds. Versioned copies and `SHA256SUMS.txt` were refreshed under `artifacts/release-apks/`.
+
+## 2026-08-10 AI Chat Intent Grounding Alignment
+
+### Changed
+
+- Broadened AI Chat routing so training-meal questions such as "what should I eat before training", "训练前怎么吃", and "点什么外卖" are handled as `meal_decision` instead of workout/app-rule questions.
+- Removed default Document RAG approval from `meal_decision`; it now uses the current request plus approved structured context, while true FitLog product-rule questions still require Document RAG evidence.
+- Split AI Chat grounding into four cases: bare FitLog brand mentions, unsupported official FitLog attribution, deterministic no-write/no-official-record boundary claims, and true product-rule claims. Bare brand mentions no longer reject ordinary advice; unsupported attribution triggers targeted correction; product behavior, persistence, privacy, algorithm, and UI-rule claims still require matching Document evidence.
+- Updated Qwen and OpenAI correction prompts to preserve useful ordinary nutrition/training advice while removing unsupported FitLog attribution or unsupported product-rule wording.
+
+### Fixed
+
+- Fixed another `provider_output_invalid` path where ordinary C-end meal advice could be rejected after the answer mentioned FitLog or after broad workout-question routing misclassified training-before-eating advice as app logic.
+- Prevented model/planner requested `document_context` from being approved for normal `meal_decision`, avoiding accidental Document RAG grounding requirements for consumer meal decisions.
+
+### Validation
+
+- Added deterministic Edge coverage for training-meal routing, meal-decision context policy, brand-only FitLog mentions, unsupported FitLog attribution, and product-rule claims without evidence.
+- Ran targeted Edge tests: `npm.cmd exec --yes deno -- test supabase/functions/ai-chat-route/grounding/faithfulness_guard_test.ts supabase/functions/ai-chat-route/planning/chat_decision_test.ts supabase/functions/ai-chat-route/planning/task_planner_test.ts`; all 36 tests passed.
+- Ran AGENTS-required Edge checks: `npm.cmd exec --yes deno -- check supabase/functions/ai-chat-route/index.ts supabase/functions/ai-food-photo-analyze/index.ts` and `npm.cmd exec --yes deno -- test supabase/functions/_shared/ai_output_contract_test.ts supabase/functions/ai-chat-route/expected_output_test.ts supabase/functions/ai-chat-route/index_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts`; type check passed and all 65 deterministic Edge tests passed.
+- Ran `flutter analyze`; no issues found. Ran `flutter test`; all 301 Flutter tests passed.
+- Regenerated the local stable-document corpus as build `2c4c01887f7de669762e6533` with 659 chunks from 21 sources; local embeddings reached 659/659 parity. The chunk builder, embedding sync tests, and corpus validator passed. No Document RAG upload or cloud activation was performed.
+- Deployed `ai-chat-route` to Supabase project `dyacqajcinjwrkbngeif`; `supabase functions list` reported `ai-chat-route` as `ACTIVE` version 75. `ai-food-photo-analyze` was not redeployed because this task did not change that function.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; release-build preflight confirmed AppData parent and Flutter cache writability, found no active Flutter/Dart/Gradle/Java build process, removed only the two confirmed orphan Flutter lock files, and the build completed in 15.4 seconds. Versioned copies and `SHA256SUMS.txt` were refreshed under `artifacts/release-apks/`.
+
 ## 2026-08-10 Home Startup Recovery And AI Routing Fix
 
 ### Changed
