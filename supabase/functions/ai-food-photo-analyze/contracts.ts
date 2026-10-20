@@ -17,6 +17,7 @@ export type PhotoGatewayErrorCode =
   | "subscription_required"
   | "device_replaced"
   | "gateway_timeout"
+  | "delivery_backend_unavailable"
   | "provider_failure"
   | "request_schema_mismatch"
   | "provider_output_invalid"
@@ -343,7 +344,7 @@ export function photoGatewayResponse(params: {
 
 export function photoGatewayAcceptedResponse(params: {
   requestId: string;
-  status?: "queued" | "running" | "succeeded" | "failed";
+  status?: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   duplicateSubmit?: boolean;
   retryable?: boolean;
   errorCode?: string | null;
@@ -392,6 +393,8 @@ export function errorMessageForCode(code: PhotoGatewayErrorCode): string {
       return "This device session is no longer active.";
     case "gateway_timeout":
       return "The AI Gateway timed out.";
+    case "delivery_backend_unavailable":
+      return "The AI delivery backend is unavailable.";
     case "provider_failure":
       return "The AI Gateway could not complete the request.";
     case "request_schema_mismatch":
@@ -416,6 +419,8 @@ export function logStatusForCode(
       return "blocked";
     case "gateway_timeout":
       return "timeout";
+    case "delivery_backend_unavailable":
+      return "error";
     default:
       return "error";
   }

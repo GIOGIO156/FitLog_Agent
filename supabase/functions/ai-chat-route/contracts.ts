@@ -35,6 +35,7 @@ export type AiGatewayErrorCode =
   | "subscription_required"
   | "device_replaced"
   | "gateway_timeout"
+  | "delivery_backend_unavailable"
   | "provider_unavailable"
   | "provider_failure"
   | "request_schema_mismatch"
@@ -437,7 +438,7 @@ export function gatewayAcceptedResponse(params: {
   requestId: string;
   sessionId?: string | null;
   kind?: "ai_chat";
-  status?: "queued" | "running" | "succeeded" | "failed";
+  status?: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   duplicateSubmit?: boolean;
   retryable?: boolean;
   language?: string | null;
@@ -625,6 +626,8 @@ export function errorMessageForCode(code: AiGatewayErrorCode): string {
       return "This device session is no longer active.";
     case "gateway_timeout":
       return "The AI Gateway timed out.";
+    case "delivery_backend_unavailable":
+      return "The AI delivery backend is unavailable.";
     case "provider_unavailable":
       return "The selected AI provider is not configured or unavailable.";
     case "provider_failure":
@@ -659,6 +662,8 @@ export function logStatusForCode(code: AiGatewayErrorCode): AiGatewayStatus {
       return "blocked";
     case "gateway_timeout":
       return "timeout";
+    case "delivery_backend_unavailable":
+      return "error";
     default:
       return "error";
   }

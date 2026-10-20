@@ -228,6 +228,7 @@ Output budget 用于限制成本和延迟，不能让 partial artifact 被接受
 
 - `request_schema_mismatch`：Flutter-to-Gateway request 非法
 - `provider_unavailable`：当前部署没有配置所选 provider/model
+- `delivery_backend_unavailable`：异步交付表、RPC 或临时资源存储无法接管或 claim 这次请求
 - `provider_output_invalid`：provider output 不满足 expected contract
 - `provider_refusal`：provider 明确拒绝
 - `provider_incomplete`：generation 没有产生完整 contract result
@@ -243,7 +244,7 @@ Output budget 用于限制成本和延迟，不能让 partial artifact 被接受
 
 客户端只把明确的 socket/timeout transport 异常显示为网络失败。服务端 error envelope 会保留其稳定 code；成功 transport 后的 response 解码或类型重建失败映射为 `provider_output_invalid`，无法分类的 SDK/provider 异常映射为 `provider_failure`，不能误报为断网。
 
-对 accepted 异步交付而言，终态 `failed` delivery row 携带同一组稳定 error-code family 与 retryability metadata。交付失败是可恢复 UI 状态，不是部分 provider result。若 provider 之后成功，写入 Chat history 或图片分析草稿卡片前仍必须满足本契约。
+对 accepted 异步交付而言，终态 `failed` delivery row 携带同一组稳定 error-code family 与 retryability metadata。交付失败对 AI Chat 是可恢复 UI 状态，不是部分 provider result。Add Food 图片分析使用页面拥有的直接响应路径；失败只在页面存活时作为页面本地错误展示。若 accepted Chat provider 之后成功，写入 Chat history 前仍必须满足本契约。
 
 最终结构化输出失败后：
 
@@ -286,7 +287,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 - 是否返回 draft 或 clarification
 - 使用 accepted 异步交付时的 delivery request ID、稳定 client request ID、attempt count、lease reclaim marker 和 duplicate-submit count
 
-不得包含 raw provider responses、chain-of-thought、provider keys、auth tokens、原图、base64 payload、完整记录历史或不受限的用户 notes。Accepted 图片分析交付可以为了恢复和重试把压缩图短期保存在私有临时存储；logs 仍只保存 metadata。
+不得包含 raw provider responses、chain-of-thought、provider keys、auth tokens、原图、base64 payload、完整记录历史或不受限的用户 notes。Accepted AI Chat 图片交付可以为了恢复和重试把压缩图短期保存在私有临时存储；logs 仍只保存 metadata。
 
 必测维度：
 
@@ -304,7 +305,7 @@ Provider alias 或模型升级不能静默改变 accepted contract。Schema 变�
 模型成功输出仍然只创建可编辑 proposal：
 
 - Food Draft 只有经过相应 review action 后才打开 Food Preview。
-- Add Food 异步交付完成后的临时 Food Draft 卡片，也只有用户点击后才打开 Food Preview。
+- Add Food 图片分析只在分析页仍挂载时，从校验通过的直接响应打开 Food Preview。页面/进程已经丢失时，不显示 Food Draft 卡片，也不恢复结果。
 - Workout Draft 只有 review 后才重建训练编辑器；已有草稿时还需要 replacement confirmation。
 - 正式记录只由正常 confirmed save path 写入。
 - AI 不能静默修改 Profile、目标、`diet_goal_phase`、`diet_calculation_mode`、`carb_cycling` 或 `carb_tapering`。

@@ -1,7 +1,7 @@
 ﻿name: fitlog_local
 description: "FitLog Local - offline personal fitness tracker"
 publish_to: 'none'
-version: 1.0.37+41
+version: 1.0.41+45
 
 environment:
   sdk: ^3.11.4
@@ -26,6 +26,8 @@ dependencies:
   image_picker_android: ^0.8.13+17
   image_picker_platform_interface: ^2.11.1
   supabase: ^2.0.0
+  http: ^1.6.0
+  share_plus: ^11.1.0
 
 dev_dependencies:
   flutter_test:

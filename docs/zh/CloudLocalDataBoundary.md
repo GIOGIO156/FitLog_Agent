@@ -20,7 +20,7 @@
 - 只要存在账号绑定的已确认 cache，且已知道当前登录 auth 账号，页面应先用本地数据打开，不等待 active-device 恢复或云端刷新。
 - 本地 cache 淘汰不能导致用户正式数据丢失。
 - AI 可以生成草稿、解释和复盘，但正式数据修改仍必须用户确认并云端写入成功。
-- Edge 返回 `202 accepted` 前，AI 输入仍是本地重试状态；`202 accepted` 后，`ai_delivery_requests` 是请求生命周期的云端权威，独立于 Flutter 进程是否存活。
+- Edge 返回 `202 accepted` 前，AI Chat 输入仍是本地重试状态，不能被当作云端已接管的任务。`202 accepted` 后，`ai_delivery_requests` 是 AI Chat 请求生命周期的云端权威。AI Chat 在正确 session 内暴露跨进程恢复，但不会自动打开旧 session。Add Food 图片分析使用仍挂载页面拥有的直接请求，页面或进程丢失后不恢复输入、结果、状态卡或重试 UI。
 
 ## 账号运行期状态机
 
@@ -93,8 +93,8 @@
 | 训练记录 | sessions、sets、workout records | 云端 | 已确认按日 read model 和 partial cache |
 | Daily summaries | 选中日期 totals 和紧凑上下文 | 可重建云端 projection | 已确认 summary cache |
 | 本地专属 App 数据 | 主题、运行期 UI 状态、未完成 prompt、本地导出文件 | 本地 | 本地权威 |
-| 草稿 | 未发送 prompt、accepted 前 Add Food 输入、手动/AI 新建训练草稿 | accepted 或确认前本地 | 只做草稿存储；已保存训练的编辑状态仅存在于当前页面 |
-| AI 交付请求 | accepted Chat turn 和 accepted 图片分析草稿 | 云端/service `ai_delivery_requests` | 只作为运行期展示 cache 和轮询触发 |
+| 草稿 | 未发送 Chat prompt、手动/AI 新建训练草稿、已挂载 Add Food 分析表单状态 | accepted、确认或页面丢失前本地 | 只做草稿存储；已保存训练的编辑状态和 Add Food 分析表单状态仅存在于当前页面 |
+| AI 交付请求 | accepted Chat turn | 云端/service `ai_delivery_requests` | Chat 恢复来源；删除 session 会取消 queued/running work 并隐藏迟到结果 |
 | AI 记录 | chat sessions、messages、final answers、request metadata | 对应阶段落地后云端/服务端 | 运行期展示 cache |
 
 ## Source of Truth 规则
@@ -116,7 +116,7 @@
 - 云端成功后，更新本地已确认 read model，并更新受影响的 `daily_summaries` projection/cache。
 - 云端写入失败时，保留原正式数据，并把用户草稿/编辑留在可重试的非正式状态。
 - AI 不得静默修改饮食目标、应用 carb tapering、删除记录或写正式记录；必须用户确认并走正式写入路径。
-- AI Chat/图片分析只有在 auth、subscription、active-device、payload、幂等键和图片持久化都通过后才可返回 `202 accepted`。此后页面销毁、App 切后台或进程丢失都不能删除该请求；worker 恢复由云端负责。
+- AI Chat 只有在 auth、subscription、active-device、payload、幂等键和所需图片持久化都通过后才可返回 `202 accepted`。此后 worker 恢复由云端负责，App 进程丢失不能删除服务端 row。Add Food 图片分析在正常产品路径中使用仍挂载页面拥有的直接请求，只在该页面存活时展示等待、成功或失败。
 - 当前没有离线正式写入队列。离线编辑只能作为草稿，直到用户在线显式保存成功。
 - Workout 生命周期 autosave 与正式保存是同一份本地草稿的有序 mutation。正式调用前，App 先持久化 `committing`、唯一 mutation id、目标 plan、payload hash、保存时间和计算体重；该状态禁止生命周期 autosave、编辑、自动恢复编辑器和“训练进行中”通知。
 - `commit_workout_plan_v1` 校验 active device，并在同一 PostgreSQL transaction 内完成替换/新建、全部 sessions、全部 sets 和只含 hash 的 mutation ledger。账号/mutation key 保证幂等：相同 hash 返回原结果，不同 hash 视为冲突。SQLite 兼容路径也在同一 transaction 内提交正式本地 rows 与只含 hash 的本地 ledger。
@@ -323,6 +323,12 @@ Warm cache 在首个可见页面稳定渲染后执行。它服务下一次打开
 - 导出和账号修复以云端正式 records 或 summaries 为权威。
 - 删除账号时应删除 Cloud Profile、云端正式 records、可识别 chat history 和可识别 AI request/response 数据。
 
+认证诊断是设备本地、有容量上限的排查元数据，独立保存在 SharedPreferences 的 `fitlog.auth.diagnostics.v1` journal 中，不依赖 SQLite，也不随账号 cache 清理而删除。保留最近 200 条事件和 20 个失败现场；每个现场最多保留失败前后各 5 条事件。成功事件不会淘汰失败现场，只有新失败现场超过上限后才替换最旧现场。记录跨进程重启、退出和之后成功登录保留。本诊断版本保持既有清除会话和设备替换判定，不授予离线云端访问权限，也不改变登录凭据的有效性。
+
+事件包含进程/运行次序、生命周期、会话是否存在和访问凭据到期时间、本地会话读取/写入/清除结果、恢复/续期/登录结果、主动退出及显示登录页的原因、活跃设备校验。认证 HTTP 元数据包含操作、耗时、HTTP 状态、白名单服务端错误码，以及存在 Date 响应头时的服务器与手机时间偏差。手机快照包含实际 APK 版本/构建号、Android 与机型、安装/更新时间、网络类型与系统验证标志、系统可见的 VPN/代理标志、自动时间、省电/电池优化和后台限制。这些是观察信息，不代表 VPN 或某项手机设置一定导致失败；不可读取的状态标记为不可用。不额外发起诊断探测请求。
+
+journal 不记录密码、访问/刷新/OTP 令牌、邮箱及账号/会话/设备标识符、API key、请求/响应正文、任意原始异常文字、IP、SSID、代理地址或无关用户记录，只保留异常类型和分类。采集与保存失败按 best-effort 降级，不能改变认证结果；有界手机快照超时不会阻塞认证。导出等待已排队事件，生成本地 JSON 文件，登录页和已登录账号卡片均直接唤起 Android/iOS 系统分享页。App 不自动上传 journal，由用户选择分享目标。取消分享或分享页打开失败均保留文件和 journal。导出后仍按容量上限保留，导出或登录成功均不清空记录。
+
 ## 页面规则
 
 Root auth gate：
@@ -365,7 +371,7 @@ AI：
 
 - AI context 不能把本地 SQLite cache 当最终权威。
 - 使用 Cloud Profile、云端 `daily_summaries` 或受控 summary/context builder。
-- Accepted AI request lifecycle 以云端 `ai_delivery_requests` 为权威；客户端轮询、resume refresh 和 AI 页状态卡只负责展示与修复。
+- Accepted AI Chat request lifecycle 以云端 `ai_delivery_requests` 为权威；Chat 轮询/resume refresh 只负责展示与修复。Add Food 图片分析由页面拥有，页面/进程丢失后不恢复。
 - Chat 成功后刷新 canonical cloud `ai_chat_sessions` / `ai_chat_messages`；图片分析成功在用户打开 Preview 并保存前仍只是临时云端 Food Draft result。
 - AI 草稿写成正式记录必须用户确认，并走正常 cloud write path。
 
@@ -392,7 +398,7 @@ AI：
 - Active device claim / guard：Supabase RPC `claim_active_device`、`assert_active_device`、`release_active_device`，Flutter repository 在 `lib/data/repositories/active_device_repository.dart`，运行时状态在 `lib/domain/models/cloud_runtime_context.dart`。
 - Profile gate 必须把 `offline_readonly` 和“已有 matching cache 的 refresh error”当成可展示状态，不能整页错误覆盖。
 - AI 页面可以读取订阅展示 cache 做状态呈现，但真正发送能力仍受 Gateway 和服务端 entitlement 控制。
-- 可靠 AI 交付：`supabase/migrations/202608090001_ai_async_delivery_requests.sql`、`supabase/functions/ai-chat-route/index.ts` 与 `supabase/functions/ai-food-photo-analyze/index.ts` 中的 worker actions，以及 `lib/data/repositories/ai_chat_repository.dart` 和 `lib/features/ai/ai_chat_controller.dart`。
+- 可靠 AI 交付：`supabase/migrations/202608090001_ai_async_delivery_requests.sql`、`supabase/migrations/202608110001_ai_delivery_recovery_hardening.sql` 中的 hardening/cleanup、`supabase/functions/ai-chat-route/index.ts` 与 `supabase/functions/ai-food-photo-analyze/index.ts` 中的 worker actions，以及 `lib/data/repositories/ai_chat_repository.dart`、`lib/data/remote/ai_food_photo_analysis_client.dart`、`lib/features/ai/ai_chat_controller.dart` 和 `lib/features/food/photo_food_analysis_page.dart`。
 
 ## 验证不变量
 
@@ -433,7 +439,7 @@ AI：
 - 云端写入失败不会创建或覆盖正式本地记录。
 - 前台新增、编辑、删除失败时有可读错误和重试/恢复路径，不出现点击无反应。
 - 旧设备不能在 `device_replaced` 后继续新增、编辑、删除或发送 AI；该错误不能被展示成普通 upload failure。
-- 已 accepted 的 AI Chat/图片请求在 App 切后台或进程丢失后仍可恢复；用户回来时看到处理中、成功或稳定失败/重试，而不是请求消失。
+- 已 accepted 的 AI Chat 请求在 App 切后台或进程丢失后仍可恢复；用户回到同一 session 时看到处理中、成功或稳定失败/重试，而不是请求消失。Add Food 图片分析只在原页面仍挂载时支持普通切后台再返回；进程死亡后不恢复输入、结果、状态卡或重试界面。
 - 图片分析结果在用户保存 Food Preview 前始终是临时草稿，不会创建正式食物记录。
 - 云端写入成功会更新本地 read models 和受影响 summaries。
 - 新建训练正式保存成功过程中切到后台不能重新创建已清理的本地草稿。结果不确定时保留锁定的确认条目，直到原 mutation 被确认或重试；只有明确发生在提交前的失败才恢复可编辑状态。

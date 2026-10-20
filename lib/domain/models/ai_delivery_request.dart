@@ -38,6 +38,7 @@ class AiDeliveryRequest {
       status == AiDeliveryStatus.queued || status == AiDeliveryStatus.running;
   bool get isSucceeded => status == AiDeliveryStatus.succeeded;
   bool get isFailed => status == AiDeliveryStatus.failed;
+  bool get isCancelled => status == AiDeliveryStatus.cancelled;
 
   AiFoodPhotoAnalysisResponse? get photoResult {
     final result = resultJson;
@@ -92,6 +93,8 @@ AiDeliveryStatus _statusFromValue(String? value) {
       return AiDeliveryStatus.succeeded;
     case 'failed':
       return AiDeliveryStatus.failed;
+    case 'cancelled':
+      return AiDeliveryStatus.cancelled;
     case 'queued':
     default:
       return AiDeliveryStatus.queued;

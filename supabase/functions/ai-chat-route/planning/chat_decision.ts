@@ -16,6 +16,7 @@ import type {
   PlannedWorkflow,
   TaskPlanV1,
 } from "./task_plan_contract.ts";
+import { PlannerCallError } from "./chat_decision_contract.ts";
 
 export type ModelChatDecisionPlanner = (
   input: Record<string, unknown>,
@@ -28,13 +29,19 @@ export async function buildApprovedChatDecision(
   let decision = deterministicDecision(request);
   if (decision === null) {
     if (modelPlanner === undefined) {
-      throw new ChatDecisionPlanningError("planner_unavailable");
+      throw new ChatDecisionPlanningError(
+        "planner_unavailable",
+        "not_configured",
+      );
     }
     let raw: unknown;
     try {
       raw = await modelPlanner(plannerInput(request));
-    } catch {
-      throw new ChatDecisionPlanningError("planner_unavailable");
+    } catch (error) {
+      throw new ChatDecisionPlanningError(
+        "planner_unavailable",
+        error instanceof PlannerCallError ? error.reason : "unknown",
+      );
     }
     decision = parseModelChatDecision(
       raw,
@@ -42,7 +49,10 @@ export async function buildApprovedChatDecision(
       request.attachments.length > 0,
     );
     if (decision === null) {
-      throw new ChatDecisionPlanningError("planner_output_invalid");
+      throw new ChatDecisionPlanningError(
+        "planner_output_invalid",
+        "decision_contract_invalid",
+      );
     }
   }
   const approvedTaskPlan = applyContextPolicy(

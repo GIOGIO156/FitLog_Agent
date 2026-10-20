@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:fitlog_local/app.dart';
@@ -19,6 +18,8 @@ import 'package:fitlog_local/data/repositories/profile_repository.dart';
 import 'package:fitlog_local/data/repositories/subscription_repository.dart';
 import 'package:fitlog_local/data/repositories/workout_draft_repository.dart';
 import 'package:fitlog_local/data/repositories/workout_repository.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_request.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_transport.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_request.dart';
@@ -40,7 +41,6 @@ import 'package:fitlog_local/features/account/account_controller.dart';
 import 'package:fitlog_local/features/food/food_image_picker.dart';
 import 'package:fitlog_local/features/food/food_preview_page.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_page.dart';
-import 'package:fitlog_local/features/food/photo_food_analysis_recovery.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -52,25 +52,8 @@ MemoryImage _memoryImage(ImageProvider<Object> provider) {
 }
 
 void main() {
-  late Directory recoveryDirectory;
-
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    recoveryDirectory = Directory.systemTemp.createTempSync(
-      'fitlog_photo_food_recovery_test_',
-    );
-    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = recoveryDirectory;
-    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = true;
-  });
-
-  tearDown(() async {
-    await PhotoFoodAnalysisRecoveryStore.clearPending();
-    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = null;
-    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = false;
-    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = null;
-    if (await recoveryDirectory.exists()) {
-      await recoveryDirectory.delete(recursive: true);
-    }
   });
 
   testWidgets('photo analysis submit is disabled until image or description', (
@@ -554,7 +537,7 @@ void main() {
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
     await tester.pump();
-    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(harness.client.requests.single.asyncDelivery, isFalse);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     await tester.pump();
@@ -604,247 +587,33 @@ void main() {
 
     expect(harness.client.requests.single.images, isEmpty);
     expect(harness.client.requests.single.userNote, '100g 三文鱼');
-    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(harness.client.requests.single.asyncDelivery, isFalse);
     expect(find.byType(FoodPreviewPage), findsOneWidget);
   });
 
-  testWidgets('restored photo draft keeps recovered image and note', (
+  testWidgets('unexpected accepted delivery does not start photo polling', (
     tester,
   ) async {
     final harness = _PhotoHarness();
+    harness.client.handler = (_) async => _acceptedPhotoResponse();
     addTearDown(harness.dispose);
 
-    await tester.pumpWidget(
-      _buildPhotoTestApp(
-        harness,
-        initialNote: '100g salmon',
-        initialImages: <PickedFoodImage>[harness.picker.image],
-      ),
-    );
-
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-      findsOneWidget,
-    );
-    await _scrollUntilVisible(
-      tester,
-      find.byKey(const ValueKey<String>('photo_food_note_field')),
-    );
-    expect(find.text('100g salmon'), findsOneWidget);
-    final submit = tester.widget<FilledButton>(
+    await tester.pumpWidget(_buildPhotoTestApp(harness));
+    await _pickFromGallery(tester);
+    await tester.tap(
       find.byKey(const ValueKey<String>('photo_food_submit_button')),
     );
-    expect(submit.onPressed, isNotNull);
-  });
-
-  testWidgets('lost camera image restores inside the photo page preview', (
-    tester,
-  ) async {
-    final harness = _PhotoHarness();
-    final lostImages = Completer<List<PickedFoodImage>>();
-    harness.picker.lostImagesCompleter = lostImages;
-    addTearDown(harness.dispose);
-
-    await tester.pumpWidget(
-      _buildPhotoTestApp(
-        harness,
-        initialNote: '去皮鸡腿',
-        restoreLostImagesOnStart: true,
-      ),
-    );
     await tester.pump();
-    await _waitForLostImageRetrieve(tester, harness);
+    await _settleRealAsyncWork(tester);
 
-    expect(harness.picker.retrieveLostImageCalls, 1);
-    expect(harness.picker.retrieveLostLimits, <int>[3]);
+    expect(harness.client.requests.single.asyncDelivery, isFalse);
+    expect(find.byType(FoodPreviewPage), findsNothing);
     expect(
-      find.byKey(
-        const ValueKey<String>('photo_food_recovering_image_indicator'),
-      ),
+      find.text('Food photo analysis failed. Please retry.'),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-      findsNothing,
-    );
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('photo_food_submit_button')),
-          )
-          .onPressed,
-      isNull,
-    );
-
-    lostImages.complete(<PickedFoodImage>[harness.picker.image]);
-    await _finishLostImageRecovery(tester);
-
-    expect(
-      find.byKey(
-        const ValueKey<String>('photo_food_recovering_image_indicator'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-      findsOneWidget,
-    );
-    expect(find.text('去皮鸡腿'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('photo_food_submit_button')),
-          )
-          .onPressed,
-      isNotNull,
-    );
-  });
-
-  testWidgets('lost camera image appends to persisted photo draft images', (
-    tester,
-  ) async {
-    final harness = _PhotoHarness();
-    final lostImages = Completer<List<PickedFoodImage>>();
-    final secondBytes = Uint8List.fromList(_onePixelPng);
-    final secondImage = PickedFoodImage(
-      bytes: secondBytes,
-      mimeType: 'image/png',
-      name: 'food-2.png',
-    );
-    harness.picker.lostImagesCompleter = lostImages;
-    addTearDown(harness.dispose);
-    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = (_) async =>
-        <PickedFoodImage>[harness.picker.image];
-    await tester.runAsync(
-      () => PhotoFoodAnalysisRecoveryStore.savePending(
-        initialDate: '2026-07-01',
-        note: '去皮鸡腿',
-        images: const <PickedFoodImage>[],
-        selectedImageIndex: 0,
-      ),
-    );
-
-    await tester.pumpWidget(
-      _buildPhotoTestApp(harness, restoreLostImagesOnStart: true),
-    );
-    await tester.pump();
-    await _waitForLostImageRetrieve(tester, harness);
-
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('photo_food_recovering_image_indicator'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_selected_image_0')),
-      findsOneWidget,
-    );
-    expect(harness.picker.retrieveLostLimits, <int>[2]);
-
-    lostImages.complete(<PickedFoodImage>[secondImage]);
-    await _finishLostImageRecovery(tester);
-
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image_0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image_1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_selected_image_1')),
-      findsOneWidget,
-    );
-    final mainPreview = tester.widget<Image>(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-    );
-    expect(_memoryImage(mainPreview.image).bytes, same(secondBytes));
-    expect(find.text('去皮鸡腿'), findsOneWidget);
-  });
-
-  testWidgets('lost camera image replaces selected persisted image when full', (
-    tester,
-  ) async {
-    final harness = _PhotoHarness();
-    final lostImages = Completer<List<PickedFoodImage>>();
-    final firstBytes = Uint8List.fromList(_onePixelPng);
-    final secondBytes = Uint8List.fromList(_onePixelPng);
-    final thirdBytes = Uint8List.fromList(_onePixelPng);
-    final replacementBytes = Uint8List.fromList(_onePixelPng);
-    final firstImage = PickedFoodImage(
-      bytes: firstBytes,
-      mimeType: 'image/png',
-      name: 'food-1.png',
-    );
-    final secondImage = PickedFoodImage(
-      bytes: secondBytes,
-      mimeType: 'image/png',
-      name: 'food-2.png',
-    );
-    final thirdImage = PickedFoodImage(
-      bytes: thirdBytes,
-      mimeType: 'image/png',
-      name: 'food-3.png',
-    );
-    final replacementImage = PickedFoodImage(
-      bytes: replacementBytes,
-      mimeType: 'image/png',
-      name: 'replacement.png',
-    );
-    harness.picker.lostImagesCompleter = lostImages;
-    addTearDown(harness.dispose);
-    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = (_) async =>
-        <PickedFoodImage>[firstImage, secondImage, thirdImage];
-    await tester.runAsync(
-      () => PhotoFoodAnalysisRecoveryStore.savePending(
-        initialDate: '2026-07-01',
-        note: '',
-        images: const <PickedFoodImage>[],
-        selectedImageIndex: 1,
-      ),
-    );
-
-    await tester.pumpWidget(
-      _buildPhotoTestApp(harness, restoreLostImagesOnStart: true),
-    );
-    await tester.pump();
-    await _waitForLostImageRetrieve(tester, harness);
-
-    expect(harness.picker.retrieveLostLimits, <int>[1]);
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_selected_image_1')),
-      findsOneWidget,
-    );
-
-    lostImages.complete(<PickedFoodImage>[replacementImage]);
-    await _finishLostImageRecovery(tester);
-
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image_0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image_1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_preview_image_2')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('photo_food_empty_slot_2')),
-      findsNothing,
-    );
-    final selectedPreview = tester.widget<Image>(
-      find.byKey(const ValueKey<String>('photo_food_preview_image')),
-    );
-    expect(_memoryImage(selectedPreview.image).bytes, same(replacementBytes));
+    await tester.pump(const Duration(seconds: 3));
+    expect(harness.client.deliveryRequestIds, isEmpty);
   });
 
   testWidgets('failure keeps selected image and note for retry', (
@@ -912,7 +681,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.client.requests, hasLength(1));
-    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(harness.client.requests.single.asyncDelivery, isFalse);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _settleRealAsyncWork(tester);
     await tester.pumpAndSettle();
@@ -974,7 +743,7 @@ void main() {
     await _settleRealAsyncWork(tester);
     await tester.pumpAndSettle();
 
-    expect(harness.client.requests.single.asyncDelivery, isTrue);
+    expect(harness.client.requests.single.asyncDelivery, isFalse);
     expect(find.byType(FoodPreviewPage), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
@@ -1241,31 +1010,7 @@ Future<void> _settleRealAsyncWork(WidgetTester tester) async {
   await tester.pump();
 }
 
-Future<void> _finishLostImageRecovery(WidgetTester tester) async {
-  await _settleRealAsyncWork(tester);
-  await tester.pump();
-}
-
-Future<void> _waitForLostImageRetrieve(
-  WidgetTester tester,
-  _PhotoHarness harness,
-) async {
-  await tester.runAsync(() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 2));
-    while (harness.picker.retrieveLostImageCalls == 0 &&
-        DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-  });
-  await tester.pump();
-}
-
-Widget _buildPhotoTestApp(
-  _PhotoHarness harness, {
-  String? initialNote,
-  List<PickedFoodImage> initialImages = const <PickedFoodImage>[],
-  bool restoreLostImagesOnStart = false,
-}) {
+Widget _buildPhotoTestApp(_PhotoHarness harness) {
   return ChangeNotifierProvider<LanguageController>(
     create: (_) => LanguageController(),
     child: MultiProvider(
@@ -1280,9 +1025,6 @@ Widget _buildPhotoTestApp(
       child: MaterialApp(
         home: PhotoFoodAnalysisPage(
           initialDate: '2026-07-01',
-          initialNote: initialNote,
-          initialImages: initialImages,
-          restoreLostImagesOnStart: restoreLostImagesOnStart,
           imagePicker: harness.picker,
           analysisClient: harness.client,
         ),
@@ -1462,12 +1204,9 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     name: 'food.png',
   );
   List<PickedFoodImage>? multiImages;
-  Completer<List<PickedFoodImage>>? lostImagesCompleter;
   final List<List<PickedFoodImage>> queuedSelections =
       <List<PickedFoodImage>>[];
   final List<int> requestedLimits = <int>[];
-  final List<int> retrieveLostLimits = <int>[];
-  int retrieveLostImageCalls = 0;
 
   @override
   Future<PickedFoodImage?> pick(FoodImageSource source) async {
@@ -1485,14 +1224,6 @@ class _FakeFoodImagePicker extends FoodImagePicker {
     }
     final images = multiImages ?? <PickedFoodImage>[image];
     return images;
-  }
-
-  @override
-  Future<List<PickedFoodImage>> retrieveLostImages({required int limit}) {
-    retrieveLostImageCalls += 1;
-    retrieveLostLimits.add(limit);
-    return lostImagesCompleter?.future ??
-        Future<List<PickedFoodImage>>.value(const <PickedFoodImage>[]);
   }
 }
 
@@ -1528,6 +1259,8 @@ class _CapturingFoodRepository extends FoodRepository {
 
 class _FakePhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
   final requests = <AiFoodPhotoAnalysisRequest>[];
+  final deliveryRequestIds = <String>[];
+  AiDeliveryRequest? deliveryRequest;
   Future<AiFoodPhotoAnalysisResponse> Function(
     AiFoodPhotoAnalysisRequest request,
   )?
@@ -1540,6 +1273,27 @@ class _FakePhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
     requests.add(request);
     return handler?.call(request) ?? Future.value(_successResponse());
   }
+
+  @override
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String requestId,
+  }) async {
+    deliveryRequestIds.add(requestId);
+    final request = deliveryRequest;
+    return request?.requestId == requestId ? request : null;
+  }
+}
+
+AiFoodPhotoAnalysisResponse _acceptedPhotoResponse() {
+  return const AiFoodPhotoAnalysisResponse(
+    transport: AiDeliveryTransport(
+      requestId: 'delivery_req_1',
+      kind: AiDeliveryKind.foodPhotoAnalysis,
+      status: AiDeliveryStatus.queued,
+      accepted: true,
+      retryable: true,
+    ),
+  );
 }
 
 AiFoodPhotoAnalysisResponse _successResponse() {

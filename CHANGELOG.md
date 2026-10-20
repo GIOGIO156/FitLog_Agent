@@ -1,5 +1,97 @@
 # Changelog
 
+## 2026-10-20 Export Sharing
+
+### Changed
+
+- Renamed Profile's Export & Data card to Data Management and renamed sign-in diagnostic export to Export sign-in error diagnostics in both languages.
+- XLSX, CSV ZIP, and sign-in error diagnostic JSON exports now open the native share sheet immediately after file generation. Signed-in and signed-out diagnostic entry points share the same implementation, using `share_plus` with an iPad popover anchor. Cancellation is normal; generated files and diagnostic incidents remain available. A share-sheet launch failure has a separate readable error.
+- Removed the Android-only diagnostic document-picker export path while retaining native phone-state snapshots. Authentication, sign-out, diagnostic retention, and secret-exclusion rules are unchanged.
+
+### Validation
+
+- `flutter analyze` reported no issues; all 310 Flutter tests passed, including unauthenticated JSON sharing, cancellation, MIME types and share origins for JSON/XLSX/ZIP, and file retention on sharing failure. Eight documentation/corpus checks passed and the local 21-source/667-chunk seed was regenerated without upload.
+- Built configured split Release APKs for `1.0.41+45` in 84.2 seconds. All three APKs passed signing-certificate, backend-configuration, share-provider, and output-consistency checks; versioned files and checksums are retained under `artifacts/release-apks/`. The Kotlin daemon encountered a cross-drive incremental-cache error and the same build completed through its compiler fallback.
+- Android/iOS sharing uses the platform plugin; native share-sheet interaction requires device acceptance. iOS compilation and device interaction were not verified on Windows.
+
+## 2026-10-19 Authentication Diagnostics
+
+### Added
+
+- Added bounded, device-local authentication diagnostics with phone/lifecycle snapshots, refresh/transport outcomes, session-storage and sign-out reasons, and protected failure context that survives later success and restart. Login/registration and signed-in Account surfaces can export JSON through Android's document picker without requiring an authenticated session. Passwords, tokens, request bodies, arbitrary error messages, and account/network identifiers are excluded.
+
+### Fixed
+
+- Replaced broad `token`/`expired` string matching with typed and categorized authentication errors so DNS, TLS, timeout, server, refresh-session, and credential failures do not masquerade as invalid email codes. Existing session-clearing and device-replacement behavior is preserved for diagnosis.
+
+### Validation
+
+- `flutter analyze` reported no issues; all 309 Flutter tests passed, including privacy, restart/retention, unauthenticated export, unchanged offline-recovery clearing, and original sign-out downgrade coverage. Eight document/corpus checks passed; the local 21-source/667-chunk Document RAG seed was regenerated without upload or activation.
+- Built configured split Release APKs for `1.0.40+44`; final Gradle assembly completed in 34.8 seconds. All three APKs passed signature verification, match the existing signing certificate, include network-state permission, and contain the expected backend configuration and diagnostics. Versioned artifacts and a dedicated checksum manifest are retained under `artifacts/release-apks/`.
+- The Windows Java selector initially failed before compilation; a process-local `jdk.net.unixdomain.tmpdir` setting enabled the JDK TCP fallback. No global Java configuration or app networking policy was changed. Android document-picker interaction and the friend's intermittent failure still require device acceptance.
+
+## 2026-08-19 AI Chat Recovery And Add Food Direct Path Repair
+
+### Changed
+
+- Restored the original AI Chat intent boundary for image requests: image presence no longer bypasses the decision planner into `general_chat/text`, and unresolved image intent uses the multimodal Planner with a 15-second image budget.
+- Moved Add Food photo analysis back to the page-owned direct request path for the normal product flow. The mounted page can still consume a completed result after background/return, while page or process death restores no input, status, retry surface, or result.
+- Kept AI Chat accepted delivery as the cross-process history mechanism, but stopped delivery refresh from auto-opening stale pending/failed sessions. Deleted Chat sessions now cancel matching queued/running/failed delivery rows with a terminal `cancelled` state.
+- Replaced direct `storage.objects` cleanup in scheduled delivery maintenance with an Edge `cleanup_expired` worker action backed by Storage API deletion and private runtime worker settings.
+
+### Validation
+
+- Deployed migration `202608110001`, configured private worker runtime settings, and deployed `ai-chat-route` ACTIVE v82 plus `ai-food-photo-analyze` ACTIVE v48.
+- Verified worker actions online: `cleanup_expired` returned `cleaned: 0`, both pending-worker endpoints returned `processed: 0`, and `invoke_ai_delivery_workers()` executed without the prior Storage cleanup error.
+- Ran Edge checks and tests: `deno check` for both Edge functions, 21 Planner tests, and the required 67-test Edge suite all passed.
+- Ran `flutter analyze` with no issues and full `flutter test` with all 299 tests passing.
+- Ran production canaries with sanitized output: Add Food direct photo analysis returned HTTP 200, `accepted=false`, and a Food Draft in 18.6 seconds; AI Chat image accepted delivery returned HTTP 202 and reached `succeeded` in 34.3 seconds with one provider call and one provider image.
+- Built configured debug split APKs with `flutter build apk --debug --split-per-abi --dart-define-from-file=config/supabase.local.json`.
+
+## 2026-08-14 AI Delivery Latency Root-Cause Investigation
+
+### Added
+
+- Added bounded internal Planner failure categories and a production-safe `photo_latency_breakdown.v1` payload covering Add Food pre-accept upload, claim, asset reload, Provider, validation, correction, and total Worker time. Added reusable provider and accepted-delivery canary tools that emit no raw prompt, image, model output, secret, or account/session identifier.
+
+### Changed
+
+- Deployed the Add Food latency instrumentation as `ai-food-photo-analyze` ACTIVE v46 and updated the Phase 7 roadmap with the confirmed Chat-routing, history, Worker-recovery, and photo-latency remediation work package. No model, Food accuracy prompt, public response envelope, official-record write boundary, or Add Food process-death behavior changed.
+
+### Validation
+
+- Reproduced image Planner failure with a 446,757-byte controlled JPEG: the 8-second run succeeded 1/5 for image planning versus 5/5 for text, while a 20-second diagnostic run succeeded 5/5 for image planning at 8.24-12.17 seconds. This confirms FitLog's local 8-second abort as the direct `planner_unavailable` cause rather than a Qwen outage.
+- Ran three complete production Add Food canaries. Client-send-to-visible time averaged 18.20 seconds; pre-accept Storage upload averaged 727 ms, Worker Storage reload 1.13 seconds, and Provider first pass 14.42 seconds. Same-image Phase 5.11 prompt comparison added about 1.95 seconds on average, which does not explain a near doubling.
+- Rechecked production Worker configuration without reading secret values: both database-side settings are absent. The cron job also failed 1,440/1,440 times in the latest 24 hours because its purge RPC directly deletes `storage.objects`, which Supabase rejects through `protect_delete()`; five expired rows and six temporary objects remain. The normal `waitUntil` path succeeds, but scheduled Worker recovery and cleanup are not complete. Edge type checks passed and the required deterministic Edge suite passed 67/67.
+- Ran `flutter analyze` with no issues and `flutter test` with all 298 tests passing.
+
+## 2026-08-11 AI Delivery Recovery Boundary And Worker Hardening
+
+### Changed
+
+- Advanced the app to `1.0.39+43`.
+- Re-scoped Add Food photo-analysis recovery to the confirmed product boundary: the original analysis page may keep waiting through a normal background/return, but process or page death restores no images, text, result, status card, or retry UI. Legacy Add Food recovery keys/files are now cleaned instead of restored.
+- Kept AI Chat as the cross-process reliable-delivery surface. Chat delivery rows are filtered to `kind = ai_chat`, multiple pending requests are polled together, same-runtime image attachments remain available for pending rows, and retry goes through the authenticated Edge retry action backed by a kind/account-scoped service RPC.
+- Hardened accepted-delivery backend behavior with `retry_ai_delivery_request_v2`, Add Food's 2-hour expiry cap, expired row/object purge, optional scheduled worker invocation, and terminal temporary-asset deletion from both Chat and photo workers.
+- Routed generic image Chat requests directly to the selected provider instead of sending them through the planner first.
+
+### Fixed
+
+- Removed the AI-page Add Food photo-analysis status card path, so accepted photo analysis no longer appears as a global recoverable item after its page is gone.
+- Prevented stale Add Food recovery state from stealing AI Chat image-picker recovery.
+- Fixed async delivery failure classification so DB/RPC/bucket acceptance failures remain distinguishable as `delivery_backend_unavailable`.
+
+### Validation
+
+- Added deterministic Flutter coverage for Add Food accepted delivery staying on the photo page, result consumption only after foreground resume, legacy Add Food recovery cleanup, AI Chat runtime attachments for accepted delivery, and multi-pending Chat delivery polling. Added Edge planner coverage for generic image requests.
+- Ran AGENTS-required Edge checks: `npm.cmd exec --yes deno -- check supabase/functions/ai-chat-route/index.ts supabase/functions/ai-food-photo-analyze/index.ts` and `npm.cmd exec --yes deno -- test supabase/functions/_shared/ai_output_contract_test.ts supabase/functions/ai-chat-route/expected_output_test.ts supabase/functions/ai-chat-route/index_test.ts supabase/functions/ai-chat-route/planning/chat_decision_test.ts supabase/functions/ai-food-photo-analyze/index_test.ts`; type check passed and all 81 deterministic Edge tests passed.
+- Ran `flutter analyze`; no issues found. Ran `flutter test`; all 298 Flutter tests passed.
+- Applied `202608110001_ai_delivery_recovery_hardening.sql` to Supabase project `dyacqajcinjwrkbngeif` through `supabase db query --linked --file` because `supabase db push --linked --dry-run` still failed with remote Postgres TLS EOF. Recorded version `202608110001` in `supabase_migrations.schema_migrations` and verified the four new functions plus the expiry trigger exist.
+- Deployed `ai-chat-route` and `ai-food-photo-analyze`; `supabase functions list` reported `ai-chat-route` as `ACTIVE` version 80 and `ai-food-photo-analyze` as `ACTIVE` version 45. A service-role empty-queue worker canary returned `{"chat_processed":0,"photo_processed":0}`.
+- Attempted to finish scheduled worker DB settings. `FITLOG_AI_WORKER_SECRET` was set as an Edge secret, but the database setting path is not complete: Management API intermittently returned 502, direct pooler connection failed, and the linked login role rejected `ALTER DATABASE SET app.settings.supabase_functions_url` with permission denied. The deployed cron invoker therefore purges expired rows but will not call Edge workers until a matching DB-side worker secret/functions URL is configured through a higher-privilege path or an approved table-backed settings migration.
+- Built configured split Release APKs with `flutter build apk --release --split-per-abi --dart-define-from-file=config/supabase.local.json`; preflight confirmed `%APPDATA%` and the Flutter SDK cache are writable, identified only an idle Gradle daemon, removed the two confirmed orphan Flutter lock files, and Gradle `assembleRelease` completed in 32.3 seconds. Versioned copies and `SHA256SUMS.txt` were refreshed under `artifacts/release-apks/`.
+- Updated README, roadmap, API contract, stable bilingual Product/AppGuide/AgentDesign/AIOutputContract/Database/CloudLocalDataBoundary docs, the historical performance report supersession note, and the behavior-parity fixture. No Document RAG corpus, embedding, activation, or provider output family was regenerated.
+
 ## 2026-08-10 Food Portion Estimation Prompt Alignment
 
 ### Changed

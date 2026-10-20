@@ -1,8 +1,10 @@
 import {
   extractBearerToken,
   extractSessionIdFromAccessToken,
+  errorMessageForCode,
   GatewayRequestError,
   gatewayResponse,
+  logStatusForCode,
   parseGatewayRequest,
   parseProviderGatewayBody,
 } from "./contracts.ts";
@@ -442,6 +444,14 @@ Deno.test("gatewayResponse emits Step 1-compatible error envelope", () => {
     "subscription_required",
   );
   assertEquals(body.draft, null);
+});
+
+Deno.test("delivery backend unavailable is a stable Gateway error", () => {
+  assertEquals(
+    errorMessageForCode("delivery_backend_unavailable"),
+    "The AI delivery backend is unavailable.",
+  );
+  assertEquals(logStatusForCode("delivery_backend_unavailable"), "error");
 });
 
 Deno.test("gatewayResponse emits Phase 5 evidence envelope", () => {

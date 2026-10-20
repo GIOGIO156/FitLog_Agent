@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import type { GatewayRequest } from "../contracts.ts";
 import type { ProviderRuntimeConfig } from "../providers.ts";
 import {
@@ -6,6 +6,7 @@ import {
   createModelTaskPlanner,
   createRetrievalRewritePlanner,
 } from "./model_planners.ts";
+import { PlannerCallError } from "./chat_decision_contract.ts";
 
 const config: ProviderRuntimeConfig = {
   openAiApiKey: "openai-key",
@@ -141,13 +142,82 @@ Deno.test("chat decision planner sends current images as actual multimodal input
   );
 });
 
+Deno.test("chat decision planner classifies provider rate limiting", async () => {
+  const planner = createModelChatDecisionPlanner(
+    "qwen",
+    config,
+    async () => new Response("", { status: 429 }),
+  );
+  assert(planner !== undefined);
+  const error = await assertRejects(
+    () => planner!({ message: "help" }),
+    PlannerCallError,
+  );
+  assertEquals(error.reason, "provider_rate_limited");
+});
+
+Deno.test("chat decision planner distinguishes its client timeout", async () => {
+  const planner = createModelChatDecisionPlanner(
+    "qwen",
+    config,
+    async (_url, init) =>
+      await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      }),
+    5,
+  );
+  assert(planner !== undefined);
+  const error = await assertRejects(
+    () => planner!({ message: "help" }),
+    PlannerCallError,
+  );
+  assertEquals(error.reason, "client_timeout");
+});
+
+Deno.test("chat decision planner distinguishes malformed provider JSON", async () => {
+  const planner = createModelChatDecisionPlanner(
+    "qwen",
+    config,
+    async () => new Response("not-json", { status: 200 }),
+  );
+  assert(planner !== undefined);
+  const error = await assertRejects(
+    () => planner!({ message: "help" }),
+    PlannerCallError,
+  );
+  assertEquals(error.reason, "provider_response_json_invalid");
+});
+
+Deno.test("chat decision planner distinguishes malformed decision JSON", async () => {
+  const planner = createModelChatDecisionPlanner(
+    "qwen",
+    config,
+    async () =>
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: "not-json" } }] }),
+        { status: 200 },
+      ),
+  );
+  assert(planner !== undefined);
+  const error = await assertRejects(
+    () => planner!({ message: "help" }),
+    PlannerCallError,
+  );
+  assertEquals(error.reason, "planner_json_invalid");
+});
+
 function request(): GatewayRequest {
   return {
     sessionId: null,
     messageText: "每侧次数",
+    submittedMessageText: "每侧次数",
+    clientRequestId: "model_planner_test_1",
     language: "zh",
     modelChoice: "qwen",
     workflowType: "app_logic_answer",
+    deliveryMode: "sync",
     attachments: [],
     selectedDate: null,
     targetDate: null,

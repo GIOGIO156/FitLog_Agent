@@ -1,110 +1,64 @@
-import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:fitlog_local/features/food/food_image_picker.dart';
 import 'package:fitlog_local/features/food/photo_food_analysis_recovery.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  late Directory recoveryDirectory;
+  late Directory legacyDirectory;
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    recoveryDirectory = Directory.systemTemp.createTempSync(
-      'fitlog_photo_food_recovery_test_',
+    legacyDirectory = Directory.systemTemp.createTempSync(
+      'fitlog_photo_food_legacy_recovery_test_',
     );
-    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = recoveryDirectory;
-    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = false;
+    PhotoFoodAnalysisLegacyRecoveryCleanup.debugDirectoryOverride =
+        legacyDirectory;
   });
 
   tearDown(() async {
-    await PhotoFoodAnalysisRecoveryStore.clearPending();
-    PhotoFoodAnalysisRecoveryStore.debugLoadImagesOverride = null;
-    PhotoFoodAnalysisRecoveryStore.debugSkipImageWrites = false;
-    PhotoFoodAnalysisRecoveryStore.debugDirectoryOverride = null;
-    if (await recoveryDirectory.exists()) {
-      await recoveryDirectory.delete(recursive: true);
+    PhotoFoodAnalysisLegacyRecoveryCleanup.debugDirectoryOverride = null;
+    if (await legacyDirectory.exists()) {
+      await legacyDirectory.delete(recursive: true);
     }
   });
 
   test(
-    'live photo page owns recovery and blocks root duplicate push',
+    'legacy photo analysis recovery marker is cleared without restore',
     () async {
-      final coordinator = PhotoFoodAnalysisRecoveryCoordinator();
-      final lease = coordinator.acquireOwner();
-      var recoveryCount = 0;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('fitlog.photo_food_analysis.pending', true);
+      await prefs.setString(
+        'fitlog.photo_food_analysis.initial_date',
+        '2026-07-01',
+      );
+      await prefs.setString('fitlog.photo_food_analysis.note', '旧版输入');
+      await prefs.setInt('fitlog.photo_food_analysis.selected_image_index', 1);
+      await prefs.setString('fitlog.photo_food_analysis.images', '[]');
+      await prefs.setString(
+        'fitlog.photo_food_analysis.purpose',
+        'analysis_retry',
+      );
+      final staleImage = File(
+        '${legacyDirectory.path}${Platform.pathSeparator}image_0.png',
+      );
+      await staleImage.writeAsBytes(<int>[1, 2, 3], flush: true);
 
-      final recovered = await coordinator.runRootRecovery(() async {
-        recoveryCount++;
-      });
+      await PhotoFoodAnalysisLegacyRecoveryCleanup.clear();
 
-      expect(recovered, isFalse);
-      expect(recoveryCount, 0);
-
-      lease.release();
+      expect(prefs.getBool('fitlog.photo_food_analysis.pending'), isNull);
       expect(
-        await coordinator.runRootRecovery(() async => recoveryCount++),
-        isTrue,
+        prefs.getString('fitlog.photo_food_analysis.initial_date'),
+        isNull,
       );
-      expect(recoveryCount, 1);
-    },
-  );
-
-  test('root photo recovery is single flight', () async {
-    final coordinator = PhotoFoodAnalysisRecoveryCoordinator();
-    final gate = Completer<void>();
-    var recoveryCount = 0;
-
-    final first = coordinator.runRootRecovery(() async {
-      recoveryCount++;
-      await gate.future;
-    });
-    final second = coordinator.runRootRecovery(() async {
-      recoveryCount++;
-    });
-
-    expect(await second, isFalse);
-    gate.complete();
-    expect(await first, isTrue);
-    expect(recoveryCount, 1);
-  });
-
-  test(
-    'pending photo recovery stores images outside SharedPreferences',
-    () async {
-      final image = PickedFoodImage(
-        bytes: Uint8List.fromList(<int>[1, 2, 3]),
-        mimeType: 'image/png',
-        name: 'food.png',
+      expect(prefs.getString('fitlog.photo_food_analysis.note'), isNull);
+      expect(
+        prefs.getInt('fitlog.photo_food_analysis.selected_image_index'),
+        isNull,
       );
-
-      await PhotoFoodAnalysisRecoveryStore.savePending(
-        initialDate: '2026-07-01',
-        note: '去皮鸡腿',
-        images: <PickedFoodImage>[image],
-        selectedImageIndex: 0,
-      );
-
-      final draft = await PhotoFoodAnalysisRecoveryStore.loadPending();
-      expect(draft, isNotNull);
-      expect(draft!.initialDate, '2026-07-01');
-      expect(draft.note, '去皮鸡腿');
-      expect(draft.selectedImageIndex, 0);
-      expect(draft.images, hasLength(1));
-      expect(await File(draft.images.single.path).exists(), isTrue);
-
-      final restoredImages =
-          await PhotoFoodAnalysisRecoveryStore.loadPendingImages(draft);
-      expect(restoredImages.single.mimeType, 'image/png');
-      expect(restoredImages.single.name, 'food.png');
-      expect(restoredImages.single.bytes, <int>[1, 2, 3]);
-
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
-
-      expect(await PhotoFoodAnalysisRecoveryStore.loadPending(), isNull);
-      expect(await recoveryDirectory.list().toList(), isEmpty);
+      expect(prefs.getString('fitlog.photo_food_analysis.images'), isNull);
+      expect(prefs.getString('fitlog.photo_food_analysis.purpose'), isNull);
+      expect(await legacyDirectory.list().toList(), isEmpty);
     },
   );
 }

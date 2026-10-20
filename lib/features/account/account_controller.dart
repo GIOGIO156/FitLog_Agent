@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/diagnostics/auth_diagnostics.dart';
+
 import '../../data/repositories/ai_local_context_permission_repository.dart';
 import '../../data/repositories/active_device_repository.dart';
 import '../../data/repositories/auth_repository.dart';
@@ -150,10 +152,20 @@ class AccountController extends ChangeNotifier {
       }
     } on Phase2RepositoryException catch (error) {
       initialized = true;
+      AuthDiagnostics.instance.record(
+        'login_gate_shown',
+        failure: true,
+        data: {'reason': 'initialization_error', 'outcome': error.code},
+      );
       authSession = AuthSession.error(error.code);
       notifyListeners();
     } catch (_) {
       initialized = true;
+      AuthDiagnostics.instance.record(
+        'login_gate_shown',
+        failure: true,
+        data: {'reason': 'initialization_unknown_error'},
+      );
       authSession = const AuthSession.error('auth_failed');
       notifyListeners();
     }
@@ -214,6 +226,10 @@ class AccountController extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    AuthDiagnostics.instance.record(
+      'sign_out_requested',
+      data: {'reason': 'user_action'},
+    );
     await activeDeviceRepository.release();
     await authRepository.signOut();
     await profileRepository.clearProfile();
@@ -448,6 +464,11 @@ class AccountController extends ChangeNotifier {
   }
 
   Future<void> _handleDeviceReplaced() async {
+    AuthDiagnostics.instance.record(
+      'sign_out_requested',
+      failure: true,
+      data: {'reason': 'device_replaced'},
+    );
     _handlingDeviceReplacement = true;
     try {
       try {

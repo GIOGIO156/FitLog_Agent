@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/localization/localization_extensions.dart';
 import '../../core/theme/fitlog_theme.dart';
@@ -23,11 +24,9 @@ import '../../domain/models/ai_gateway_error.dart';
 import '../../domain/models/ai_gateway_request.dart';
 import '../../domain/models/cloud_runtime_context.dart';
 import '../account/account_controller.dart';
-import '../ai/ai_chat_controller.dart';
 import 'food_image_picker.dart';
 import 'food_image_source_sheet.dart';
 import 'food_preview_page.dart';
-import 'photo_food_analysis_recovery.dart';
 
 const int _maxPhotoAnalysisImageBytes = 4 * 1024 * 1024;
 const int _maxPhotoAnalysisImages = 3;
@@ -43,17 +42,11 @@ class PhotoFoodAnalysisPage extends StatefulWidget {
   const PhotoFoodAnalysisPage({
     super.key,
     this.initialDate,
-    this.initialNote,
-    this.initialImages = const <PickedFoodImage>[],
-    this.restoreLostImagesOnStart = false,
     this.imagePicker,
     this.analysisClient,
   });
 
   final String? initialDate;
-  final String? initialNote;
-  final List<PickedFoodImage> initialImages;
-  final bool restoreLostImagesOnStart;
   final FoodImagePicker? imagePicker;
   final AiFoodPhotoAnalysisClient? analysisClient;
 
@@ -70,11 +63,9 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
   final GlobalKey _noteAnchorKey = GlobalKey();
   final LayerLink _noteLayerLink = LayerLink();
   late final FoodImagePicker _imagePicker;
-  late final PhotoFoodAnalysisRecoveryLease _recoveryLease;
   List<PickedFoodImage> _images = const <PickedFoodImage>[];
   int _selectedImageIndex = 0;
   bool _analyzing = false;
-  bool _recoveringLostImages = false;
   bool _appInForeground = true;
   bool _consumingPendingAnalysis = false;
   _PendingPhotoAnalysisResult? _pendingAnalysisResult;
@@ -86,22 +77,12 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _recoveryLease = PhotoFoodAnalysisRecoveryCoordinator.instance
-        .acquireOwner();
     _imagePicker = widget.imagePicker ?? ImagePickerFoodImagePicker();
-    _images = List<PickedFoodImage>.unmodifiable(
-      widget.initialImages.take(_maxPhotoAnalysisImages),
-    );
-    _selectedImageIndex = _images.isEmpty ? 0 : _images.length - 1;
-    _noteController.text = widget.initialNote ?? '';
     _noteController.addListener(_handleNoteChanged);
     _noteFocusNode.addListener(_handleNoteFocusChanged);
     _loadModelChoice();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncNoteGeometry();
-      if (widget.restoreLostImagesOnStart) {
-        unawaited(_restoreLostImagesFromPicker());
-      }
     });
   }
 
@@ -109,7 +90,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     FitLogNotifications.dismiss();
-    _recoveryLease.release();
     _scrollController.dispose();
     _noteFocusNode.removeListener(_handleNoteFocusChanged);
     _noteFocusNode.dispose();
@@ -216,7 +196,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
   }
 
   Future<void> _openImageSourceSheet() async {
-    if (_analyzing || _recoveringLostImages) {
+    if (_analyzing) {
       return;
     }
     final replaceSelected = _images.length >= _maxPhotoAnalysisImages;
@@ -249,12 +229,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       return;
     }
     try {
-      await PhotoFoodAnalysisRecoveryStore.savePending(
-        initialDate: widget.initialDate,
-        note: _noteController.text,
-        images: _images,
-        selectedImageIndex: _selectedImageIndex,
-      );
       final pickedImages = await _imagePicker.pickMultiple(
         source,
         limit: availableSlots,
@@ -262,13 +236,10 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       if (!mounted) {
         return;
       }
-      await PhotoFoodAnalysisRecoveryStore.clearPending(deleteImages: false);
       if (pickedImages.isEmpty) {
-        unawaited(PhotoFoodAnalysisRecoveryStore.clearRecoveryImages());
         return;
       }
       if (pickedImages.length > availableSlots) {
-        unawaited(PhotoFoodAnalysisRecoveryStore.clearRecoveryImages());
         _showError(strings.photoAiSelectionLimitExceeded);
         return;
       }
@@ -282,14 +253,12 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
           _selectedImageIndex = nextImages.length - 1;
         }
       });
-      unawaited(PhotoFoodAnalysisRecoveryStore.clearRecoveryImages());
       final validationError = _validationErrorForImages(nextImages);
       if (validationError != null) {
         _showError(validationError);
       }
     } on FoodImageSelectionLimitException {
       if (mounted) {
-        await PhotoFoodAnalysisRecoveryStore.clearPending();
         _showError(strings.photoAiSelectionLimitExceeded);
       }
     } catch (_) {
@@ -297,122 +266,10 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
         return;
       }
       final pickFailedMessage = context.strings.photoAiPickFailed;
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
       if (mounted) {
         FitLogNotifications.topError(context, pickFailedMessage);
       }
     }
-  }
-
-  Future<void> _restoreLostImagesFromPicker() async {
-    if (_recoveringLostImages) {
-      return;
-    }
-    setState(() => _recoveringLostImages = true);
-    try {
-      final draft = await PhotoFoodAnalysisRecoveryStore.loadPending();
-      final persistedImages = draft == null
-          ? const <PickedFoodImage>[]
-          : await PhotoFoodAnalysisRecoveryStore.loadPendingImages(draft);
-      if (!mounted) {
-        return;
-      }
-      final baseImages = persistedImages.isNotEmpty ? persistedImages : _images;
-      final baseSelectedIndex = draft == null
-          ? _selectedImageIndex
-          : _normalizedSelectedIndex(
-              draft.selectedImageIndex,
-              baseImages.length,
-            );
-      if (draft != null && _noteController.text != draft.note) {
-        _noteController.text = draft.note;
-      }
-      if (baseImages.isNotEmpty) {
-        setState(() {
-          _images = List<PickedFoodImage>.unmodifiable(baseImages);
-          _selectedImageIndex = baseSelectedIndex;
-        });
-      }
-      final pickedImages = await _imagePicker.retrieveLostImages(
-        limit: baseImages.length >= _maxPhotoAnalysisImages
-            ? 1
-            : _maxPhotoAnalysisImages - baseImages.length,
-      );
-      await PhotoFoodAnalysisRecoveryStore.clearPending(deleteImages: false);
-      if (!mounted) {
-        unawaited(PhotoFoodAnalysisRecoveryStore.clearRecoveryImages());
-        return;
-      }
-      final mergedState = _mergeRecoveredImages(
-        baseImages: baseImages,
-        baseSelectedIndex: baseSelectedIndex,
-        recoveredImages: pickedImages,
-      );
-      setState(() {
-        _images = List<PickedFoodImage>.unmodifiable(mergedState.images);
-        _selectedImageIndex = mergedState.selectedIndex;
-        _recoveringLostImages = false;
-      });
-      unawaited(PhotoFoodAnalysisRecoveryStore.clearRecoveryImages());
-      final validationError = _validationErrorForImages(mergedState.images);
-      if (validationError != null) {
-        _showError(validationError);
-      }
-    } catch (_) {
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
-      if (!mounted) {
-        return;
-      }
-      setState(() => _recoveringLostImages = false);
-      FitLogNotifications.topError(
-        context,
-        context.stringsRead.photoAiPickFailed,
-      );
-    }
-  }
-
-  _RecoveredPhotoState _mergeRecoveredImages({
-    required List<PickedFoodImage> baseImages,
-    required int baseSelectedIndex,
-    required List<PickedFoodImage> recoveredImages,
-  }) {
-    if (recoveredImages.isEmpty) {
-      return _RecoveredPhotoState(
-        images: baseImages,
-        selectedIndex: _normalizedSelectedIndex(
-          baseSelectedIndex,
-          baseImages.length,
-        ),
-      );
-    }
-    if (baseImages.length >= _maxPhotoAnalysisImages) {
-      final selectedIndex = _normalizedSelectedIndex(
-        baseSelectedIndex,
-        baseImages.length,
-      );
-      final nextImages = <PickedFoodImage>[...baseImages]
-        ..[selectedIndex] = recoveredImages.first;
-      return _RecoveredPhotoState(
-        images: nextImages,
-        selectedIndex: selectedIndex,
-      );
-    }
-    final remainingSlots = _maxPhotoAnalysisImages - baseImages.length;
-    final nextImages = <PickedFoodImage>[
-      ...baseImages,
-      ...recoveredImages.take(remainingSlots),
-    ];
-    return _RecoveredPhotoState(
-      images: nextImages,
-      selectedIndex: nextImages.isEmpty ? 0 : nextImages.length - 1,
-    );
-  }
-
-  int _normalizedSelectedIndex(int selectedIndex, int imageCount) {
-    if (imageCount <= 0) {
-      return 0;
-    }
-    return selectedIndex.clamp(0, imageCount - 1).toInt();
   }
 
   void _removeImageAt(int index) {
@@ -469,13 +326,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
     }
 
     final analysisClient = _analysisClient(context);
-    await PhotoFoodAnalysisRecoveryStore.savePending(
-      initialDate: widget.initialDate,
-      note: _noteController.text,
-      images: images,
-      selectedImageIndex: _selectedImageIndex,
-    );
     setState(() => _analyzing = true);
+    final analysisDate = _analysisDate;
     final request = AiFoodPhotoAnalysisRequest(
       images: images
           .map(
@@ -489,13 +341,13 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       language: strings.isChinese ? 'zh' : 'en',
       modelChoice: _modelChoice,
       deviceId: deviceId!,
-      selectedDate: _analysisDate,
+      selectedDate: analysisDate,
       userNote: userNote,
       clientRequestId: _nextPhotoClientRequestId(),
-      asyncDelivery: true,
+      asyncDelivery: false,
       client: const <String, dynamic>{
         'platform': 'flutter',
-        'app_version': 'phase4',
+        'app_version': AppConstants.currentAppVersion,
       },
     );
 
@@ -503,28 +355,17 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
     if (!mounted) {
       return;
     }
-    setState(() => _analyzing = false);
     final pendingResult = _PendingPhotoAnalysisResult(
       response: response,
-      analysisDate: _analysisDate,
+      analysisDate: analysisDate,
       userNote: userNote,
     );
     if (response.isAccepted) {
-      final deliveryController = _readOptional<AiChatController>();
-      final rootTabController = _readOptional<RootTabController>();
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
-      if (!mounted) {
-        return;
-      }
-      await deliveryController?.loadDeliveryRequests();
-      if (!mounted) {
-        return;
-      }
-      rootTabController?.setIndex(RootTabIndex.ai);
-      FitLogNotifications.info(context, strings.photoAiDeliveryProcessing);
-      Navigator.of(context).pop(false);
+      setState(() => _analyzing = false);
+      _showError(context.stringsRead.photoAiDeliveryFailed);
       return;
     }
+    setState(() => _analyzing = false);
     if (!_appInForeground) {
       _pendingAnalysisResult = pendingResult;
       return;
@@ -568,7 +409,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       );
       return;
     }
-    unawaited(PhotoFoodAnalysisRecoveryStore.clearPending());
 
     final record = draft.toFoodRecord(
       date: result.analysisDate,
@@ -672,6 +512,8 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
         return strings.phase2ErrorMessage('device_replaced');
       case AiGatewayErrorCode.gatewayTimeout:
         return strings.aiGatewayTimeout;
+      case AiGatewayErrorCode.deliveryBackendUnavailable:
+        return strings.aiDeliveryBackendUnavailable;
       case AiGatewayErrorCode.providerUnavailable:
         return strings.aiCurrentModelUnavailable;
       case AiGatewayErrorCode.providerFailure:
@@ -711,8 +553,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
   @override
   Widget build(BuildContext context) {
     final strings = context.strings;
-    final canSubmit =
-        _hasAnalyzableInput && !_analyzing && !_recoveringLostImages;
+    final canSubmit = _hasAnalyzableInput && !_analyzing;
     final bottomPadding = math.max(
       MediaQuery.viewPaddingOf(context).bottom,
       FitLogBottomNavBar.bottomInset,
@@ -777,7 +618,7 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
                                         ),
                                       ],
                                   selected: _modelChoice,
-                                  onChanged: _analyzing || _recoveringLostImages
+                                  onChanged: _analyzing
                                       ? null
                                       : _setModelChoice,
                                   backgroundColor: context
@@ -800,7 +641,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
                         child: _PhotoPickerPanel(
                           images: _images,
                           selectedIndex: _selectedImageIndex,
-                          recovering: _recoveringLostImages,
                           onOpenPicker: _openImageSourceSheet,
                           onSelect: (index) =>
                               setState(() => _selectedImageIndex = index),
@@ -861,16 +701,6 @@ class _PhotoFoodAnalysisPageState extends State<PhotoFoodAnalysisPage>
       ),
     );
   }
-}
-
-class _RecoveredPhotoState {
-  const _RecoveredPhotoState({
-    required this.images,
-    required this.selectedIndex,
-  });
-
-  final List<PickedFoodImage> images;
-  final int selectedIndex;
 }
 
 class _PendingPhotoAnalysisResult {
@@ -1089,7 +919,6 @@ class _PhotoPickerPanel extends StatelessWidget {
   const _PhotoPickerPanel({
     required this.images,
     required this.selectedIndex,
-    required this.recovering,
     required this.onOpenPicker,
     required this.onSelect,
     required this.onRemove,
@@ -1097,7 +926,6 @@ class _PhotoPickerPanel extends StatelessWidget {
 
   final List<PickedFoodImage> images;
   final int selectedIndex;
-  final bool recovering;
   final VoidCallback onOpenPicker;
   final ValueChanged<int> onSelect;
   final ValueChanged<int> onRemove;
@@ -1135,35 +963,13 @@ class _PhotoPickerPanel extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: recovering ? null : onOpenPicker,
+                onTap: onOpenPicker,
                 child: AspectRatio(
                   aspectRatio: 4 / 3,
                   child: Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
-                      if (images.isEmpty && recovering)
-                        Column(
-                          key: const ValueKey<String>(
-                            'photo_food_recovering_image_indicator',
-                          ),
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            SizedBox.square(
-                              dimension: 28,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: fitTheme.primaryBright,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              strings.loading,
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                          ],
-                        )
-                      else if (images.isEmpty)
+                      if (images.isEmpty)
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[

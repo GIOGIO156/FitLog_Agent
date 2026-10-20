@@ -1126,6 +1126,8 @@ class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
         return strings.phase2ErrorMessage('device_replaced');
       case AiGatewayErrorCode.gatewayTimeout:
         return strings.aiGatewayTimeout;
+      case AiGatewayErrorCode.deliveryBackendUnavailable:
+        return strings.aiDeliveryBackendUnavailable;
       case AiGatewayErrorCode.providerUnavailable:
         return strings.aiCurrentModelUnavailable;
       case AiGatewayErrorCode.providerFailure:
@@ -1276,17 +1278,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
     final sendAnchorPadding = sending
         ? math.max(0.0, viewportHeight - _aiSendingTurnEstimatedHeight)
         : 0.0;
-    final photoDeliveryRequests =
-        chatController?.visiblePhotoDeliveryRequests ??
-        const <AiDeliveryRequest>[];
-    final photoDeliveryRequest = photoDeliveryRequests.isEmpty
-        ? null
-        : photoDeliveryRequests.first;
-    final photoDeliveryTopPadding = photoDeliveryRequest == null ? 0.0 : 82.0;
-    final effectiveContentTopPadding = hasConversation
-        ? contentTopPadding + photoDeliveryTopPadding
-        : contentTopPadding;
-
     return SafeArea(
       bottom: false,
       child: Stack(
@@ -1294,7 +1285,7 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
           if (hasConversation)
             Positioned(
               left: 18,
-              top: effectiveContentTopPadding,
+              top: contentTopPadding,
               right: 18,
               bottom: messageViewportBottomObstruction,
               child: _AiMessageViewport(
@@ -1334,21 +1325,6 @@ class _AiKeyboardResponsiveLayer extends StatelessWidget {
             onProviderChanged: onProviderChanged,
             onOpenHistory: onOpenHistory,
           ),
-          if (photoDeliveryRequest != null)
-            Positioned(
-              left: 18,
-              top: _aiTopBarHeight + 12,
-              right: 18,
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: _AiPhotoDeliveryStatusCard(
-                  request: photoDeliveryRequest,
-                  onOpenFoodDraft: onOpenFoodDraft,
-                  onRetry: () =>
-                      onRetryDeliveryRequest(photoDeliveryRequest.requestId),
-                ),
-              ),
-            ),
           if (composerAttachedToKeyboard) ...<Widget>[
             Positioned.fill(
               child: GestureDetector(
@@ -2469,18 +2445,30 @@ class _AiMessageList extends StatelessWidget {
         addMessage(
           _AiPendingMessageBubble(
             text: request.messageText!,
-            attachments: const <AiGatewayImageAttachment>[],
+            attachments: controller.runtimeAttachmentsForDelivery(request),
           ),
           isUser: true,
         );
       }
-      addMessage(
-        _AiDeliveryStatusBubble(
-          request: request,
-          onRetry: () => onRetryDeliveryRequest(request.requestId),
-        ),
-        isUser: false,
-      );
+      if (request.isPending) {
+        addMessage(
+          _AiAssistantLoadingBubble(
+            hasText: (request.messageText ?? '').trim().isNotEmpty,
+            hasAttachments: controller
+                .runtimeAttachmentsForDelivery(request)
+                .isNotEmpty,
+          ),
+          isUser: false,
+        );
+      } else if (request.isFailed) {
+        addMessage(
+          _AiDeliveryStatusBubble(
+            request: request,
+            onRetry: () => onRetryDeliveryRequest(request.requestId),
+          ),
+          isUser: false,
+        );
+      }
     }
     if (hasPendingUser) {
       final pendingBubble = _AiPendingMessageBubble(
@@ -3686,98 +3674,6 @@ class _AiAssistantLoadingBubbleState extends State<_AiAssistantLoadingBubble> {
   }
 }
 
-class _AiPhotoDeliveryStatusCard extends StatelessWidget {
-  const _AiPhotoDeliveryStatusCard({
-    required this.request,
-    required this.onOpenFoodDraft,
-    required this.onRetry,
-  });
-
-  final AiDeliveryRequest request;
-  final void Function(AiFoodDraft draft, String? modelProvider) onOpenFoodDraft;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = _AiThemePalette.of(context);
-    final strings = context.strings;
-    final response = request.photoResult;
-    final draft = response?.draft;
-    final ready = request.isSucceeded && draft != null;
-    final failed = request.isFailed;
-    final label = ready
-        ? strings.photoAiDeliveryReady
-        : failed
-        ? strings.photoAiDeliveryFailed
-        : strings.photoAiDeliveryProcessing;
-    final icon = ready
-        ? Icons.restaurant_menu_rounded
-        : failed
-        ? Icons.error_outline_rounded
-        : Icons.cloud_sync_rounded;
-    final accent = failed ? const Color(0xFFD45D4C) : palette.action;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
-      child: DecoratedBox(
-        key: ValueKey<String>('photo_delivery_status_${request.requestId}'),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: accent.withValues(alpha: 0.28)),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: <Widget>[
-              Icon(icon, size: 20, color: accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: palette.icon,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (ready)
-                TextButton(
-                  onPressed: () =>
-                      onOpenFoodDraft(draft, response?.modelProvider),
-                  style: TextButton.styleFrom(
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  child: Text(strings.aiFoodDraftCardAction),
-                )
-              else if (failed)
-                TextButton(
-                  onPressed: onRetry,
-                  style: TextButton.styleFrom(
-                    textStyle: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  child: Text(strings.retry),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _AiDeliveryStatusBubble extends StatelessWidget {
   const _AiDeliveryStatusBubble({required this.request, required this.onRetry});
 
@@ -3829,7 +3725,7 @@ class _AiDeliveryStatusBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (failed) ...<Widget>[
+                if (failed && request.retryable) ...<Widget>[
                   const SizedBox(width: 10),
                   TextButton(
                     onPressed: onRetry,

@@ -43,6 +43,16 @@ interface PhotoOutputTelemetry {
     | "incomplete";
 }
 
+interface PhotoStageTelemetry {
+  preAcceptAssetUploadMs: number | null;
+  claimMs: number;
+  assetLoadMs: number;
+  providerFirstPassMs: number;
+  firstValidationMs: number;
+  correctionMs: number;
+  correctionValidationMs: number;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -84,6 +94,7 @@ Deno.serve(async (request) => {
   let accountId: string | null = null;
   let parsedRequest: PhotoAnalysisRequest | null = null;
   let outputTelemetry = defaultPhotoOutputTelemetry();
+  const stageTelemetry = defaultPhotoStageTelemetry();
 
   try {
     env = readPhotoGatewayEnv();
@@ -151,25 +162,36 @@ Deno.serve(async (request) => {
     }
 
     const deadlineAt = startedAt + providerConfig.timeoutMs;
-    let completion = await callVisionProvider(
-      providerConfig,
-      parsedRequest,
-      { timeoutMs: remainingDeadline(deadlineAt) },
-    );
+    const providerStartedAt = Date.now();
+    let completion: FoodProviderCompletion;
+    try {
+      completion = await callVisionProvider(
+        providerConfig,
+        parsedRequest,
+        { timeoutMs: remainingDeadline(deadlineAt) },
+      );
+    } finally {
+      stageTelemetry.providerFirstPassMs = Date.now() - providerStartedAt;
+    }
     outputTelemetry = {
       ...outputTelemetry,
       providerCompletionStatus: completion.status,
     };
     assertCompleted(completion);
     let parsedProvider;
+    const firstValidationStartedAt = Date.now();
     try {
       parsedProvider = parseAndValidateFood(completion.content, parsedRequest);
+      stageTelemetry.firstValidationMs = Date.now() -
+        firstValidationStartedAt;
       outputTelemetry = {
         ...outputTelemetry,
         firstPassValidationStatus: "passed",
         finalValidationStatus: "passed",
       };
     } catch (error) {
+      stageTelemetry.firstValidationMs = Date.now() -
+        firstValidationStartedAt;
       if (!(error instanceof OutputContractError)) throw error;
       outputTelemetry = {
         ...outputTelemetry,
@@ -196,11 +218,13 @@ Deno.serve(async (request) => {
         ...outputTelemetry,
         correctionLatencyMs: Date.now() - correctionStartedAt,
       };
+      stageTelemetry.correctionMs = outputTelemetry.correctionLatencyMs;
       outputTelemetry = {
         ...outputTelemetry,
         providerCompletionStatus: completion.status,
       };
       assertCompleted(completion);
+      const correctionValidationStartedAt = Date.now();
       try {
         parsedProvider = parseAndValidateFood(
           completion.content,
@@ -210,7 +234,11 @@ Deno.serve(async (request) => {
           ...outputTelemetry,
           finalValidationStatus: "passed",
         };
+        stageTelemetry.correctionValidationMs = Date.now() -
+          correctionValidationStartedAt;
       } catch (correctionError) {
+        stageTelemetry.correctionValidationMs = Date.now() -
+          correctionValidationStartedAt;
         outputTelemetry = {
           ...outputTelemetry,
           finalValidationStatus: "failed",
@@ -244,6 +272,7 @@ Deno.serve(async (request) => {
       schemaValidationStatus: parsedProvider.schemaValidationStatus,
       safetyFlags: [],
       telemetry: outputTelemetry,
+      stageTelemetry,
     });
 
     return jsonResponse(
@@ -281,6 +310,7 @@ Deno.serve(async (request) => {
         schemaValidationStatus: "failed",
         safetyFlags: [gatewayError.code],
         telemetry: outputTelemetry,
+        stageTelemetry,
       });
     }
 
@@ -304,7 +334,7 @@ const photoDeliveryEdgeVersion = "ai_photo_async_delivery.v1";
 
 interface AcceptedPhotoDelivery {
   requestId: string;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   duplicateSubmit: boolean;
   retryable: boolean;
   errorCode: string | null;
@@ -324,15 +354,23 @@ async function acceptPhotoDeliveryRequest(
   rawBody: unknown,
 ): Promise<AcceptedPhotoDelivery> {
   const requestId = crypto.randomUUID();
+  const assetUploadStartedAt = Date.now();
   const assets = await persistPhotoDeliveryAssets(
     env,
     accountId,
     requestId,
     request.images,
   );
-  const payload = sanitizePhotoDeliveryPayload(rawBody);
-  const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/accept_ai_delivery_request`,
+  const payload = {
+    ...sanitizePhotoDeliveryPayload(rawBody),
+    delivery_observability: {
+      schema_version: "photo_delivery_accept.v1",
+      pre_accept_asset_upload_ms: Date.now() - assetUploadStartedAt,
+    },
+  };
+  const response = await photoDeliveryBackendFetch(
+    env,
+    "rpc/accept_ai_delivery_request",
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -353,7 +391,7 @@ async function acceptPhotoDeliveryRequest(
     },
   );
   if (!response.ok) {
-    throw new PhotoGatewayHttpError("provider_failure", 502);
+    throw new PhotoGatewayHttpError("delivery_backend_unavailable", 502);
   }
   const result = recordValue(await response.json());
   const accepted = {
@@ -367,6 +405,18 @@ async function acceptPhotoDeliveryRequest(
     await deletePhotoDeliveryAssets(env, assets);
   }
   return accepted;
+}
+
+async function photoDeliveryBackendFetch(
+  env: PhotoGatewayEnv,
+  restPath: string,
+  init: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(`${env.supabaseUrl}/rest/v1/${restPath}`, init);
+  } catch (_) {
+    throw new PhotoGatewayHttpError("delivery_backend_unavailable", 502);
+  }
 }
 
 async function processPhotoDeliveryQueue(
@@ -386,21 +436,29 @@ async function processPhotoDeliveryRequest(
   env: PhotoGatewayEnv,
   requestId: string | null,
 ): Promise<boolean> {
+  const claimStartedAt = Date.now();
   const claimed = await claimPhotoDeliveryRequest(env, requestId);
   if (claimed === null) return false;
   const deliveryRequestId = requiredString(claimed, "request_id");
   const accountId = requiredString(claimed, "account_id");
   let parsedRequest: PhotoAnalysisRequest | null = null;
+  let assetRefs: PhotoDeliveryAssetRef[] = [];
   let providerConfig: PhotoProviderConfig | null = null;
   let outputTelemetry = defaultPhotoOutputTelemetry();
+  const stageTelemetry = defaultPhotoStageTelemetry();
+  stageTelemetry.claimMs = Date.now() - claimStartedAt;
   const startedAt = Date.now();
 
   try {
     const payload = recordValue(claimed.request_payload_json);
-    const images = await loadPhotoDeliveryImages(
-      env,
-      parsePhotoDeliveryAssets(claimed.asset_refs_json),
+    const acceptObservability = recordValue(payload.delivery_observability);
+    stageTelemetry.preAcceptAssetUploadMs = boundedTelemetryMs(
+      acceptObservability.pre_accept_asset_upload_ms,
     );
+    assetRefs = parsePhotoDeliveryAssets(claimed.asset_refs_json);
+    const assetLoadStartedAt = Date.now();
+    const images = await loadPhotoDeliveryImages(env, assetRefs);
+    stageTelemetry.assetLoadMs = Date.now() - assetLoadStartedAt;
     const payloadWithImages = {
       ...payload,
       images: images.map((image) => ({
@@ -416,23 +474,34 @@ async function processPhotoDeliveryRequest(
     };
     providerConfig = readPhotoProviderConfig(parsedRequest.modelChoice);
     const deadlineAt = startedAt + providerConfig.timeoutMs;
-    let completion = await callVisionProvider(providerConfig, parsedRequest, {
-      timeoutMs: remainingDeadline(deadlineAt),
-    });
+    const providerStartedAt = Date.now();
+    let completion: FoodProviderCompletion;
+    try {
+      completion = await callVisionProvider(providerConfig, parsedRequest, {
+        timeoutMs: remainingDeadline(deadlineAt),
+      });
+    } finally {
+      stageTelemetry.providerFirstPassMs = Date.now() - providerStartedAt;
+    }
     outputTelemetry = {
       ...outputTelemetry,
       providerCompletionStatus: completion.status,
     };
     assertCompleted(completion);
     let parsedProvider;
+    const firstValidationStartedAt = Date.now();
     try {
       parsedProvider = parseAndValidateFood(completion.content, parsedRequest);
+      stageTelemetry.firstValidationMs = Date.now() -
+        firstValidationStartedAt;
       outputTelemetry = {
         ...outputTelemetry,
         firstPassValidationStatus: "passed",
         finalValidationStatus: "passed",
       };
     } catch (error) {
+      stageTelemetry.firstValidationMs = Date.now() -
+        firstValidationStartedAt;
       if (!(error instanceof OutputContractError)) throw error;
       outputTelemetry = {
         ...outputTelemetry,
@@ -460,7 +529,9 @@ async function processPhotoDeliveryRequest(
         correctionLatencyMs: Date.now() - correctionStartedAt,
         providerCompletionStatus: completion.status,
       };
+      stageTelemetry.correctionMs = outputTelemetry.correctionLatencyMs;
       assertCompleted(completion);
+      const correctionValidationStartedAt = Date.now();
       try {
         parsedProvider = parseAndValidateFood(
           completion.content,
@@ -470,7 +541,11 @@ async function processPhotoDeliveryRequest(
           ...outputTelemetry,
           finalValidationStatus: "passed",
         };
+        stageTelemetry.correctionValidationMs = Date.now() -
+          correctionValidationStartedAt;
       } catch (correctionError) {
+        stageTelemetry.correctionValidationMs = Date.now() -
+          correctionValidationStartedAt;
         outputTelemetry = {
           ...outputTelemetry,
           finalValidationStatus: "failed",
@@ -504,6 +579,7 @@ async function processPhotoDeliveryRequest(
       schemaValidationStatus: parsedProvider.schemaValidationStatus,
       safetyFlags: [],
       telemetry: outputTelemetry,
+      stageTelemetry,
     });
     const responseBody = photoGatewayResponse({
       modelChoice: parsedRequest.modelChoice,
@@ -517,7 +593,7 @@ async function processPhotoDeliveryRequest(
       debugSummaryId: persisted.debugSummaryId,
       error: null,
     });
-    await finishPhotoDeliveryRequest(env, {
+    const finished = await finishPhotoDeliveryRequest(env, {
       requestId: deliveryRequestId,
       succeeded: true,
       result: responseBody,
@@ -525,6 +601,9 @@ async function processPhotoDeliveryRequest(
       providerRequestCount: 1 + outputTelemetry.correctionAttemptCount,
       providerImageCount: parsedRequest.images.length,
     });
+    if (isTerminalDeliveryStatus(finished.status)) {
+      await deletePhotoDeliveryAssets(env, assetRefs);
+    }
     return true;
   } catch (error) {
     const gatewayError = toPhotoGatewayHttpError(error);
@@ -541,8 +620,9 @@ async function processPhotoDeliveryRequest(
       schemaValidationStatus: "failed",
       safetyFlags: [gatewayError.code],
       telemetry: outputTelemetry,
+      stageTelemetry,
     });
-    await finishPhotoDeliveryRequest(env, {
+    const finished = await finishPhotoDeliveryRequest(env, {
       requestId: deliveryRequestId,
       succeeded: false,
       errorCode: gatewayError.code,
@@ -556,6 +636,9 @@ async function processPhotoDeliveryRequest(
         : 1 + outputTelemetry.correctionAttemptCount,
       providerImageCount: parsedRequest?.images.length ?? 0,
     });
+    if (isTerminalDeliveryStatus(finished.status)) {
+      await deletePhotoDeliveryAssets(env, assetRefs);
+    }
     return true;
   }
 }
@@ -564,8 +647,9 @@ async function claimPhotoDeliveryRequest(
   env: PhotoGatewayEnv,
   requestId: string | null,
 ): Promise<Record<string, unknown> | null> {
-  const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/claim_ai_delivery_request`,
+  const response = await photoDeliveryBackendFetch(
+    env,
+    "rpc/claim_ai_delivery_request",
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -578,7 +662,7 @@ async function claimPhotoDeliveryRequest(
     },
   );
   if (!response.ok) {
-    throw new PhotoGatewayHttpError("provider_failure", 502);
+    throw new PhotoGatewayHttpError("delivery_backend_unavailable", 502);
   }
   const body = await response.json();
   if (body === null) return null;
@@ -598,22 +682,29 @@ async function finishPhotoDeliveryRequest(
     providerRequestCount: number;
     providerImageCount: number;
   },
-): Promise<void> {
-  await fetch(`${env.supabaseUrl}/rest/v1/rpc/finish_ai_delivery_request`, {
-    method: "POST",
-    headers: serviceHeaders(env),
-    body: JSON.stringify({
-      input_request_id: params.requestId,
-      input_succeeded: params.succeeded,
-      input_result_json: params.result,
-      input_error_code: params.errorCode ?? null,
-      input_failure_stage: params.failureStage ?? null,
-      input_retryable: params.retryable ?? false,
-      input_provider: params.provider ?? null,
-      input_provider_request_count: params.providerRequestCount,
-      input_provider_image_count: params.providerImageCount,
-    }),
-  });
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/rpc/finish_ai_delivery_request`,
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_request_id: params.requestId,
+        input_succeeded: params.succeeded,
+        input_result_json: params.result,
+        input_error_code: params.errorCode ?? null,
+        input_failure_stage: params.failureStage ?? null,
+        input_retryable: params.retryable ?? false,
+        input_provider: params.provider ?? null,
+        input_provider_request_count: params.providerRequestCount,
+        input_provider_image_count: params.providerImageCount,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new PhotoGatewayHttpError("delivery_backend_unavailable", 502);
+  }
+  return recordValue(await response.json());
 }
 
 async function persistPhotoDeliveryAssets(
@@ -639,7 +730,7 @@ async function persistPhotoDeliveryAssets(
       body: base64ToBlob(image.base64Data, image.mimeType),
     });
     if (!response.ok) {
-      throw new PhotoGatewayHttpError("provider_failure", 502);
+      throw new PhotoGatewayHttpError("delivery_backend_unavailable", 502);
     }
     refs.push({
       path,
@@ -762,9 +853,16 @@ function boundedWorkerLimit(value: unknown): number {
 }
 
 function deliveryStatus(value: unknown): AcceptedPhotoDelivery["status"] {
-  return value === "running" || value === "succeeded" || value === "failed"
+  return value === "running" ||
+      value === "succeeded" ||
+      value === "failed" ||
+      value === "cancelled"
     ? value
     : "queued";
+}
+
+function isTerminalDeliveryStatus(value: unknown): boolean {
+  return value === "succeeded" || value === "failed" || value === "cancelled";
 }
 
 function isRetryablePhotoDeliveryError(code: PhotoGatewayErrorCode): boolean {
@@ -1065,6 +1163,7 @@ async function writePhotoLog(
     schemaValidationStatus: string;
     safetyFlags: string[];
     telemetry: PhotoOutputTelemetry;
+    stageTelemetry: PhotoStageTelemetry;
   },
 ): Promise<{ debugSummaryId: string | null }> {
   const requestId = params.requestId ?? crypto.randomUUID();
@@ -1121,6 +1220,10 @@ async function writePhotoLog(
         semantic_validation_status: params.telemetry.finalValidationStatus,
         semantic_issue_codes_json: params.safetyFlags,
         correction_latency_ms: params.telemetry.correctionLatencyMs,
+        latency_breakdown_json: photoLatencyBreakdownJson(
+          params.stageTelemetry,
+          params.latencyMs,
+        ),
         final_action: params.status === "ok" ? "artifact_returned" : "none",
       }),
     },
@@ -1214,6 +1317,42 @@ function defaultPhotoOutputTelemetry(): PhotoOutputTelemetry {
     languageValidationStatus: "not_attempted",
     providerCompletionStatus: "not_called",
   };
+}
+
+function defaultPhotoStageTelemetry(): PhotoStageTelemetry {
+  return {
+    preAcceptAssetUploadMs: null,
+    claimMs: 0,
+    assetLoadMs: 0,
+    providerFirstPassMs: 0,
+    firstValidationMs: 0,
+    correctionMs: 0,
+    correctionValidationMs: 0,
+  };
+}
+
+function photoLatencyBreakdownJson(
+  telemetry: PhotoStageTelemetry,
+  totalMs: number,
+): Record<string, unknown> {
+  return {
+    schema_version: "photo_latency_breakdown.v1",
+    pre_accept_asset_upload_ms: telemetry.preAcceptAssetUploadMs,
+    claim_ms: telemetry.claimMs,
+    asset_load_ms: telemetry.assetLoadMs,
+    provider_first_pass_ms: telemetry.providerFirstPassMs,
+    provider_first_validation_ms: telemetry.firstValidationMs,
+    provider_correction_ms: telemetry.correctionMs,
+    provider_correction_validation_ms: telemetry.correctionValidationMs,
+    worker_or_sync_total_ms: totalMs,
+  };
+}
+
+function boundedTelemetryMs(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.min(Math.round(parsed), 300000)
+    : null;
 }
 
 function remainingDeadline(deadlineAt: number): number {

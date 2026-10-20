@@ -24,7 +24,7 @@ FitLog_Agent V1 是一款以确定性计划规则为基础、由用户控制 AI 
 - 登录态冷启动进入主界面时，应先用恢复出的 auth 账号绑定本地记录 cache，再等待 active-device 刷新，让当前日 Home/Food/Workout 可以先从匹配账号 cache 渲染。
 - V1 采用单 active device，last login wins；不承诺实时多设备同步。
 - 云端服务用于账号、订阅、Cloud Profile、Cloud Records、daily summaries、AI Gateway、chat history 和 AI 审计需求。
-- Edge Function 返回 `202 accepted` 后，AI Chat 和 Add Food 图片分析成为云端接管的请求；用户回来必须看到处理中、成功结果或带重试入口的稳定失败。
+- Edge Function 返回 `202 accepted` 后，AI Chat 成为云端接管的请求；用户回到同一 Chat session 时必须看到处理中、成功结果或带重试入口的稳定失败。Add Food 图片分析是仍挂载页面拥有的直接请求：正常切后台再回到同一页面时可以显示结果；页面或进程死亡后丢弃输入/结果，不恢复状态界面。
 - 登录后 Cloud Profile 是跟账号绑定的用户信息。
 - 不要求用户填写自己的模型 API key。
 - `energy_ratio` 和 `gram_per_kg` 必须保持分离。
@@ -42,7 +42,7 @@ FitLog_Agent V1 是一款以确定性计划规则为基础、由用户控制 AI 
 - 错误和校验失败提示更明显，并保留必要诊断信息，但会浮在底部导航或键盘上方，不遮挡当前输入焦点。AI composer 错误复用同一个共享组件，并根据已测量的 composer 高度放在输入区上方，不再维护页面私有错误胶囊。
 - 需要用户操作的提示必须通过统一 action 通知保留按钮和回调，不能降级成无 action 的被动提示。
 - 被动临时通知保持紧凑样式，不显示关闭图标，并会自动过期；它与相关 surface 绑定，切换 tab、离开页面或 App 生命周期变化时不能把过期反馈带到无关模块。确认保存并关闭编辑页时，保存流程会在导航前捕获 root 通知 surface，并在目标页面只发送一条新的成功通知，继续使用同一有界计时器。
-- `202 accepted` 之前，AI 输入仍是本地可重试内容；`202 accepted` 之后，切后台或杀进程不能让服务端请求丢失。用户返回 App 时看到可恢复的交付状态，而不是只存在于前台页面的旧进度。
+- `202 accepted` 之前，AI Chat 输入仍是本地可重试内容；`202 accepted` 之后，Chat 切后台或进程死亡不能让服务端请求丢失，用户回到同一 session 时看到可恢复的交付状态，但不会自动打开旧 session。Add Food 图片分析只支持原页面仍挂载时的普通后台等待，进程死亡不恢复任何内容。
 - 通知颜色和文本样式来自当前 FitLog 主题，Green 和 Black/黑橙都保持一致的 surface、强调色和 `NotoSansSC` 字体。
 - App 离开前台后，Android 会把包含任意已选动作的未保存新建训练草稿镜像成系统“训练进行中”通知。它只是 draft-resume surface，不是后台任务或新正式记录。编辑已有正式训练只使用页面内状态，不创建这类保留草稿或通知。
   - 有下一组力量训练时，title 是当前动作，body 是使用当前重量/次数的下一组未完成 set；否则显示简短返回继续提示。
@@ -56,7 +56,7 @@ FitLog_Agent V1 是一款以确定性计划规则为基础、由用户控制 AI 
 | --- | --- | --- | --- |
 | Home | 选中日期 dashboard。 | 展示确定性 daily summary 和符合当前模式的 kcal 或 macro 信号；后台刷新前可以先显示匹配的 confirmed cache。 | 保持 dashboard，不变成 AI 工作台。 |
 | Food Log | 正式 food record 管理。 | 支持手动录入、外部 AI JSON 粘贴、复制日期、编辑、删除和用户确认后的 AI 辅助记录。 | 登录后正式写入 cloud-first；所有 AI 结果在确认保存前都是草稿。 |
-| Add Food | 食物创建 workflow。 | AI 食物分析作为第一入口，接受纯文字或最多三张可选图片，并提供与 AI Chat 独立的 ChatGPT/千问选择；accepted 图片任务先成为 AI 页可恢复状态卡，再由用户打开 Food Preview。手动录入和外部 AI JSON 粘贴继续保留；可复用外部对话 Prompt 的唯一入口位于 Paste AI Result。 | Provider 状态不改变共享 Food policy、语义 Preview Gate、隐私或确认边界。 |
+| Add Food | 食物创建 workflow。 | AI 食物分析作为第一入口，接受纯文字或最多三张可选图片，并提供与 AI Chat 独立的 ChatGPT/千问选择；仍挂载的分析页发送直接请求，并在完成后由该页打开 Food Preview。手动录入和外部 AI JSON 粘贴继续保留；可复用外部对话 Prompt 的唯一入口位于 Paste AI Result。 | Provider 状态不改变共享 Food policy、语义 Preview Gate、隐私、确认边界或进程死亡不恢复的行为。 |
 | AI | Agent 主入口。 | 提供 gated Qwen 文字与图片对话、保留但未配置的 ChatGPT 选择反馈、云端 history、可恢复的 processing/succeeded/failed 交付状态、校验后的 Food/Workout Draft 卡片、受限只读 RAG 和“回答依据”面板。 | Provider credentials 留在服务端；AI 不能静默写记录或设置。 |
 | Workout | 正式训练记录管理。 | 支持训练记录、自定义动作、内置动作专属 PNG 缩略图、黑色主题动作选择器运行时 badge、手动/AI 新建记录保留草稿、确定性热量估算和草稿恢复通知。 | 已保存历史的编辑状态仅存在于当前页面；AI 可以起草或复盘，但不能静默修改正式记录。 |
 | Profile | 账号、身体资料、饮食和显示设置。 | 未登录显示 auth；登录后编辑一份 Cloud Profile draft 和独立历史身体记录。 | Cloud Profile 是权威来源；正式饮食设置只能通过 Profile 确认修改。 |
@@ -139,7 +139,7 @@ Add Food 把“AI 食物分析”作为第一入口。页面主体删除重复�
 
 Paste AI Result 兼容路径始终挂载同一个固定尺寸 JSON editor，并由实时 inset 将其作为刚体平移。静止“解析”操作边界附近使用短小的连续交接区，消除硬速度变化，同时不增加计时器、键盘高度缓存或独立 animation controller。设置卡片跟随实时键盘展开 inset 逐步淡出，同时保留 layout footprint 和状态，避免单帧消失，也不会移动或重建 editor；固定的“解析”操作保持挂载、input gating 并由键盘自然覆盖。Editor 右上角的放大操作使用中性、低强调的四角框图标，先进入 pending 状态并清除焦点，在观测到 inset 归零前不打开弹窗；缩小操作使用同一套视觉样式。随后显示的 root modal 使用固定背景雾化和实体 elevated JSON panel，不自动聚焦，也不复制 Prompt 或“解析”操作。临时 controller 接收完整 `TextEditingValue`，不可点击 barrier 关闭的弹窗退出时把编辑后的文字和选区写回原页面。
 
-Qwen 把输入发送到专用 `ai-food-photo-analyze` Gateway 路径；选择未配置 ChatGPT 时显示相同的短暂不可用错误，选择器自动滑回千问，保留文字和图片且不发送。打开系统相机/相册前或 Edge 返回 `202 accepted` 前，App 会保存一个很小的恢复标记，让 Android activity 或进程重建后可以恢复输入供用户明确重试。Accepted 之后，服务端拥有临时图片，AI 页面显示可恢复的图片分析状态卡；完成卡片只有用户点击后才打开现有 Food Preview，只有用户保存才以 `ai_photo` 来源写入正式记录。已配置的 image-capable adapter 与 AI Chat 共用同一 Food 证据和份量 policy：文字通常只补充餐食的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算，图片继续补充文字未提到的食物和缺失数值，份量估算会在普通视觉判断前优先使用明确数量、可读标签、标准商品、用户声明的尺度参照物和图片中的常见物体。运行时校验强制结构、日期、有限数字、items 派生 totals、纠错上限和 no-write 边界，但不再把 regex 派生语义或份量合理性猜测作为 blocker。成功终态必须有通过校验的 Food Draft，不能用普通解释文字冒充成功；accepted 前的非法输出保留表单输入供用户修正。
+Qwen 把输入发送到专用 `ai-food-photo-analyze` Gateway 路径；选择未配置 ChatGPT 时显示相同的短暂不可用错误，选择器自动滑回千问，保留文字和图片且不发送。Add Food 图片分析只在已挂载页面内保存进行中的文字、图片和已完成 response；用户切到别的 App 后回到同一页面且请求仍存活时，该页会在直接结果成功后打开现有 Food Preview；页面或进程死亡后，输入和结果都不恢复。只有用户在 Food Preview 保存，才以 `ai_photo` 来源写入正式记录。已配置的 image-capable adapter 与 AI Chat 共用同一 Food 证据和份量 policy：文字通常只补充餐食的一部分，作用范围清楚的用户事实只在对应食物和字段上覆盖估算，图片继续补充文字未提到的食物和缺失数值，份量估算会在普通视觉判断前优先使用明确数量、可读标签、标准商品、用户声明的尺度参照物和图片中的常见物体。运行时校验强制结构、日期、有限数字、items 派生 totals、纠错上限和 no-write 边界，但不再把 regex 派生语义或份量合理性猜测作为 blocker。成功终态必须有通过校验的 Food Draft，不能用普通解释文字冒充成功；非法输出只在页面存活时保留表单输入供用户修正。
 
 草稿应包含：
 
@@ -153,7 +153,7 @@ Qwen 把输入发送到专用 `ai-food-photo-analyze` Gateway 路径；选择未
 
 如果 AI 无法识别食材或分量，应先追问。例如肉类不明确时，应问用户是什么肉，而不是直接猜。
 
-当前已实现的草稿界面包括同步 Add Food AI 食物分析后的 Food Preview、用户点击后打开 Food Preview 的 AI 页面图片分析完成卡片、用户 review 后重建 Food Preview 的 Chat Food Draft artifact 卡片，以及用户 review 后重建现有训练编辑草稿的 Chat Workout Draft artifact 卡片。未来更完整的草稿界面也应与对应记录编辑页 UI 保持一致，并支持：
+当前已实现的草稿界面包括 Add Food 分析页仍挂载时打开的 Food Preview、用户 review 后重建 Food Preview 的 Chat Food Draft artifact 卡片，以及用户 review 后重建现有训练编辑草稿的 Chat Workout Draft artifact 卡片。未来更完整的草稿界面也应与对应记录编辑页 UI 保持一致，并支持：
 
 - 保存
 - 丢弃

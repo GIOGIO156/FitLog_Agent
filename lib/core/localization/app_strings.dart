@@ -198,6 +198,15 @@ class AppStrings {
   String get otpRequired => _t('Please enter the code.', '请填写验证码。');
   String get signOut => _t('Sign out', '退出登录');
   String get phase2ErrorCodeLabel => _t('Error code', '错误码');
+  String get exportAuthDiagnostics =>
+      _t('Export sign-in error diagnostics', '导出登录错误诊断');
+  String get exportShareFailed => _t(
+    'The file was created, but the share sheet could not open. Please try again.',
+    '文件已生成，但无法打开系统分享页，请重试。',
+  );
+  String get authDiagnosticsExportFailed =>
+      _t('Could not export diagnostics. Please try again.', '诊断导出失败，请重试。');
+
   String phase2ErrorMessage(String code) {
     switch (code) {
       case 'backend_not_configured':
@@ -228,6 +237,46 @@ class AppStrings {
         return _t(
           'Network connection failed. Check your connection and try again.',
           '网络连接失败，请检查网络后重试。',
+        );
+      case 'auth_dns_error':
+        return _t(
+          'The sign-in server address could not be resolved. Check your connection or VPN, then retry.',
+          '无法解析登录服务器地址，请检查网络或 VPN 后重试。',
+        );
+      case 'auth_tls_error':
+        return _t(
+          'A secure connection to the sign-in server failed. Check device time and connection settings.',
+          '无法与登录服务器建立安全连接，请检查手机时间和网络设置。',
+        );
+      case 'auth_timeout':
+        return _t(
+          'The sign-in request timed out. Please try again.',
+          '登录请求超时，请重试。',
+        );
+      case 'auth_server_error':
+        return _t(
+          'The sign-in service is temporarily unavailable. Please try again later.',
+          '登录服务暂时不可用，请稍后重试。',
+        );
+      case 'auth_session_invalid':
+        return _t(
+          'Your sign-in session is no longer valid. Please sign in again.',
+          '登录凭据已失效，请重新登录。',
+        );
+      case 'auth_user_banned':
+        return _t(
+          'This account is restricted. Contact the administrator.',
+          '该账号已被限制登录，请联系管理员。',
+        );
+      case 'auth_captcha_failed':
+        return _t(
+          'The sign-in security check failed. Please retry or contact the administrator.',
+          '登录安全校验失败，请重试或联系管理员。',
+        );
+      case 'auth_storage_invalid':
+        return _t(
+          'Saved sign-in data could not be read. Please sign in again and export diagnostics if it recurs.',
+          '无法读取已保存的登录信息，请重新登录；若再次发生，请导出登录错误诊断。',
         );
       case 'auth_required':
         return authRequired;
@@ -394,6 +443,10 @@ class AppStrings {
       _t('AI Gateway is connected.', 'AI Gateway 已接通。');
   String get aiGatewayTimeout =>
       _t('AI response timed out. Try again.', 'AI 响应超时，请重试。');
+  String get aiDeliveryBackendUnavailable => _t(
+    'AI request service is not ready. Try again later.',
+    'AI 请求服务暂时未就绪，请稍后再试。',
+  );
   String get aiProviderFailure => _t(
     'AI provider could not answer. Try again later.',
     'AI 服务暂时无法回答，请稍后再试。',
@@ -939,7 +992,7 @@ class AppStrings {
   String get estimatedTotalCaloriesLabel =>
       _t('Estimated Total Calories', '计划总估算消耗');
   String get calculatedReference => _t('Calculated Reference', '计算参考');
-  String get exportData => _t('Export & Data', '导出与数据');
+  String get exportData => _t('Data Management', '数据管理');
   String get exportXlsx => _t('Export XLSX', '导出 XLSX');
   String get exportCsv => _t('Export CSV', '导出 CSV');
   String exportReady(String type, String filePath) =>

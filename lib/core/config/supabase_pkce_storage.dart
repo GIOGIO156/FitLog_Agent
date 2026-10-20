@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase/supabase.dart' as supabase;
 
+import '../diagnostics/auth_diagnostics.dart';
+
 class SharedPreferencesGotrueAsyncStorage extends supabase.GotrueAsyncStorage {
   const SharedPreferencesGotrueAsyncStorage({
     this.keyPrefix = 'fitlog.supabase.pkce.',
@@ -39,17 +41,68 @@ class SharedPreferencesSupabaseAuthSessionStorage {
   final String storageKey;
 
   Future<String?> readSessionJson() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(storageKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final value = prefs.getString(storageKey);
+      AuthDiagnostics.instance.record(
+        'session_storage_read',
+        data: {'stored_session_present': value != null},
+      );
+      return value;
+    } catch (error) {
+      AuthDiagnostics.instance.record(
+        'session_storage_failure',
+        failure: true,
+        data: {'storage_operation': 'read'},
+        error: error,
+      );
+      rethrow;
+    }
   }
 
   Future<void> writeSession(supabase.Session session) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(storageKey, jsonEncode(session.toJson()));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = await prefs.setString(
+        storageKey,
+        jsonEncode(session.toJson()),
+      );
+      AuthDiagnostics.instance.record(
+        'session_storage_write',
+        failure: !saved,
+        data: {
+          'outcome': saved ? 'saved' : 'not_saved',
+          'access_expires_at': session.expiresAt,
+        },
+      );
+    } catch (error) {
+      AuthDiagnostics.instance.record(
+        'session_storage_failure',
+        failure: true,
+        data: {'storage_operation': 'write'},
+        error: error,
+      );
+      rethrow;
+    }
   }
 
   Future<void> clear() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(storageKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final removed = await prefs.remove(storageKey);
+      AuthDiagnostics.instance.record(
+        'session_storage_clear',
+        failure: !removed,
+        data: {'outcome': removed ? 'cleared' : 'not_cleared'},
+      );
+    } catch (error) {
+      AuthDiagnostics.instance.record(
+        'session_storage_failure',
+        failure: true,
+        data: {'storage_operation': 'clear'},
+        error: error,
+      );
+      rethrow;
+    }
   }
 }

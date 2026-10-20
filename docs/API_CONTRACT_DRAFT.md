@@ -15,9 +15,9 @@ Stable model-output governance lives in `docs/en/AIOutputContract.md` / `docs/zh
 - Subscription entitlement is server-owned. Internal redemption is a development contract, not a production payment provider.
 - The current release calls Qwen through the AI Gateway. OpenAI/ChatGPT transport adapters remain implemented and tested but are not called unless a future release has legal server configuration and explicitly enables the client surface.
 - Signed-in Cloud Profile and body/food/workout records are cloud-authoritative. Local SQLite is partial cache, draft storage, and runtime acceleration.
-- A `202 accepted` AI delivery response means the server persisted and owns the request. After that boundary, app backgrounding or process death must recover to `queued`, `running`, `succeeded`, or stable `failed` plus retry; it must not lose the request, spin forever, or show fake success.
+- A `202 accepted` AI delivery response means the server persisted and owns the request. After that boundary, AI Chat must recover in the owning session to `queued`, `running`, `succeeded`, `failed`, or `cancelled` after backgrounding or process death. Add Food photo analysis uses a page-owned direct request in the normal product path; process or page death restores no input, result, status card, or retry UI.
 - AI requests use only workflow-required context. Complete raw history is not a default request payload.
-- Add Food and AI Chat send text plus zero to three compressed JPEG/PNG/WebP images inline to the Gateway in the current release. Accepted async image requests persist the compressed images first in private temporary Storage so the worker can recover and retry. Selecting unconfigured ChatGPT is blocked before transport with a transient unavailable error, preserved input, and an automatic animated return to the Qwen UI selection.
+- Add Food and AI Chat send text plus zero to three compressed JPEG/PNG/WebP images inline to the Gateway in the current release. Accepted AI Chat async image requests persist compressed images first in private temporary Storage so the worker can recover, retry, and clean them up after terminal status or expiry. Selecting unconfigured ChatGPT is blocked before transport with a transient unavailable error, preserved live input, and an automatic animated return to the Qwen UI selection.
 - Food Draft and Workout Draft cross the boundary as typed, versioned data and remain drafts until normal editor confirmation.
 - AI cannot silently write official records, change Profile/targets/strategies, apply carb tapering, or delete data.
 - Document RAG accepts no client-supplied chunks or context objects. User business data does not enter long-term vector memory, semantic memory, or GraphRAG.
@@ -67,7 +67,7 @@ Locked backend mapping:
 | Subscription state | Internal `subscriptions` / entitlement table for development |
 | AI Gateway | Supabase Edge Functions |
 | Model secrets | Supabase Edge Function Qwen secret for the current release; optional OpenAI secret only when that provider is legally configured and enabled |
-| Food analysis transport | Current Add Food workflow sends a text description and zero to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; accepted async delivery stores compressed images in private temporary Storage before returning `202 accepted` |
+| Food analysis transport | Current Add Food workflow sends a text description and zero to three compressed JPEG/PNG/WebP images inline to `ai-food-photo-analyze`; the normal product path returns a direct Food Draft response to the still-mounted page |
 | Document RAG index | Supabase Postgres document chunks with active-build hybrid lexical/vector retrieval; Qwen `text-embedding-v4`, 1536 dimensions, and no user-data vectors |
 
 ## Common API Rules
@@ -124,6 +124,8 @@ payload_too_large
 image_upload_failed
 unsupported_attachment
 gateway_timeout
+delivery_backend_unavailable
+provider_unavailable
 provider_failure
 request_schema_mismatch
 provider_output_invalid
@@ -534,6 +536,7 @@ If the request or final provider result fails, no draft/action is returned and `
 
 - `request_schema_mismatch`: invalid Flutter-to-Gateway request
 - `provider_unavailable`: selected provider/model is not configured
+- `delivery_backend_unavailable`: async delivery table, RPC, or temporary asset store could not accept or claim the request
 - `provider_output_invalid`: strict structural output validation still failed after zero or one eligible correction attempt
 - `provider_refusal`: the provider explicitly refused
 - `provider_incomplete`: generation ended before a complete contract result
@@ -554,7 +557,7 @@ If the request or final provider result fails, no draft/action is returned and `
 | --- | --- |
 | `request_id` | Server delivery request UUID. For async Chat, it is also the request log ID used by the accepted worker path. |
 | `kind` | `ai_chat` or `food_photo_analysis`. |
-| `status` | `queued`, `running`, `succeeded`, or `failed`. |
+| `status` | `queued`, `running`, `succeeded`, `failed`, or `cancelled`. |
 | `accepted` | `true` only after the delivery row and required private temporary assets have been persisted. |
 | `retryable` | Whether the current terminal failure can be retried through the server retry RPC. |
 | `duplicate_submit` | `true` when the same account, kind, and `client_request_id` was already accepted. |
@@ -562,12 +565,13 @@ If the request or final provider result fails, no draft/action is returned and `
 
 Rules:
 
-- Before an accepted response, Flutter owns the unsent input and local retry marker. If the app dies before acceptance, the user may retry from local state; the server may not claim ownership of a request it did not persist.
-- After an accepted response, the delivery row is the recovery source. Flutter polls or reloads `ai_delivery_requests` for the owning account and shows processing, success, or failed plus retry. The UI must not rely on the original foreground HTTP callback to keep the task alive.
+- Before an accepted response, Flutter owns unsent input. AI Chat may keep a small picker/composer recovery marker for explicit retry, while Add Food photo analysis keeps input only in the mounted page. The server may not claim ownership of a request it did not persist. Failure to persist the AI Chat delivery row, RPC state, or temporary image asset is `delivery_backend_unavailable`, not `provider_failure`.
+- After an accepted response, the delivery row is the recovery source for AI Chat only. Chat polls or reloads `ai_delivery_requests` for the owning account and shows processing, success, failed plus retry, or cancelled hidden state in the correct session. Add Food photo analysis does not expose accepted delivery recovery in the normal product path.
 - `accept_ai_delivery_request` is idempotent on `(account_id, kind, client_request_id)` and serializes acceptance with an advisory transaction lock. Repeating the same submit returns the existing request status instead of creating another provider call.
-- Worker execution claims a queued or stale-running row through `claim_ai_delivery_request`, writes a bounded lease, and finishes through `finish_ai_delivery_request`. Retry requeues only rows owned by the authenticated account and does not create an official record.
-- Chat success is materialized through normal chat sessions/messages and compact request logs. Photo-analysis success is stored as a temporary draft result in `ai_delivery_requests.result_json`; it becomes an official food record only if the user opens Food Preview and saves.
-- Worker-only `process_pending` / `process_one` actions are protected by service-role authorization or `FITLOG_AI_WORKER_SECRET`. They are operational recovery hooks, not authenticated client APIs.
+- Worker execution claims a queued or stale-running row through `claim_ai_delivery_request`, writes a bounded lease, and finishes through `finish_ai_delivery_request`. Chat retry requeues only rows owned by the authenticated account through the Edge retry action and service-role `retry_ai_delivery_request_v2`; it does not create an official record.
+- Chat success is materialized through normal chat sessions/messages and compact request logs. Add Food photo-analysis success is a direct temporary draft response for the mounted page; it becomes an official food record only if that page opens Food Preview and the user saves.
+- Chat rows retain the existing 72-hour accepted-delivery window. Any service-side photo-analysis delivery rows are compatibility or diagnostic infrastructure and are not cold-start UI recovery sources.
+- Worker-only `process_pending`, `process_one`, and `cleanup_expired` actions are protected by service-role authorization or `FITLOG_AI_WORKER_SECRET`. They are operational recovery hooks, not authenticated client APIs.
 
 ## AI Food Analysis Contract
 
@@ -662,7 +666,7 @@ Accepted async response:
 Rules:
 
 - Only authenticated, subscribed, active-device users may call the function.
-- `client_request_id` is the stable idempotency key for the requested analysis. `client.delivery_mode = async_v1` means the Edge function first stores the delivery request and private temporary images, then returns `transport.accepted = true`.
+- `client_request_id` is the stable idempotency key for the requested analysis. Current Flutter clients send the page-owned direct request path for Add Food photo analysis rather than `client.delivery_mode = async_v1`.
 - The current implementation accepts a non-empty text description with zero to three optional JPEG/PNG/WebP images and rejects any compressed payload above 4 MB.
 - The server rejects an empty request that has neither images nor a text description, and it does not accept user-supplied provider API keys.
 - `model_choice` is `chatgpt` or `qwen`. The page stores this preference under its own device-local key; it neither reads nor overwrites the AI Chat preference.
@@ -672,7 +676,7 @@ Rules:
 - Text and images are parallel, complementary evidence for this consumer draft. Text is not treated as a complete inventory unless the user explicitly closes the scope. Clear, unambiguously scoped user facts take priority only for the corresponding food and field; image evidence continues to identify and estimate foods and fields not covered by text. Visual absence cannot deterministically delete user intent, and conflicts remain editable uncertainty for confirmation rather than runtime regex-validation failures. Add Food and AI Chat provider adapters consume this rule from the same shared food-prompt policy.
 - `language` selects the target language for user-visible natural-language values across Add Food and AI Chat without changing either endpoint's envelope. Required JSON keys/schema values, units, brands, original package names, and necessary proper nouns retain their required or original form. Language quality is non-blocking: an otherwise valid result is not corrected, retried, or rejected merely because it is mixed-language.
 - `selected_date` is the exact required draft date for this explicit workflow. Current clients request `food_draft.v2`; the endpoint may downgrade a validated v2 draft to the legacy v1 response shape only when a legacy request explicitly asks for v1.
-- A synchronous returned draft opens `FoodPreviewPage`; an accepted async result appears on the AI page as a temporary photo-analysis delivery card and opens `FoodPreviewPage` only when the user taps it. No official `food_records` row is written until the user explicitly saves there.
+- A validated direct draft opens `FoodPreviewPage` while the Add Food analysis page is still mounted. If that page or process is gone, no result is restored. No official `food_records` row is written until the user explicitly saves in Food Preview.
 - Correctable structural-output failures may receive one bounded correction attempt. For image-based food requests, the correction keeps the original request images in provider context; logs still store only compact metadata and never raw image bytes or base64 payloads.
 - Logs store compact metadata such as input kind, selected date, note presence, mime type, compressed byte length, image count, expected output, validator version, first-pass/final validation result, correction count, provider completion category, provider/model, target response language, a non-blocking language-quality classification, and latency. They must not store raw image bytes, base64 payloads, full free-text notes, provider raw responses or provider secrets.
 

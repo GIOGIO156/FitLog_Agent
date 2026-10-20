@@ -162,7 +162,8 @@ class SupabaseAiChatRepository extends AiChatRepository {
           .from('ai_delivery_requests')
           .select()
           .eq('account_id', accountId)
-          .inFilter('kind', const <String>['ai_chat', 'food_photo_analysis'])
+          .eq('kind', 'ai_chat')
+          .neq('status', 'cancelled')
           .order('updated_at', ascending: false)
           .limit(20);
       return rows
@@ -189,6 +190,8 @@ class SupabaseAiChatRepository extends AiChatRepository {
           .select()
           .eq('account_id', accountId)
           .eq('request_id', requestId)
+          .eq('kind', 'ai_chat')
+          .neq('status', 'cancelled')
           .limit(1);
       if (rows.isEmpty) {
         return null;
@@ -208,9 +211,9 @@ class SupabaseAiChatRepository extends AiChatRepository {
       return;
     }
     try {
-      await client.rpc(
-        'retry_ai_delivery_request',
-        params: <String, dynamic>{'input_request_id': requestId},
+      await client.functions.invoke(
+        'ai-chat-route',
+        body: <String, dynamic>{'action': 'retry_one', 'request_id': requestId},
       );
     } catch (error) {
       throw _aiChatExceptionFor('ai_delivery_retry_failed', error);

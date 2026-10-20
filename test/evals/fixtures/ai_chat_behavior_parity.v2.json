@@ -43,12 +43,12 @@
       "executable_oracles": ["test/ai_page_test.dart", "test/ai_chat_controller_test.dart"]
     },
     {
-      "component": "PhotoFoodAnalysisRecoveryCoordinator/Store",
-      "disposition": "preserved",
-      "source_of_truth": "The mounted Add Food surface owns picker delivery; the marker is not a food draft or durable image store",
-      "owner": "PhotoFoodAnalysisRecoveryCoordinator with Root fallback only after owner loss",
-      "cleanup": "Cleared after delivery, cancellation, lifecycle mismatch, or local-data clearing",
-      "best_effort_boundary": "Recovery is single-flight and cannot fabricate pixels or a Food Draft",
+      "component": "PhotoFoodAnalysisLegacyRecoveryCleanup",
+      "disposition": "retired_recovery_cleaned",
+      "source_of_truth": "Add Food photo analysis owns input only while its page is mounted; process death restores no text, images, result, status card, or retry UI",
+      "owner": "PhotoFoodAnalysisPage with legacy key cleanup",
+      "cleanup": "Old preference keys and temporary recovery files are removed on startup/profile local-data clearing when encountered",
+      "best_effort_boundary": "Cleanup cannot restore pixels or a Food Draft; a lost Add Food analysis is intentionally gone",
       "executable_oracles": ["test/photo_food_analysis_recovery_test.dart"]
     },
     {
@@ -56,7 +56,7 @@
       "disposition": "preserved",
       "source_of_truth": "AppDatabase.clearAllLocalData atomically clears local business rows; cloud Chat history remains authoritative for history only",
       "owner": "Profile clear action coordinates SQLite clearing and device-only recovery marker invalidation",
-      "cleanup": "Clears workout drafts, editor hint, picker markers, runtime attachment leases, retry IDs, and local draft handles",
+      "cleanup": "Clears workout drafts, editor hint, AI Chat picker markers, legacy Add Food recovery keys, runtime attachment leases, retry IDs, and local draft handles",
       "best_effort_boundary": "Cloud history may reload, but it cannot revive cleared local drafts or unavailable pixels",
       "executable_oracles": ["test/user_profile_test.dart", "test/ai_chat_controller_test.dart"]
     },

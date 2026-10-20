@@ -122,6 +122,13 @@ void main() {
       language: 'en',
       modelChoice: AiGatewayModelChoice.chatgpt,
       deviceId: 'device-a',
+      attachments: const <AiGatewayImageAttachment>[
+        AiGatewayImageAttachment(
+          mimeType: 'image/png',
+          base64Data: 'abc123',
+          byteLength: 6,
+        ),
+      ],
     );
 
     expect(success, isTrue);
@@ -133,6 +140,98 @@ void main() {
       controller.selectedChatDeliveryRequests.single.requestId,
       'delivery_req_1',
     );
+    expect(
+      controller.runtimeAttachmentsForDelivery(
+        controller.selectedChatDeliveryRequests.single,
+      ),
+      hasLength(1),
+    );
+  });
+
+  test(
+    'loading delivery requests does not auto-open pending or failed chats',
+    () async {
+      final repository = _FakeAiChatRepository();
+      repository.sessions = <AiChatSession>[_session('session_1', 'Old image')];
+      repository.deliveryRequests = const <AiDeliveryRequest>[
+        AiDeliveryRequest(
+          requestId: 'delivery_req_1',
+          kind: AiDeliveryKind.aiChat,
+          clientRequestId: 'client_req_1',
+          status: AiDeliveryStatus.failed,
+          sessionId: 'session_1',
+          messageText: 'Please analyze this image.',
+          retryable: true,
+        ),
+      ];
+      final controller = AiChatController(repository: repository)
+        ..syncAccount(accountId: 'acct_1', canUseAi: true);
+      addTearDown(controller.dispose);
+      await _flushAsync();
+
+      expect(controller.selectedSessionId, isNull);
+      expect(controller.hasVisibleConversation, isFalse);
+      expect(controller.selectedChatDeliveryRequests, isEmpty);
+    },
+  );
+
+  test('delivery polling refreshes multiple pending chat requests', () async {
+    final repository = _FakeAiChatRepository();
+    repository.sessions = <AiChatSession>[_session('session_1', 'Pending')];
+    repository.deliveryRequests = const <AiDeliveryRequest>[
+      AiDeliveryRequest(
+        requestId: 'delivery_req_1',
+        kind: AiDeliveryKind.aiChat,
+        clientRequestId: 'client_req_1',
+        status: AiDeliveryStatus.queued,
+        sessionId: 'session_1',
+        messageText: 'First',
+      ),
+      AiDeliveryRequest(
+        requestId: 'delivery_req_2',
+        kind: AiDeliveryKind.aiChat,
+        clientRequestId: 'client_req_2',
+        status: AiDeliveryStatus.queued,
+        sessionId: 'session_1',
+        messageText: 'Second',
+      ),
+    ];
+    final controller = AiChatController(repository: repository)
+      ..syncAccount(accountId: 'acct_1', canUseAi: true);
+    addTearDown(controller.dispose);
+    await _flushAsync();
+    await controller.selectSession('session_1');
+
+    repository.deliveryRequests = const <AiDeliveryRequest>[
+      AiDeliveryRequest(
+        requestId: 'delivery_req_1',
+        kind: AiDeliveryKind.aiChat,
+        clientRequestId: 'client_req_1',
+        status: AiDeliveryStatus.failed,
+        sessionId: 'session_1',
+        messageText: 'First',
+        retryable: false,
+      ),
+      AiDeliveryRequest(
+        requestId: 'delivery_req_2',
+        kind: AiDeliveryKind.aiChat,
+        clientRequestId: 'client_req_2',
+        status: AiDeliveryStatus.succeeded,
+        sessionId: 'session_1',
+        messageText: 'Second',
+      ),
+    ];
+    await Future<void>.delayed(const Duration(milliseconds: 3200));
+    await _flushAsync();
+
+    expect(repository.getDeliveryRequestIds, contains('delivery_req_1'));
+    expect(repository.getDeliveryRequestIds, contains('delivery_req_2'));
+    expect(controller.selectedChatDeliveryRequests, hasLength(1));
+    expect(
+      controller.selectedChatDeliveryRequests.single.requestId,
+      'delivery_req_1',
+    );
+    expect(controller.selectedChatDeliveryRequests.single.retryable, isFalse);
   });
 
   test('retryDeliveryRequest requeues the same server request', () async {
@@ -855,6 +954,7 @@ class _FakeAiChatRepository extends AiChatRepository {
   final Set<String> deletedSessionIds = <String>{};
   final Map<String, String> renamedSessions = <String, String>{};
   final List<String> retryRequestIds = <String>[];
+  final List<String> getDeliveryRequestIds = <String>[];
   bool renameThrows = false;
   String? listSessionsFailureCode;
   Completer<void>? deleteCompleter;
@@ -896,6 +996,7 @@ class _FakeAiChatRepository extends AiChatRepository {
     required String accountId,
     required String requestId,
   }) async {
+    getDeliveryRequestIds.add(requestId);
     for (final request in deliveryRequests) {
       if (request.requestId == requestId) {
         return request;

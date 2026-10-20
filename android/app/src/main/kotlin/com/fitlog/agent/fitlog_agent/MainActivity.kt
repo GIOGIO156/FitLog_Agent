@@ -17,6 +17,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var authDiagnostics: AuthDiagnosticsBridge? = null
     private var notificationChannel: MethodChannel? = null
     private var pendingWorkoutDraftNotificationTap = false
     private var notificationPermissionRequested = false
@@ -29,6 +30,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        authDiagnostics = AuthDiagnosticsBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         notificationChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             WORKOUT_DRAFT_NOTIFICATION_CHANNEL,
@@ -61,6 +63,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        authDiagnostics?.dispose()
+        authDiagnostics = null
         notificationChannel?.setMethodCallHandler(null)
         notificationChannel = null
         super.cleanUpFlutterEngine(flutterEngine)

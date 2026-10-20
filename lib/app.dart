@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase/supabase.dart' as supabase;
 
 import 'core/config/app_config.dart';
+import 'core/diagnostics/auth_diagnostics.dart';
+import 'core/diagnostics/auth_diagnostic_http_client.dart';
 import 'core/config/supabase_pkce_storage.dart';
 import 'core/localization/language_controller.dart';
 import 'core/localization/localization_extensions.dart';
@@ -46,7 +49,6 @@ import 'features/ai/ai_chat_image_recovery.dart';
 import 'features/ai/ai_page.dart';
 import 'features/food/food_image_picker.dart';
 import 'features/food/food_log_page.dart';
-import 'features/food/photo_food_analysis_page.dart';
 import 'features/food/photo_food_analysis_recovery.dart';
 import 'features/home/home_page.dart';
 import 'features/profile/profile_page.dart';
@@ -102,7 +104,7 @@ class FitLogApp extends StatefulWidget {
   State<FitLogApp> createState() => _FitLogAppState();
 }
 
-class _FitLogAppState extends State<FitLogApp> {
+class _FitLogAppState extends State<FitLogApp> with WidgetsBindingObserver {
   late final AppServices _services;
   late final LanguageController _languageController;
   late final FitLogThemeController _themeController;
@@ -114,6 +116,8 @@ class _FitLogAppState extends State<FitLogApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AuthDiagnostics.instance.record('process_start');
 
     final database = AppDatabase.instance;
     _cloudRuntimeContext = CloudRuntimeContext();
@@ -126,6 +130,7 @@ class _FitLogAppState extends State<FitLogApp> {
         ? supabase.SupabaseClient(
             widget.config.supabaseUrl,
             widget.config.supabaseAnonKey,
+            httpClient: AuthDiagnosticHttpClient(http.Client()),
             authOptions: const supabase.AuthClientOptions(
               pkceAsyncStorage: SharedPreferencesGotrueAsyncStorage(),
             ),
@@ -171,17 +176,42 @@ class _FitLogAppState extends State<FitLogApp> {
             activeDeviceRepository: activeDeviceRepository,
           );
     if (supabaseClient != null && authSessionStorage != null) {
-      _supabaseAuthSubscription = supabaseClient.auth.onAuthStateChange.listen((
-        state,
-      ) async {
-        final session = state.session;
-        if (state.event == supabase.AuthChangeEvent.signedOut ||
-            session == null) {
-          await authSessionStorage.clear();
-        } else {
-          await authSessionStorage.writeSession(session);
-        }
-      });
+      _supabaseAuthSubscription = supabaseClient.auth.onAuthStateChange.listen(
+        (state) async {
+          final session = state.session;
+          AuthDiagnostics.instance.record(
+            'sdk_auth_event',
+            failure: state.event == supabase.AuthChangeEvent.signedOut,
+            data: {
+              'outcome': state.event.name,
+              'session_present': session != null,
+              'access_expired': session?.isExpired,
+              'access_expires_at': session?.expiresAt,
+            },
+          );
+          if (state.event == supabase.AuthChangeEvent.signedOut ||
+              session == null) {
+            AuthDiagnostics.instance.record(
+              'session_clear_requested',
+              data: {
+                'reason': state.event == supabase.AuthChangeEvent.signedOut
+                    ? 'sdk_signed_out'
+                    : 'sdk_null_session',
+              },
+            );
+            await authSessionStorage.clear();
+          } else {
+            await authSessionStorage.writeSession(session);
+          }
+        },
+        onError: (Object error) {
+          AuthDiagnostics.instance.record(
+            'sdk_auth_error',
+            failure: true,
+            error: error,
+          );
+        },
+      );
     }
     final trainingFrequencySelfCheckService = TrainingFrequencySelfCheckService(
       workoutRepository: workoutRepository,
@@ -285,7 +315,14 @@ class _FitLogAppState extends State<FitLogApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    AuthDiagnostics.instance.lifecycle = state.name;
+    AuthDiagnostics.instance.record('app_lifecycle');
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     MethodChannelWorkoutDraftNotificationPlatform.instance.setTapHandler(null);
     _supabaseAuthSubscription?.cancel();
     _accountController.dispose();
@@ -796,35 +833,25 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
     _restoringLostPickerImages = true;
     var chatRestoreContinues = false;
     try {
-      final photoDraft = await PhotoFoodAnalysisRecoveryStore.loadPending();
+      await PhotoFoodAnalysisLegacyRecoveryCleanup.clear();
       final chatDraft = await AiChatImageRecoveryStore.loadPending();
-      if (photoDraft == null && chatDraft == null) {
+      if (chatDraft == null) {
         return false;
       }
-      if (photoDraft != null) {
-        if (chatDraft != null) {
-          await AiChatImageRecoveryStore.clearPending();
-        }
-        return await PhotoFoodAnalysisRecoveryCoordinator.instance
-            .runRootRecovery(() => _restoreLostPhotoAnalysis(photoDraft));
-      }
-      if (chatDraft != null) {
-        _restoreLostAiChatImages(chatDraft, const <PickedFoodImage>[]);
-        if (routeOnly) {
-          chatRestoreContinues = true;
-          unawaited(
-            _retrieveAndRestoreLostChatImagesSafely(
-              chatDraft,
-            ).whenComplete(() => _restoringLostPickerImages = false),
-          );
-          return true;
-        }
-        await _retrieveAndRestoreLostChatImages(chatDraft);
+      _restoreLostAiChatImages(chatDraft, const <PickedFoodImage>[]);
+      if (routeOnly) {
+        chatRestoreContinues = true;
+        unawaited(
+          _retrieveAndRestoreLostChatImagesSafely(
+            chatDraft,
+          ).whenComplete(() => _restoringLostPickerImages = false),
+        );
         return true;
       }
-      return false;
+      await _retrieveAndRestoreLostChatImages(chatDraft);
+      return true;
     } catch (_) {
-      await PhotoFoodAnalysisRecoveryStore.clearPending();
+      await PhotoFoodAnalysisLegacyRecoveryCleanup.clear();
       await AiChatImageRecoveryStore.clearPending();
       return false;
     } finally {
@@ -855,32 +882,6 @@ class _RootShellState extends State<_RootShell> with WidgetsBindingObserver {
       return;
     }
     _restoreLostAiChatImages(draft, images);
-  }
-
-  Future<void> _restoreLostPhotoAnalysis(
-    PhotoFoodAnalysisRecoveryDraft draft,
-  ) async {
-    final restoredDate = draft.initialDate ?? DateUtilsX.todayKey();
-    context.read<SelectedDateNotifier>().setDate(restoredDate);
-    context.read<RootTabController>().setIndex(RootTabIndex.food);
-    final savedFuture = Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => PhotoFoodAnalysisPage(
-          initialDate: draft.initialDate,
-          initialNote: draft.note,
-          restoreLostImagesOnStart: true,
-        ),
-      ),
-    );
-    unawaited(
-      savedFuture
-          .then((saved) {
-            if (saved == true && mounted) {
-              context.read<RefreshNotifier>().markDataChanged();
-            }
-          })
-          .catchError((_) {}),
-    );
   }
 
   void _restoreLostAiChatImages(

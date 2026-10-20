@@ -228,6 +228,7 @@ The error taxonomy distinguishes:
 
 - `request_schema_mismatch`: the Flutter-to-Gateway request is invalid
 - `provider_unavailable`: the selected provider/model is not configured for this deployment
+- `delivery_backend_unavailable`: the async delivery table, RPC, or temporary asset store could not accept or claim the request
 - `provider_output_invalid`: provider output is not valid for the expected contract
 - `provider_refusal`: the provider explicitly refused
 - `provider_incomplete`: generation ended without a complete contract result
@@ -243,7 +244,7 @@ The existing `record_schema_mismatch` remains readable for compatibility with ol
 
 The client reports network failure only for recognizable socket or timeout transport errors. A server error envelope retains its stable code; response decoding or typed reconstruction failures after successful transport map to `provider_output_invalid`, while unclassified SDK/provider failures map to `provider_failure` instead of being mislabeled as offline.
 
-For accepted async delivery, a terminal `failed` delivery row carries the same stable error-code family and retryability metadata. A delivery failure is recoverable UI state, not a partial provider result. If the provider later succeeds, the stored result must satisfy this contract before Chat history or the photo-analysis draft card can expose it.
+For accepted async delivery, a terminal `failed` delivery row carries the same stable error-code family and retryability metadata. A delivery failure is recoverable UI state for AI Chat, not a partial provider result. Add Food photo analysis uses the normal page-owned direct response path; failures remain page-local while the page is alive. If an accepted Chat provider later succeeds, the stored result must satisfy this contract before Chat history can expose it.
 
 After final structured-output failure:
 
@@ -286,7 +287,7 @@ Compact logs may include:
 - whether a draft or clarification was returned
 - delivery request ID, stable client request ID, attempt count, lease reclaim marker, and duplicate-submit count when the request used accepted async delivery
 
-They must not include raw provider responses, chain-of-thought, provider keys, auth tokens, original images, base64 payloads, complete record history, or unrestricted user notes. Accepted image-analysis delivery may retain compressed images only in private temporary storage for recovery and retry; logs still store metadata only.
+They must not include raw provider responses, chain-of-thought, provider keys, auth tokens, original images, base64 payloads, complete record history, or unrestricted user notes. Accepted AI Chat image delivery may retain compressed images only in private temporary storage for recovery and retry; logs still store metadata only.
 
 Required evaluation dimensions:
 
@@ -304,7 +305,7 @@ FitLog must not claim a universal error rate such as less than 0.1% without a ve
 Successful model output only creates an editable proposal:
 
 - Food Draft opens Food Preview only after the relevant review action.
-- A completed Add Food async delivery row exposes a temporary Food Draft card; it opens Food Preview only when the user taps it.
+- Add Food photo analysis opens Food Preview from the validated direct response only while the analysis page is still mounted. If that page/process is gone, no Food Draft card or result recovery is shown.
 - Workout Draft rebuilds the workout editor only after review and replacement confirmation when another draft exists.
 - Official records are written only by the normal confirmed save path.
 - AI cannot silently change Profile, goals, `diet_goal_phase`, `diet_calculation_mode`, `carb_cycling`, or `carb_tapering`.

@@ -108,6 +108,7 @@ interface RuntimeStageTelemetry {
   requestParseLatencyMs: number;
   subscriptionDeviceLatencyMs: number;
   plannerLatencyMs: number;
+  plannerFailureReason: string | null;
   retrievalLatencyMs: number;
   providerFirstPassLatencyMs: number;
   firstValidationLatencyMs: number;
@@ -168,6 +169,7 @@ Deno.serve(async (request) => {
     requestParseLatencyMs: 0,
     subscriptionDeviceLatencyMs: 0,
     plannerLatencyMs: 0,
+    plannerFailureReason: null,
     retrievalLatencyMs: 0,
     providerFirstPassLatencyMs: 0,
     firstValidationLatencyMs: 0,
@@ -188,6 +190,13 @@ Deno.serve(async (request) => {
           boundedWorkerLimit(workerBody.limit),
         );
         return jsonResponse({ processed }, 200);
+      }
+      if (workerBody.worker_action === "cleanup_expired") {
+        const cleaned = await cleanupExpiredDeliveryRequests(
+          env,
+          boundedWorkerLimit(workerBody.limit),
+        );
+        return jsonResponse({ cleaned }, 200);
       }
       if (workerBody.worker_action === "process_one") {
         const requestId = typeof workerBody.request_id === "string"
@@ -219,6 +228,29 @@ Deno.serve(async (request) => {
       body = await request.json();
     } catch (_) {
       throw new GatewayRequestError("request_schema_mismatch");
+    }
+    const actionBody = recordValue(body);
+    if (actionBody.action === "retry_one") {
+      const requestId = typeof actionBody.request_id === "string"
+        ? actionBody.request_id
+        : "";
+      if (requestId.trim() === "") {
+        throw new GatewayRequestError("request_schema_mismatch");
+      }
+      const retried = await retryAiChatDeliveryRequest(
+        env,
+        accountId,
+        requestId,
+      );
+      waitUntil(processAiChatDeliveryRequest(env, requestId));
+      return jsonResponse({
+        request_id: requiredString(retried, "request_id"),
+        status: typeof retried.status === "string" ? retried.status : "queued",
+        retryable: retried.retryable === true,
+        error_code: typeof retried.error_code === "string"
+          ? retried.error_code
+          : null,
+      }, 202);
     }
     parsedRequest = parseGatewayRequest(body);
     stageTelemetry.requestParseLatencyMs = Date.now() - requestParseStartedAt;
@@ -269,13 +301,23 @@ Deno.serve(async (request) => {
 
     const providerConfig = readProviderRuntimeConfig();
     const plannerStartedAt = Date.now();
-    const chatDecision: ChatDecisionV2 = await buildApprovedChatDecision(
-      parsedRequest,
-      createModelChatDecisionPlanner(
-        parsedRequest.modelChoice,
-        providerConfig,
-      ),
-    );
+    let chatDecision: ChatDecisionV2;
+    try {
+      chatDecision = await buildApprovedChatDecision(
+        parsedRequest,
+        createModelChatDecisionPlanner(
+          parsedRequest.modelChoice,
+          providerConfig,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ChatDecisionPlanningError) {
+        stageTelemetry.plannerFailureReason = error.reason;
+      }
+      throw error;
+    } finally {
+      stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
+    }
     const taskPlan = chatDecisionToTaskPlan(chatDecision);
     outputTelemetry = {
       ...outputTelemetry,
@@ -291,7 +333,6 @@ Deno.serve(async (request) => {
         ? null
         : "resolving",
     };
-    stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
     const route = planToLegacyRoute(taskPlan);
     const retrievalStartedAt = Date.now();
     parsedRequest = {
@@ -757,7 +798,7 @@ const deliveryEdgeVersion = "ai_async_delivery.v1";
 interface AcceptedDelivery {
   requestId: string;
   sessionId: string | null;
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   duplicateSubmit: boolean;
   retryable: boolean;
   errorCode: string | null;
@@ -784,8 +825,9 @@ async function acceptChatDeliveryRequest(
     request.attachments,
   );
   const payload = sanitizeDeliveryPayload(rawBody);
-  const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/accept_ai_delivery_request`,
+  const response = await deliveryBackendFetch(
+    env,
+    "rpc/accept_ai_delivery_request",
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -806,7 +848,7 @@ async function acceptChatDeliveryRequest(
     },
   );
   if (!response.ok) {
-    throw new GatewayHttpError("provider_failure", 502);
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
   }
   const result = recordValue(await response.json());
   const accepted = {
@@ -823,6 +865,84 @@ async function acceptChatDeliveryRequest(
   return accepted;
 }
 
+async function deliveryBackendFetch(
+  env: GatewayEnv,
+  restPath: string,
+  init: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(`${env.supabaseUrl}/rest/v1/${restPath}`, init);
+  } catch (_) {
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
+  }
+}
+
+async function retryAiChatDeliveryRequest(
+  env: GatewayEnv,
+  accountId: string,
+  requestId: string,
+): Promise<Record<string, unknown>> {
+  const response = await deliveryBackendFetch(
+    env,
+    "rpc/retry_ai_delivery_request_v2",
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_request_id: requestId,
+        input_account_id: accountId,
+        input_kind: "ai_chat",
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("provider_failure", 409);
+  }
+  return recordValue(await response.json());
+}
+
+async function listExpiredDeliveryRequests(
+  env: GatewayEnv,
+  limit: number,
+): Promise<Record<string, unknown>[]> {
+  const response = await deliveryBackendFetch(
+    env,
+    "rpc/list_expired_ai_delivery_requests",
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({ input_batch_limit: limit }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
+  }
+  const rows = await response.json();
+  if (!Array.isArray(rows)) {
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
+  }
+  return rows.map(recordValue);
+}
+
+async function deleteExpiredDeliveryRequest(
+  env: GatewayEnv,
+  requestId: string,
+): Promise<boolean> {
+  const response = await deliveryBackendFetch(
+    env,
+    "rpc/delete_expired_ai_delivery_request",
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({ input_request_id: requestId }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
+  }
+  return await response.json() === true;
+}
+
 async function processAiChatDeliveryQueue(
   env: GatewayEnv,
   limit: number,
@@ -836,6 +956,24 @@ async function processAiChatDeliveryQueue(
   return processed;
 }
 
+async function cleanupExpiredDeliveryRequests(
+  env: GatewayEnv,
+  limit: number,
+): Promise<number> {
+  const rows = await listExpiredDeliveryRequests(env, limit);
+  let cleaned = 0;
+  for (const row of rows) {
+    const requestId = requiredString(row, "request_id");
+    const assets = parseDeliveryAssets(row.asset_refs_json);
+    const assetsDeleted = await deleteDeliveryAssetsStrict(env, assets);
+    if (!assetsDeleted) continue;
+    if (await deleteExpiredDeliveryRequest(env, requestId)) {
+      cleaned += 1;
+    }
+  }
+  return cleaned;
+}
+
 async function processAiChatDeliveryRequest(
   env: GatewayEnv,
   requestId: string | null,
@@ -845,6 +983,7 @@ async function processAiChatDeliveryRequest(
   const deliveryRequestId = requiredString(claimed, "request_id");
   const accountId = requiredString(claimed, "account_id");
   let parsedRequest: GatewayRequest | null = null;
+  let assetRefs: DeliveryAssetRef[] = [];
   let outputTelemetry = defaultOutputTelemetry();
   const startedAt = Date.now();
   const stageTelemetry: RuntimeStageTelemetry = {
@@ -854,6 +993,7 @@ async function processAiChatDeliveryRequest(
     requestParseLatencyMs: 0,
     subscriptionDeviceLatencyMs: 0,
     plannerLatencyMs: 0,
+    plannerFailureReason: null,
     retrievalLatencyMs: 0,
     providerFirstPassLatencyMs: 0,
     firstValidationLatencyMs: 0,
@@ -864,10 +1004,8 @@ async function processAiChatDeliveryRequest(
 
   try {
     const payload = recordValue(claimed.request_payload_json);
-    const attachments = await loadDeliveryAttachments(
-      env,
-      parseDeliveryAssets(claimed.asset_refs_json),
-    );
+    assetRefs = parseDeliveryAssets(claimed.asset_refs_json);
+    const attachments = await loadDeliveryAttachments(env, assetRefs);
     const payloadWithAssets = {
       ...payload,
       ...(attachments.length > 0
@@ -896,7 +1034,7 @@ async function processAiChatDeliveryRequest(
       outputTelemetry,
     });
     outputTelemetry = result.outputTelemetry;
-    await finishDeliveryRequest(env, {
+    const finished = await finishDeliveryRequest(env, {
       requestId: deliveryRequestId,
       succeeded: true,
       result: result.responseBody,
@@ -904,6 +1042,9 @@ async function processAiChatDeliveryRequest(
       providerRequestCount: 1 + outputTelemetry.correctionAttemptCount,
       providerImageCount: parsedRequest.attachments.length,
     });
+    if (isTerminalDeliveryStatus(finished.status)) {
+      await deleteDeliveryAssets(env, assetRefs);
+    }
     return true;
   } catch (error) {
     const gatewayError = toGatewayHttpError(error);
@@ -916,7 +1057,7 @@ async function processAiChatDeliveryRequest(
       telemetry: outputTelemetry,
       stageTelemetry,
     });
-    await finishDeliveryRequest(env, {
+    const finished = await finishDeliveryRequest(env, {
       requestId: deliveryRequestId,
       succeeded: false,
       errorCode: gatewayError.code,
@@ -930,6 +1071,9 @@ async function processAiChatDeliveryRequest(
         : 1 + outputTelemetry.correctionAttemptCount,
       providerImageCount: parsedRequest?.attachments.length ?? 0,
     });
+    if (isTerminalDeliveryStatus(finished.status)) {
+      await deleteDeliveryAssets(env, assetRefs);
+    }
     return true;
   }
 }
@@ -959,10 +1103,20 @@ async function runAcceptedChatPipeline(params: {
 
   const providerConfig = readProviderRuntimeConfig();
   const plannerStartedAt = Date.now();
-  const chatDecision: ChatDecisionV2 = await buildApprovedChatDecision(
-    parsedRequest,
-    createModelChatDecisionPlanner(parsedRequest.modelChoice, providerConfig),
-  );
+  let chatDecision: ChatDecisionV2;
+  try {
+    chatDecision = await buildApprovedChatDecision(
+      parsedRequest,
+      createModelChatDecisionPlanner(parsedRequest.modelChoice, providerConfig),
+    );
+  } catch (error) {
+    if (error instanceof ChatDecisionPlanningError) {
+      stageTelemetry.plannerFailureReason = error.reason;
+    }
+    throw error;
+  } finally {
+    stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
+  }
   const taskPlan = chatDecisionToTaskPlan(chatDecision);
   outputTelemetry = {
     ...outputTelemetry,
@@ -972,7 +1126,6 @@ async function runAcceptedChatPipeline(params: {
     selectedCapability: chatDecision.capability,
     attachmentPolicy: chatDecision.attachment_policy,
   };
-  stageTelemetry.plannerLatencyMs = Date.now() - plannerStartedAt;
   const route = planToLegacyRoute(taskPlan);
   const retrievalStartedAt = Date.now();
   parsedRequest = {
@@ -1376,8 +1529,9 @@ async function claimDeliveryRequest(
   kind: "ai_chat" | "food_photo_analysis",
   requestId: string | null,
 ): Promise<Record<string, unknown> | null> {
-  const response = await fetch(
-    `${env.supabaseUrl}/rest/v1/rpc/claim_ai_delivery_request`,
+  const response = await deliveryBackendFetch(
+    env,
+    "rpc/claim_ai_delivery_request",
     {
       method: "POST",
       headers: serviceHeaders(env),
@@ -1390,7 +1544,7 @@ async function claimDeliveryRequest(
     },
   );
   if (!response.ok) {
-    throw new GatewayHttpError("provider_failure", 502);
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
   }
   const body = await response.json();
   if (body === null) return null;
@@ -1410,22 +1564,29 @@ async function finishDeliveryRequest(
     providerRequestCount: number;
     providerImageCount: number;
   },
-): Promise<void> {
-  await fetch(`${env.supabaseUrl}/rest/v1/rpc/finish_ai_delivery_request`, {
-    method: "POST",
-    headers: serviceHeaders(env),
-    body: JSON.stringify({
-      input_request_id: params.requestId,
-      input_succeeded: params.succeeded,
-      input_result_json: params.result,
-      input_error_code: params.errorCode ?? null,
-      input_failure_stage: params.failureStage ?? null,
-      input_retryable: params.retryable ?? false,
-      input_provider: params.provider ?? null,
-      input_provider_request_count: params.providerRequestCount,
-      input_provider_image_count: params.providerImageCount,
-    }),
-  });
+): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `${env.supabaseUrl}/rest/v1/rpc/finish_ai_delivery_request`,
+    {
+      method: "POST",
+      headers: serviceHeaders(env),
+      body: JSON.stringify({
+        input_request_id: params.requestId,
+        input_succeeded: params.succeeded,
+        input_result_json: params.result,
+        input_error_code: params.errorCode ?? null,
+        input_failure_stage: params.failureStage ?? null,
+        input_retryable: params.retryable ?? false,
+        input_provider: params.provider ?? null,
+        input_provider_request_count: params.providerRequestCount,
+        input_provider_image_count: params.providerImageCount,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new GatewayHttpError("delivery_backend_unavailable", 502);
+  }
+  return recordValue(await response.json());
 }
 
 async function persistDeliveryAssets(
@@ -1451,7 +1612,7 @@ async function persistDeliveryAssets(
       body: base64ToBlob(attachment.base64Data, attachment.mimeType),
     });
     if (!response.ok) {
-      throw new GatewayHttpError("provider_failure", 502);
+      throw new GatewayHttpError("delivery_backend_unavailable", 502);
     }
     refs.push({
       path,
@@ -1467,17 +1628,32 @@ async function deleteDeliveryAssets(
   env: GatewayEnv,
   assets: DeliveryAssetRef[],
 ): Promise<void> {
-  await Promise.all(
-    assets.map((asset) =>
-      fetch(storageObjectUrl(env, asset.path), {
-        method: "DELETE",
-        headers: {
-          apikey: env.supabaseServiceRoleKey,
-          authorization: `Bearer ${env.supabaseServiceRoleKey}`,
-        },
-      }).catch(() => null)
-    ),
+  await deleteDeliveryAssetsStrict(env, assets);
+}
+
+async function deleteDeliveryAssetsStrict(
+  env: GatewayEnv,
+  assets: DeliveryAssetRef[],
+): Promise<boolean> {
+  const results = await Promise.all(
+    assets.map((asset) => deleteDeliveryAsset(env, asset)),
   );
+  return results.every((response) =>
+    response !== null && (response.ok || response.status === 404)
+  );
+}
+
+async function deleteDeliveryAsset(
+  env: GatewayEnv,
+  asset: DeliveryAssetRef,
+): Promise<Response | null> {
+  return await fetch(storageObjectUrl(env, asset.path), {
+    method: "DELETE",
+    headers: {
+      apikey: env.supabaseServiceRoleKey,
+      authorization: `Bearer ${env.supabaseServiceRoleKey}`,
+    },
+  }).catch(() => null);
 }
 
 async function loadDeliveryAttachments(
@@ -1579,9 +1755,16 @@ function boundedWorkerLimit(value: unknown): number {
 }
 
 function deliveryStatus(value: unknown): AcceptedDelivery["status"] {
-  return value === "running" || value === "succeeded" || value === "failed"
+  return value === "running" ||
+      value === "succeeded" ||
+      value === "failed" ||
+      value === "cancelled"
     ? value
     : "queued";
+}
+
+function isTerminalDeliveryStatus(value: unknown): boolean {
+  return value === "succeeded" || value === "failed" || value === "cancelled";
 }
 
 function isRetryableDeliveryError(code: AiGatewayErrorCode): boolean {
@@ -2801,6 +2984,7 @@ function latencyBreakdownJson(
     request_parse_ms: telemetry.requestParseLatencyMs,
     subscription_device_ms: telemetry.subscriptionDeviceLatencyMs,
     planner_ms: telemetry.plannerLatencyMs,
+    planner_failure_reason: telemetry.plannerFailureReason,
     context_build_ms: telemetry.retrievalLatencyMs,
     first_retrieval_coverage_status: retrievalDebug?.first_coverage_status ??
       "not_requested",

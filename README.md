@@ -38,7 +38,7 @@ AI 只生成草稿、建议、复盘和解释。
 - AI 输出在确认前只是草稿、建议、复盘或解释。
 - AI 不会静默写入正式饮食、训练、Profile 或目标数据。
 - AI 不会自动应用 carb tapering、删除记录或修改饮食目标。
-- 图片请求最多三张；服务器接管前不会长期保存原图或 base64，接管后的异步请求只把压缩图短期保存到私有临时存储，用于恢复和重试。
+- 图片请求最多三张；服务器接管前不会长期保存原图或 base64。AI Chat 接管后的异步图片请求只把压缩图短期保存到私有临时存储，用于 worker 恢复、重试和清理；Add Food 图片分析使用页面直连请求，只在原页面仍存活时取回结果。
 - Clarification option 只在当前 session 的 pending state 内生效；planner/provider/validation 故障显示真实系统错误，不伪装为用户歧义。
 - V1 不做用户业务数据向量库、长期 embedding、semantic memory 或 GraphRAG。
 - V1 不是医疗诊断、治疗建议或儿童青少年治疗指导工具。
@@ -73,7 +73,7 @@ diet_plan_strategy:
 
 ### 云端与本地数据
 
-登录后，正式 Profile、身体指标、饮食、训练和 daily summaries 以云端为权威来源。本地 SQLite 保留为 partial cache、草稿存储和运行期加速层。服务器已接受的 AI Chat 和 Add Food 图片分析请求由云端交付状态接管，不依赖前台 Flutter 进程继续存活。FitLog_Agent 使用单 active device 策略；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入。
+登录后，正式 Profile、身体指标、饮食、训练和 daily summaries 以云端为权威来源。本地 SQLite 保留为 partial cache、草稿存储和运行期加速层。服务器已接受的 AI Chat 由云端交付状态接管并可跨进程恢复；Add Food 图片分析只保障原页面仍存活时切后台再回来能看到结果，进程或页面死亡后不恢复输入或结果。FitLog_Agent 使用单 active device 策略；新设备登录会接管账号，旧设备下一次云端交互时停止正式写入。
 
 完整的云端/本地权威、cache-first 读取、warm cache、写入成功条件、异常、冲突和修复规则见 [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md) / [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md)。
 
@@ -151,7 +151,7 @@ Local 版本基线保留在 `docs/local/`。
 
 - AI 请求可能包含用户输入、图片、Cloud Profile 字段和必要的云端摘要上下文。
 - 用户记录摘要上下文需要用户在 App 内授权。
-- 原图默认不长期保存；服务器已接受的异步图片分析只短期保存压缩图，供云端 worker 恢复和重试。
+- 原图默认不长期保存；服务器已接受的 AI Chat 异步图片请求只短期保存压缩图，供云端 worker 恢复、重试和清理。Add Food 图片分析不做进程死亡后的前端恢复。
 - 登录后的云端 chat history 会保存文本 turn、轻量 artifact/evidence snapshot 和摘要。
 - AI 输出不是医疗建议。
 - AI 不能自动修改目标、策略、Profile 或正式记录。
@@ -194,7 +194,7 @@ Require user confirmation for official writes, deletes, and goal changes.
 - AI outputs are drafts, suggestions, reviews, or explanations until confirmed.
 - AI does not silently write official food, workout, Profile, or goal data.
 - AI does not automatically apply carb tapering, delete records, or change diet goals.
-- Image requests are limited to three images; before server acceptance, original images or base64 payloads are not stored long term, and accepted async requests keep compressed images only in private temporary storage for recovery and retry.
+- Image requests are limited to three images; before server acceptance, original images or base64 payloads are not stored long term. Accepted AI Chat async image requests keep compressed images only in private temporary storage for worker recovery, retry, and cleanup. Add Food photo analysis uses a page-owned direct request and only recovers the result while the original page is still alive.
 - Clarification options are valid only inside the current session's pending state; planner, provider, and validation failures remain truthful system errors rather than fake user ambiguity.
 - V1 does not create user-business-data vector databases, long-term embeddings, semantic memory, or GraphRAG.
 - V1 is not medical diagnosis, treatment advice, or pediatric treatment guidance.
@@ -229,7 +229,7 @@ Key boundaries:
 
 ### Cloud And Local Data
 
-After sign-in, official Profile, body metrics, food, workout, and daily summaries use the cloud as the source of truth. Local SQLite remains partial cache, draft storage, and runtime acceleration. Server-accepted AI Chat and Add Food photo-analysis requests are owned by cloud delivery status instead of the foreground Flutter process. FitLog_Agent uses a single-active-device policy; a newer login takes over the account, and the older device stops official writes on the next cloud interaction.
+After sign-in, official Profile, body metrics, food, workout, and daily summaries use the cloud as the source of truth. Local SQLite remains partial cache, draft storage, and runtime acceleration. Server-accepted AI Chat requests are owned by cloud delivery status and can recover across process death. Add Food photo analysis guarantees the background-and-return case only while the original page is still alive; page or process death restores no input or result. FitLog_Agent uses a single-active-device policy; a newer login takes over the account, and the older device stops official writes on the next cloud interaction.
 
 The full cloud/local authority, cache-first reads, warm cache, write-success rules, failures, conflicts, and repair policy live in [docs/en/CloudLocalDataBoundary.md](docs/en/CloudLocalDataBoundary.md) / [docs/zh/CloudLocalDataBoundary.md](docs/zh/CloudLocalDataBoundary.md).
 
@@ -307,7 +307,7 @@ The Local version baseline remains under `docs/local/`.
 
 - AI requests may include user text, images, Cloud Profile fields, and necessary cloud summary context.
 - User-record summary context requires in-app user permission.
-- Original images are not stored long term by default; accepted async image analysis keeps compressed images only in private temporary storage for cloud worker recovery and retry.
+- Original images are not stored long term by default; accepted AI Chat async image requests keep compressed images only in private temporary storage for cloud worker recovery, retry, and cleanup. Add Food photo analysis has no frontend recovery after process death.
 - Signed-in cloud chat history stores text turns plus lightweight artifact/evidence snapshots and summaries.
 - AI outputs are not medical advice.
 - AI must not automatically modify goals, strategies, Profile, or official records.

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../data/repositories/ai_chat_repository.dart';
 import '../../data/repositories/custom_exercise_repository.dart';
 import '../../data/repositories/phase2_repository_exception.dart';
@@ -41,6 +42,8 @@ class AiChatController extends ChangeNotifier {
       const <AiGatewayImageAttachment>[];
   Map<String, List<AiGatewayImageAttachment>> _runtimeUserAttachments =
       const <String, List<AiGatewayImageAttachment>>{};
+  Map<String, List<AiGatewayImageAttachment>> _runtimeDeliveryAttachments =
+      const <String, List<AiGatewayImageAttachment>>{};
   Map<String, AiFoodDraft> _runtimeAssistantFoodDrafts =
       const <String, AiFoodDraft>{};
   Map<String, AiWorkoutDraft> _runtimeAssistantWorkoutDrafts =
@@ -55,6 +58,7 @@ class AiChatController extends ChangeNotifier {
   AiGatewayResponse? _lastSuccessfulResponse;
   List<AiDeliveryRequest> _deliveryRequests = const <AiDeliveryRequest>[];
   Timer? _deliveryPollTimer;
+  bool _pollingDeliveryRequests = false;
   final Set<String> _deletingSessionIds = <String>{};
 
   String? get accountId => _accountId;
@@ -85,19 +89,9 @@ class AiChatController extends ChangeNotifier {
               request.kind == AiDeliveryKind.aiChat &&
               request.sessionId == sessionId &&
               request.status != AiDeliveryStatus.succeeded &&
+              request.status != AiDeliveryStatus.cancelled &&
               !messageRequestIds.contains(request.requestId),
         )
-        .toList(growable: false);
-  }
-
-  List<AiDeliveryRequest> get visiblePhotoDeliveryRequests {
-    return _deliveryRequests
-        .where(
-          (request) =>
-              request.kind == AiDeliveryKind.foodPhotoAnalysis &&
-              (request.isPending || request.isFailed || request.isSucceeded),
-        )
-        .take(5)
         .toList(growable: false);
   }
 
@@ -118,6 +112,16 @@ class AiChatController extends ChangeNotifier {
       return const <AiGatewayImageAttachment>[];
     }
     return _runtimeUserAttachments[message.id] ??
+        const <AiGatewayImageAttachment>[];
+  }
+
+  List<AiGatewayImageAttachment> runtimeAttachmentsForDelivery(
+    AiDeliveryRequest request,
+  ) {
+    if (request.kind != AiDeliveryKind.aiChat) {
+      return const <AiGatewayImageAttachment>[];
+    }
+    return _runtimeDeliveryAttachments[request.requestId] ??
         const <AiGatewayImageAttachment>[];
   }
 
@@ -173,8 +177,12 @@ class AiChatController extends ChangeNotifier {
     _pendingUserText = null;
     _pendingUserAttachments = const <AiGatewayImageAttachment>[];
     _runtimeUserAttachments = const <String, List<AiGatewayImageAttachment>>{};
+    _runtimeDeliveryAttachments =
+        const <String, List<AiGatewayImageAttachment>>{};
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _runtimeDeliveryAttachments =
+        const <String, List<AiGatewayImageAttachment>>{};
     _clarificationAttachmentLeases =
         const <String, _ClarificationAttachmentLease>{};
     _clarificationRetryRequestIds = const <String, String>{};
@@ -182,6 +190,7 @@ class AiChatController extends ChangeNotifier {
     _lastSuccessfulResponse = null;
     _deliveryRequests = const <AiDeliveryRequest>[];
     _deliveryPollTimer?.cancel();
+    _deliveryPollTimer = null;
     _deletingSessionIds.clear();
     _clearErrorState();
     notifyListeners();
@@ -194,6 +203,7 @@ class AiChatController extends ChangeNotifier {
   @override
   void dispose() {
     _deliveryPollTimer?.cancel();
+    _deliveryPollTimer = null;
     super.dispose();
   }
 
@@ -233,6 +243,8 @@ class AiChatController extends ChangeNotifier {
     _pendingUserAttachments = const <AiGatewayImageAttachment>[];
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
+    _runtimeDeliveryAttachments =
+        const <String, List<AiGatewayImageAttachment>>{};
     _clarificationAttachmentLeases =
         const <String, _ClarificationAttachmentLease>{};
     _clarificationRetryRequestIds = const <String, String>{};
@@ -313,6 +325,8 @@ class AiChatController extends ChangeNotifier {
     _localDataEpoch += 1;
     _pendingUserAttachments = const <AiGatewayImageAttachment>[];
     _runtimeUserAttachments = const <String, List<AiGatewayImageAttachment>>{};
+    _runtimeDeliveryAttachments =
+        const <String, List<AiGatewayImageAttachment>>{};
     _runtimeAssistantFoodDrafts = const <String, AiFoodDraft>{};
     _runtimeAssistantWorkoutDrafts = const <String, AiWorkoutDraft>{};
     _clarificationAttachmentLeases =
@@ -403,7 +417,7 @@ class AiChatController extends ChangeNotifier {
       allowRecordSummaryContext: allowRecordSummaryContext,
       client: const <String, dynamic>{
         'platform': 'flutter',
-        'app_version': 'phase4',
+        'app_version': AppConstants.currentAppVersion,
         'draft_schema_version': 'v3',
       },
       conversationContext: _buildConversationContext(),
@@ -437,8 +451,15 @@ class AiChatController extends ChangeNotifier {
         await loadSessions();
         await loadDeliveryRequests();
         final deliveryRequestId = response.transport?.requestId;
+        if (sendLocalDataEpoch == _localDataEpoch &&
+            (deliveryRequestId ?? '').isNotEmpty) {
+          _rememberRuntimeAttachmentsForDeliveryRequest(
+            requestId: deliveryRequestId!,
+            attachments: outboundAttachments,
+          );
+        }
         if ((deliveryRequestId ?? '').isNotEmpty) {
-          _startDeliveryPolling(deliveryRequestId!);
+          _ensureDeliveryPolling();
         }
         _pendingUserText = null;
         _pendingUserAttachments = const <AiGatewayImageAttachment>[];
@@ -658,7 +679,7 @@ class AiChatController extends ChangeNotifier {
       _deliveryRequests = await repository.listRecentDeliveryRequests(
         accountId: activeAccountId!,
       );
-      _refreshSelectedSessionFromPendingDelivery();
+      _ensureDeliveryPolling();
       if (notify) {
         notifyListeners();
       }
@@ -680,59 +701,66 @@ class AiChatController extends ChangeNotifier {
         requestId: requestId,
       );
       await loadDeliveryRequests();
-      _startDeliveryPolling(requestId);
+      _ensureDeliveryPolling();
     } catch (_) {
       _setTransientError(_errorFromCode('ai_delivery_retry_failed'));
       notifyListeners();
     }
   }
 
-  void _refreshSelectedSessionFromPendingDelivery() {
-    if ((_selectedSessionId ?? '').isNotEmpty) {
+  void _ensureDeliveryPolling() {
+    final hasPending = _deliveryRequests.any((request) => request.isPending);
+    if (!hasPending) {
+      _deliveryPollTimer?.cancel();
+      _deliveryPollTimer = null;
       return;
     }
-    for (final request in _deliveryRequests) {
-      if (request.kind == AiDeliveryKind.aiChat &&
-          (request.sessionId ?? '').isNotEmpty &&
-          (request.isPending || request.isFailed)) {
-        _selectedSessionId = request.sessionId;
-        return;
-      }
+    if (_deliveryPollTimer != null) {
+      return;
     }
-  }
-
-  void _startDeliveryPolling(String requestId) {
-    _deliveryPollTimer?.cancel();
-    var ticks = 0;
-    _deliveryPollTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      ticks += 1;
-      if (ticks > 40) {
-        timer.cancel();
-        return;
-      }
-      unawaited(_pollDeliveryRequest(requestId, timer));
+    _deliveryPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(_pollPendingDeliveryRequests());
     });
   }
 
-  Future<void> _pollDeliveryRequest(String requestId, Timer timer) async {
-    final activeAccountId = _accountId;
-    if ((activeAccountId ?? '').isEmpty) {
-      timer.cancel();
+  Future<void> _pollPendingDeliveryRequests() async {
+    if (_pollingDeliveryRequests) {
       return;
     }
+    final activeAccountId = _accountId;
+    if ((activeAccountId ?? '').isEmpty) {
+      _deliveryPollTimer?.cancel();
+      _deliveryPollTimer = null;
+      return;
+    }
+    final pendingRequests = _deliveryRequests
+        .where((request) => request.kind == AiDeliveryKind.aiChat)
+        .where((request) => request.isPending)
+        .toList(growable: false);
+    if (pendingRequests.isEmpty) {
+      _ensureDeliveryPolling();
+      return;
+    }
+    final terminalSessionIds = <String>{};
+    _pollingDeliveryRequests = true;
     try {
-      final request = await repository.getDeliveryRequest(
-        accountId: activeAccountId!,
-        requestId: requestId,
-      );
-      if (request == null) {
-        return;
+      for (final pendingRequest in pendingRequests) {
+        final request = await repository.getDeliveryRequest(
+          accountId: activeAccountId!,
+          requestId: pendingRequest.requestId,
+        );
+        if (request == null) {
+          continue;
+        }
+        _upsertDeliveryRequest(request);
+        if (!request.isPending && (request.sessionId ?? '').isNotEmpty) {
+          terminalSessionIds.add(request.sessionId!);
+        }
       }
-      _upsertDeliveryRequest(request);
-      if (!request.isPending) {
-        timer.cancel();
+      _ensureDeliveryPolling();
+      if (terminalSessionIds.isNotEmpty) {
         await loadSessions();
-        final sessionId = request.sessionId ?? _selectedSessionId;
+        final sessionId = _selectedSessionId;
         if ((sessionId ?? '').isNotEmpty) {
           await loadMessages(sessionId!);
         }
@@ -741,6 +769,8 @@ class AiChatController extends ChangeNotifier {
       }
     } catch (_) {
       // Foreground polling is best-effort; resume/load paths perform repair.
+    } finally {
+      _pollingDeliveryRequests = false;
     }
   }
 
@@ -793,6 +823,22 @@ class AiChatController extends ChangeNotifier {
           ..._runtimeUserAttachments,
           selected.id: List<AiGatewayImageAttachment>.unmodifiable(attachments),
         });
+  }
+
+  void _rememberRuntimeAttachmentsForDeliveryRequest({
+    required String requestId,
+    required List<AiGatewayImageAttachment> attachments,
+  }) {
+    if (attachments.isEmpty) {
+      return;
+    }
+    _runtimeDeliveryAttachments =
+        Map<String, List<AiGatewayImageAttachment>>.unmodifiable(
+          <String, List<AiGatewayImageAttachment>>{
+            ..._runtimeDeliveryAttachments,
+            requestId: List<AiGatewayImageAttachment>.unmodifiable(attachments),
+          },
+        );
   }
 
   void _rememberClarificationRuntime(

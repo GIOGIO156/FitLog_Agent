@@ -66,9 +66,32 @@ export interface ChatDecisionV2 {
   attachment_policy: ChatAttachmentPolicy;
 }
 
+export type PlannerFailureReason =
+  | "not_configured"
+  | "client_timeout"
+  | "provider_timeout_response"
+  | "provider_rate_limited"
+  | "provider_auth_rejected"
+  | "provider_client_error"
+  | "provider_server_error"
+  | "provider_http_error"
+  | "network_or_fetch_error"
+  | "provider_response_json_invalid"
+  | "provider_output_missing"
+  | "planner_json_invalid"
+  | "decision_contract_invalid"
+  | "unknown";
+
+export class PlannerCallError extends Error {
+  constructor(readonly reason: PlannerFailureReason) {
+    super(reason);
+  }
+}
+
 export class ChatDecisionPlanningError extends Error {
   constructor(
     readonly code: "planner_unavailable" | "planner_output_invalid",
+    readonly reason: PlannerFailureReason,
   ) {
     super(code);
   }

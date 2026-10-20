@@ -2,6 +2,7 @@ import 'package:fitlog_local/core/constants/app_constants.dart';
 import 'package:fitlog_local/domain/models/ai_chat_message.dart';
 import 'package:fitlog_local/domain/models/ai_chat_clarification.dart';
 import 'package:fitlog_local/domain/models/ai_chat_session.dart';
+import 'package:fitlog_local/domain/models/ai_delivery_request.dart';
 import 'package:fitlog_local/domain/models/ai_delivery_transport.dart';
 import 'package:fitlog_local/domain/models/ai_food_photo_analysis.dart';
 import 'package:fitlog_local/domain/models/ai_gateway_error.dart';
@@ -399,6 +400,19 @@ void main() {
       expect(response.transport?.status, AiDeliveryStatus.queued);
     });
 
+    test('parses cancelled delivery status as terminal client state', () {
+      final request = AiDeliveryRequest.fromMap(<String, dynamic>{
+        'request_id': 'req_cancelled',
+        'kind': 'ai_chat',
+        'client_request_id': 'client_req_1',
+        'status': 'cancelled',
+      });
+
+      expect(request.status, AiDeliveryStatus.cancelled);
+      expect(request.isPending, isFalse);
+      expect(request.isCancelled, isTrue);
+    });
+
     test('parses a clarification payload without a false draft success', () {
       final response = AiGatewayResponse.fromJson(<String, dynamic>{
         'workflow': 'food_logging',
@@ -495,6 +509,11 @@ void main() {
       final unavailable = AiGatewayResponse.fromJson(<String, dynamic>{
         'error': <String, dynamic>{'code': 'provider_unavailable'},
       });
+      final deliveryBackendUnavailable = AiGatewayResponse.fromJson(
+        <String, dynamic>{
+          'error': <String, dynamic>{'code': 'delivery_backend_unavailable'},
+        },
+      );
       final refusal = AiGatewayResponse.fromJson(<String, dynamic>{
         'error': <String, dynamic>{'code': 'provider_refusal'},
       });
@@ -511,6 +530,10 @@ void main() {
       expect(unknown.error?.code, AiGatewayErrorCode.unknown);
       expect(unknown.error?.rawCode, 'provider_raw_500');
       expect(unavailable.error?.code, AiGatewayErrorCode.providerUnavailable);
+      expect(
+        deliveryBackendUnavailable.error?.code,
+        AiGatewayErrorCode.deliveryBackendUnavailable,
+      );
       expect(
         outputInvalid.error?.code,
         AiGatewayErrorCode.providerOutputInvalid,

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase/supabase.dart' as supabase;
 
 import '../../domain/models/auth_session.dart';
+import '../../core/diagnostics/auth_diagnostics.dart';
 import '../../domain/models/cloud_runtime_context.dart';
 import 'phase2_repository_exception.dart';
 
@@ -51,6 +52,7 @@ class SupabaseActiveDeviceRepository implements ActiveDeviceRepository {
       throw const Phase2RepositoryException('auth_required');
     }
     final deviceId = await _loadOrCreateDeviceId();
+    AuthDiagnostics.instance.record('device_claim_start');
     try {
       await client.rpc(
         'claim_active_device',
@@ -66,7 +68,13 @@ class SupabaseActiveDeviceRepository implements ActiveDeviceRepository {
         deviceId: deviceId,
         sessionId: sessionId!,
       );
+      AuthDiagnostics.instance.record('device_claim_success');
     } catch (error) {
+      AuthDiagnostics.instance.record(
+        'device_claim_failure',
+        failure: true,
+        error: error,
+      );
       throw _activeDeviceExceptionFor('active_device_claim_failed', error);
     }
   }
@@ -85,15 +93,23 @@ class SupabaseActiveDeviceRepository implements ActiveDeviceRepository {
         },
       );
       if (!_resultAllowsActiveDevice(result)) {
+        AuthDiagnostics.instance.record('device_check_replaced', failure: true);
         runtimeContext.markDeviceReplaced();
         throw const Phase2RepositoryException('device_replaced');
       }
+      AuthDiagnostics.instance.record('device_check_success');
     } on Phase2RepositoryException {
       rethrow;
     } catch (error) {
       final exception = _activeDeviceExceptionFor(
         'active_device_assert_failed',
         error,
+      );
+      AuthDiagnostics.instance.record(
+        'device_check_failure',
+        failure: true,
+        error: error,
+        data: {'device_check': exception.code},
       );
       if (exception.code == 'device_replaced') {
         runtimeContext.markDeviceReplaced();

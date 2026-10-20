@@ -30,7 +30,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - Flutter + Dart App shell。
 - `Home`、`Food`、`AI`、`Workout`、`Profile` 五个主要 tab。
 - Phase 4 AI Chat shell：居中 AI tab、真实 Gateway 发送、本机持久化 ChatGPT/千问模型选择器、只表达可用性的 status pill、云端 history 读取/切换/新建/inline 重命名/确认删除、用户记录摘要授权开关和 request/debug logging。
-- Provider-neutral `chat_decision.v2`、typed/persisted clarification、当前图片生命周期、accepted AI delivery、历史 decision shadow diff、真实 production-path fixture runner 和细分系统错误已经部署；migration、真实 auto canary、受控 soak、回滚演练和 configured split APK 已完成，legacy 生产分支已退场。线上 accepted delivery 仍需要应用 migration、部署 Edge Functions、配置定时 worker/临时资产清理，并完成有效测试设备上的杀进程/恢复 canary。
+- Provider-neutral `chat_decision.v2`、typed/persisted clarification、当前图片生命周期、accepted AI delivery、历史 decision shadow diff、真实 production-path fixture runner 和细分系统错误已经进入主线；legacy 生产分支已退场。Accepted delivery 的线上验收必须同时确认目标环境具备 `ai_delivery_requests` migration、匹配 Edge Functions、worker 处理入口和临时资产清理；若 Edge 已切到 `async_v1` 但数据库/RPC/bucket 未就绪，客户端应收到 `delivery_backend_unavailable` 而不是 provider failure。
 - Phase 2 账号/Profile 基础：Supabase 配置入口、邮箱密码与注册验证码 auth repository、订阅状态 repository、内部兑换码 entitlement RPC、Cloud Profile repository/mapper、Profile 登录 gate、Cloud Profile 自动初始化、Profile 订阅卡、AI 账号/订阅状态 sheet、用户记录摘要授权开关。
 - Phase 2 Supabase migration：`subscriptions`、`cloud_profiles`、`internal_subscription_codes` 和 `internal_subscription_redemptions` 表、既有 `cloud_profiles` 兼容补列、RLS、字段约束、内部兑换码 RPC 和开发 seed 说明。
 - Phase 3 Cloud Records Foundation 和主要 hardening 链路已落地：root auth gate、`account_active_devices`/active-device RPC、`body_metric_logs`、food/workout 云端表、`daily_summaries` 表、本地 v21 兼容 schema、body/food/workout cloud-backed repository、正式写入 active-device guard、登录冷启动后台账号恢复、Home 选中日期 `daily_summary_cache` + cache-first stale-while-revalidate、refresh 期间保留已显示 dashboard、`daily_summaries` 云端 upsert/恢复、Home 稳定后启动的近期 summary warm-cache、confirmed cache eviction，以及基于云端正式 records 的导出完整性。
@@ -39,7 +39,7 @@ Roadmap 的核心目的不是把功能列完，而是保证每个阶段都能独
 - 本地饮食记录、饮食 item、训练记录、训练 set、体重记录。
 - 手动饮食录入。
 - 外部 AI JSON 粘贴和本地解析，作为 Add Food 的次级 fallback。
-- Add Food AI 食物分析：纯文字描述、可选拍照/相册图片、loading overlay、`ai-food-photo-analyze`、Qwen Food Draft、accepted 后 AI 页面状态卡、Food Preview 确认保存。
+- Add Food AI 食物分析：纯文字描述、可选拍照/相册图片、loading overlay、`ai-food-photo-analyze`、Qwen Food Draft、原分析页存活时以页面直连请求继续等待并打开 Food Preview、Food Preview 确认保存；页面/进程死亡后不恢复图片、文字或结果。
 - 本地训练记录、训练草稿、自定义动作、训练热量估算。
 - `energy_ratio`。
 - `gram_per_kg`。
@@ -201,7 +201,7 @@ AI 行为原则：
 - 后端方案：Supabase。
   - Auth 使用 Supabase Auth。
   - 云端数据库使用 Supabase Postgres。
-  - 当前 Add Food AI 食物分析保留同步兼容请求体；服务器 accepted 异步模式会先把压缩图片写入私有临时 Storage，再返回 `202 accepted`，用于 worker 恢复和重试。
+  - 当前 Add Food AI 食物分析使用页面拥有的直连请求体，以减少常见路径等待；AI Chat accepted 异步图片请求才会先把压缩图片写入私有临时 Storage，再返回 `202 accepted`，用于 worker 恢复、重试和清理。
   - AI Gateway 使用 Supabase Edge Functions。
 - 登录方式：FitLog 自有邮箱验证码 / OTP 注册登录。
   - 任意可接收验证码的邮箱都可创建账号。
@@ -219,12 +219,12 @@ AI 行为原则：
   - Flutter App 不保存模型 key。
   - 具体文本、vision 和 structured output 模型名由服务端环境配置控制。
   - API key 创建位置和具体模型名到 Phase 4 接 AI Gateway 时再按官方后台说明填写。
-- 图片策略：当前 Add Food AI 食物分析使用文字描述和 App 压缩后的零到三张可选 JPEG/PNG/WebP。同步兼容模式通过 `ai-food-photo-analyze` 请求体传给 Edge Function；accepted 异步模式先写入私有临时 bucket，再由 worker 读取。
+- 图片策略：当前 Add Food AI 食物分析使用文字描述和 App 压缩后的零到三张可选 JPEG/PNG/WebP，并通过 `ai-food-photo-analyze` 请求体直连 Edge Function。AI Chat accepted 异步图片请求先写入私有临时 bucket，再由 worker 读取。
   - 每次 Add Food AI 食物分析请求可以是纯文字，也可以包含零到三张可选图片。
   - 压缩后仍超过 4 MB 则拒绝。
   - 推荐最长边 1600 px。
   - 原图、base64 payload 和 provider raw response 不写入 logs/debug summaries/chat history。
-  - accepted 异步图片只写入私有 `fitlog-ai-temp-assets` 临时对象；bucket、RLS、72 小时 delivery row expiry 和清理责任由 Database、AgentDesign 与 API contract 共同定义。
+  - accepted AI Chat 异步图片只写入私有 `fitlog-ai-temp-assets` 临时对象；bucket、RLS、Chat 72 小时 expiry 和清理责任由 Database、AgentDesign 与 API contract 共同定义。
 
 ### 本阶段不实现
 
@@ -252,7 +252,7 @@ AI 行为原则：
    - Phase 2 使用 Supabase Auth + Postgres 实现账号、Cloud Profile 和开发 entitlement。
    - Phase 3 使用 Supabase Postgres 表和 API 承载正式记录、summary 与 partial cache contract。
    - Phase 4 使用 Supabase Edge Functions 承载 AI Gateway。
-   - Step 5 使用 inline payload 承载 Add Food AI 食物分析；accepted 异步交付已补齐私有短期图片对象、隐私和 retention 设计，线上发布还需要实际应用 migration、部署 worker 入口并配置清理。
+   - Step 5 使用 inline payload 承载 Add Food AI 食物分析；accepted AI Chat 异步交付已补齐私有短期图片对象、隐私和 retention 设计，线上发布需要确认 migration、worker 入口和清理配置。
 
 2. 确认登录方式。
    - 已锁定 FitLog 自有邮箱密码登录 + 注册邮箱验证码。
@@ -1511,7 +1511,7 @@ App 测试：
 - Phase 4 Steps 3/4 已完成文本 Chat 闭环，新增 AI 页面 Gateway client、云端 history 读取/切换/新建/软删除、`record_ai_chat_turn`/`archive_ai_chat_session`/`soft_delete_ai_chat_session` RPC、OpenAI/ChatGPT 与千问/Qwen 服务端 provider 路由、request log 和 compact debug summary 写入。
 - Phase 4 Step 5 进一步完成 status pill 可用性语义、本机模型选择持久化、history inline 重命名与删除确认、隐藏 archive 入口，以及 Add Food AI 食物分析到 Food Preview 的草稿确认链路。
 - Phase 4 Step 6 新增 AI Chat 千问最多三张图片附件、Qwen 多模态 route、Food Draft artifact 卡片、点击后重建 Food Preview、AI 页背景性能优化和 loading/rename 体验修复。
-- 后续补齐了紧凑同会话 context、Workout Draft artifact 卡片、点击后重建现有训练编辑草稿、训练草稿最多一次追问、Add Food AI 食物分析支持纯文字或最多三张可选图片，以及 Chat/Add Food 的 accepted delivery row、短期私有图片暂存、恢复轮询和失败重试。
+- 后续补齐了紧凑同会话 context、Workout Draft artifact 卡片、点击后重建现有训练编辑草稿、训练草稿最多一次追问、Add Food AI 食物分析支持纯文字或最多三张可选图片，以及 AI Chat accepted delivery row、短期私有图片暂存、worker 恢复和失败处理。Chat 提供跨进程 UI 恢复；Add Food 使用页面直连请求，只在原分析页存活时取回结果。
 
 本阶段仍不接入 RAG、长期图片存储、长期草稿队列或 AI 自动正式业务数据写入。
 
@@ -1549,7 +1549,7 @@ AI Gateway 和 Chat History 是所有后续 AI workflow 的基础。先验证最
 - Chat 支持最多三张千问图片附件，不支持长期图片存储、公开图片对象或超过三张图片；accepted 异步模式只允许短期私有临时对象用于恢复和重试。
 - Chat 生成的 Food Draft 必须进入 Food Preview，用户确认前不能保存。
 - Chat 生成的 Workout Draft 必须进入现有训练编辑页，用户确认前不能保存为正式训练记录。
-- Add Food AI 食物分析只生成 Food Draft；同步成功时进入 Food Preview，accepted 异步成功时在 AI 页面显示完成卡片，用户点击后进入 Food Preview 并确认保存。
+- Add Food AI 食物分析只生成 Food Draft；页面直连请求成功时进入 Food Preview 并等待用户确认保存，不在 AI 页面显示全局完成卡片。
 - 不直接写正式 food/workout/profile 记录。
 - 不做流式输出，除非 Phase 0 已确定且实现成本低。
 - 不做复杂多 Agent。
@@ -2166,6 +2166,80 @@ Phase 7 是当前阶段。它不回退或重做 Phase 5/6，也不能借发布�
 
 最新稳定文档 corpus 的 external embedding、activation、parity 和 Edge redeploy 已完成。Production recheck 的检索质量与 Edge latency Gate 通过，但 typed-clarification answer consumption 连续返回 Qwen `provider_incomplete`，使消费、幂等重放和 resolved-once 三项仍开放；有效用户确认测试设备上的人工 journey 也仍待执行。一般发布监控、隐私和弱网审查继续按本阶段执行。事前 Git checkpoint 未形成是保留在历史中的流程偏差，不能事后伪造，也不再作为一个永远无法完成的伪 Release Gate。OpenAI 未配置且不是当前 Qwen 发布阻断项；未来启用前仍必须完成其独立 live canary、监控与 adapter rollback。
 
+### 当前阻断工作包：AI Chat 正确路由与图片交付时效
+
+状态：根因验证完成，产品修复进入实现与验证。该工作包是 Phase 7 release blocker，实施时允许回退或删改最近偏离产品目的的 accepted-delivery 延伸代码，但不得删除 Food 估算准确性策略、RAG 能力、用户确认边界或已确认的 Chat 历史语义。
+
+#### 已证实事实
+
+- `planner_unavailable` 的本次主要成因不是 Provider 不可用。受控同图实验中，约 447 KB JPEG 的纯文字 Planner 在 8 秒预算下 5/5 成功，平均 3.01 秒；带图 Planner 仅 1/5 成功，其余 4 次均由客户端在约 8.01 秒主动中止。把诊断预算放宽到 20 秒后，带图 Planner 5/5 成功，耗时 8.24 至 12.17 秒，平均 9.61 秒。因此当前 8 秒多模态 Planner 预算与实际分布不相容，而顶层 `planner_unavailable` 又掩盖了 `client_timeout`。
+- Git 历史表明 8 秒 `chat_decision.v2` Planner 自 2026-07-19 起已经存在，并非 accepted delivery 本身新建。最近工程让失败进入新的交付、历史与恢复状态机，因此问题更频繁、更可见；不能把“最近才被用户观察到”等同于“最近才写入 Planner”。
+- 最近加入的“任意图片附件直接固定为 `general_chat/text`”只是一条绕开 Planner 超时的临时分支，不满足产品意图。图片存在本身不能证明用户想记录食物、分析冰箱、询问可食用性或执行其他任务；该分支必须退出生产设计。
+- 三次同口径生产 Add Food canary 的点击发送到 App 可见结果为 17.04、17.37、20.20 秒，平均 18.20 秒。接管前临时 Storage 上传平均 727 ms，claim 平均 96 ms，Worker Storage 回读平均 1.13 秒，Provider 首轮平均 14.42 秒，校验约 1 ms。Storage 是异步链路新增成本，但不足以解释接近一倍的变慢。
+- 当前 Add Food 在前台使用“立即一次，之后每 3 秒一次”轮询，因此完成后可见延迟的架构上界是约 3 秒加一次查询；生产 canary 终态出现在第 6、7、6 次 poll。该抖动直接影响用户对速度的感知。
+- 同图三轮 Phase 5.11 前后提示词对照中，旧策略平均 18.60 秒，当前策略平均 20.55 秒，增量约 1.95 秒或 10.5%，不是近一倍延迟的主因。小样本中当前策略的正确 item 数和总重量绝对误差略优，但不足以形成发布级准确率结论，不能据此删除参照物、逐 item 估算和合计复核规则。
+- 生产数据库的 `app.settings.supabase_functions_url` 与 `app.settings.fitlog_ai_worker_secret` 仍均未配置。Edge secret 和数据库 GUC 是两个独立存储；更严重的是，现有 cron 最近 24 小时 1,440/1,440 次失败，因为 purge 直接删除 `storage.objects`，被 Supabase Storage `protect_delete()` 拒绝，函数在检查 Worker 配置前已经退出。现场存在 5 条过期 delivery row 和 6 个约 2.51 MB 临时对象，其中 4 个由过期 row 引用、2 个无 row 引用。正常请求通常由 `waitUntil` 完成，但定时 Worker 与过期清理均未闭环。
+
+#### 不变的产品验收边界
+
+1. Food 图片识别同时以准确率和时效为核心。显式数量优先、参照物建立尺度、逐 item 识别/估算、由 item 合计 meal totals、餐级合理性复核继续保留；性能优化不得通过删除这些约束伪造。
+2. 普通 AI Chat 的意图来自用户文字、明确入口、同会话状态和受限上下文。图片像素用于回答或生成草稿，不得仅凭“有图片”决定用户意图。
+3. AI Chat 消息一旦被服务器 accepted，会话和用户消息必须立即成为云端历史。App 被切后台或杀死不取消服务器工作；重新打开 App 不自动弹回该会话，但用户能在历史中找到它并查看成功答案或真实失败状态。
+4. 选择新图片、进入 AI tab、新建会话或恢复 Controller 都不得偷偷切换到旧失败会话。删除的历史会话不得因 delivery recovery 重新出现。
+5. Add Food 只保证原分析页仍存活时的前后台等待。页面或进程死亡后不恢复图片、文字、结果、状态卡或重试输入；常见路径应保持页面直连请求，不能为了极端恢复牺牲时效。
+6. 正式 food/workout 写入继续要求用户进入现有确认编辑页并保存；任何性能或恢复改造都不得绕过确认。
+
+#### 实施范围与明确取舍
+
+- 保留原版 Chat decision 语义：fixed entry、安全、clarification reply 和高置信规则先处理；开放式文字/图片意图继续由 bounded Planner 判断。图片存在本身不得直接固定为 `general_chat/text`，也不得用更多关键词替代模型意图判断。
+- 删除“只要有附件就固定 `general_chat/text`”的临时分支。对于带图但需要开放语义判断的 Chat 请求，恢复多模态 Planner，并把图片 Planner 预算调到已验证可覆盖主要分布的 15 秒，而不是使用无限等待或 20 秒诊断预算。
+- Add Food 从 accepted Storage/Worker/polling 热路径退回页面直连请求，保留 Phase 5.11 食品估算准确性提示词。普通切后台再返回由仍挂载页面消费已完成 direct response；页面或进程死亡不恢复。
+- AI Chat accepted delivery 保留为跨进程历史机制，但 Controller 刷新 delivery rows 时不得自动切换到旧失败/运行中/已删除 session；删除 Chat session 必须把 queued/running/failed delivery row 标记为 `cancelled`，迟到 worker 结果不得复活 UI。
+- Worker/cleanup 只服务 AI Chat accepted delivery 的耐久性。过期清理不得直接删除 `storage.objects`；数据库定时任务通过私有运行期配置调用 Edge `cleanup_expired`，由 Edge 使用 Storage API 删除临时对象后再删 row。
+- Provider prompt 的准确性语义保持不变。后续只允许在版本化食品图片评测集上比较等价精简文案、图片尺寸/质量和输出 token 预算；没有准确率无回归证据就不发布性能改写。
+- 共享 delivery 层继续只拥有 request 生命周期、claim/lease、幂等、短期资产和终态；不得理解 Food Draft 字段、Chat 语义或官方记录写入。
+
+#### 工程步骤与验证 Gate
+
+1. 固化回归样本和性能基线。
+   - 把本次 Planner 8 秒/20 秒实验、三次生产 Add Food canary 和 Phase 5.11 提示词对照写入版本化报告。
+   - 增加“冰箱还能吃什么”“判断食物是否变质”“帮我记录这顿饭”“请分析这张图”等图片文字组合，证明图片存在不等于 Food Draft。
+   - Gate：每个失败都能区分 `client_timeout`、Provider HTTP/限流/鉴权/服务端错误、响应 JSON 错误、Planner JSON/decision contract 错误；生产日志不保存原图、base64、raw prompt 或 raw output。
+2. 恢复 Chat decision 输入边界。
+   - 先执行 fixed entry、安全、clarification reply 和高置信规则；未决开放语义交给原本的 bounded Planner，图片请求使用多模态 Planner。
+   - 删除图片附件直接落入 `general_chat/text` 的旁路。
+   - Gate：冰箱饮食建议、食物记录、食物可食用性、普通图片问答等带图样例不因“有图片”被同一分支吞掉；Planner 超时错误能暴露细分原因。
+3. 修复 Chat accepted 历史状态机。
+   - accept RPC 在返回前创建或确认 session 并持久化用户 turn；terminal success 幂等写 assistant turn，terminal failure保留 session、用户 turn 和稳定失败状态。
+   - Controller 启动只刷新 pending/history，不自动选择旧 session；附件选择只能改变 composer，不得改变 session。
+   - Gate：新装、已有历史、删除历史、失败请求、杀进程、重开、新建会话和选图矩阵全部通过；失败会话可在历史找到，删除会话不复活，重启不自动弹回。
+4. 收紧 Add Food 延迟路径。
+   - Flutter 对 Add Food 发送 `asyncDelivery=false`，去掉 normal path 的 pre-accept Storage、Worker Storage 回读和轮询抖动。
+   - 页面仍挂载时，direct request 在后台完成后回前台消费同一结果；页面/进程死亡后清空输入和结果。
+   - Gate：同一图片和提示词下，Add Food 常见路径不再支付 accepted delivery 的 Storage/Worker/polling 成本；准确性提示词和 Food Preview 确认边界保持不变。
+5. 完成真正的 Worker 部署闭环。
+   - 用 `private.fitlog_runtime_settings` 保存 Function URL 和 Worker 调用凭据，数据库函数优先读取该私有表，旧 database GUC 只作兼容 fallback。
+   - 数据库 purge 不再直接修改 `storage.objects`；实际对象删除必须由受保护的 Edge cleanup action 调用 Storage API，成功后再删除 delivery row。对象删除失败时保留 row 供下次重试。
+   - Migration、私有运行期配置、Edge secret、cron job 和验证必须作为一个发布单元；任一缺失即阻断，不允许再写“主体已部署”。
+   - Gate：worker secret 不进仓库或日志；`cleanup_expired` 可以清理过期 row/object；`process_pending` 可以在 `waitUntil` 之外处理 queued Chat delivery。
+6. 建立食品准确率/时效联合 Gate。
+   - 建立含显式重量、包装净含量、常见参照物、无参照物、多 item、遮挡和非食物参照物的标注集；同图重复运行以测方差。
+   - 同时记录 item 检出、非食物误识别、item 重量误差、meal total 误差、clarification 合理性、首轮 contract 通过率、Provider p50/p95 和端到端 p50/p95。
+   - Gate：候选优化必须在准确率综合指标不低于当前策略的前提下降低 p50/p95；单个漂亮样本或只看平均延迟不能放行。
+7. 分阶段部署和回滚。
+   - 先部署数据库私有运行期配置/Worker 恢复闭环，再部署 Edge decision/热路径与可观测性，最后部署 Flutter 会话修复。
+   - 每一步先跑确定性测试和服务 canary，再跑有效账号真机矩阵；出现 history 丢失、重复 Provider、图片误路由、正式记录越权或准确率回归时立即回滚对应层。
+   - 本工作包不更新 Document RAG corpus/embedding；稳定设计文档全部收口后再按既有批次统一处理。
+
+#### 完成标准
+
+- AI Chat 图片请求恢复原版意图判断，不再由附件存在直接固定为 `general_chat/text`。
+- `planner_unavailable` 不再掩盖内部失败子类型；图片 Planner 使用 15 秒预算，不再被旧 8 秒预算稳定自截断。
+- AI Chat accepted 后跨进程完成、历史可找、重启不自动弹回、选图不切会话、删除不复活。
+- Add Food 原页前后台返回可见，进程死亡零恢复；端到端性能达到准确率/时效联合 Gate。
+- cron Worker 能独立于 `waitUntil` 完成 queued canary，Storage API 能清除过期对象/rows，私有运行期配置与 Edge secret 检查进入部署脚本和发布 checklist，且不再产生每分钟 cron failure。
+- Edge checks、Flutter analyze/test、真机矩阵和 configured split Release APK 全部通过，设计文档与实际版本一致。
+
 ### 目标
 
 把 V1 从“功能完成并有评测证据”变成“可以发布、审查、维护”的版本。
@@ -2257,7 +2331,7 @@ Phase 4 已经提前完成 Food Vision / Food Draft 的主要确认链路；因�
 
 7. 隐私、日志和删除账号。
    - production 不存 chain-of-thought、不存不必要 raw local context。
-   - Add Food / Chat 图片路径不把原图、base64 或完整 free-text note 写入 logs/debug summaries/chat history；accepted 异步请求允许短期保存压缩后的私有临时图片对象，用于 worker 恢复、重试和清理。
+   - Add Food / Chat 图片路径不把原图、base64 或完整 free-text note 写入 logs/debug summaries/chat history；accepted AI Chat 异步请求允许短期保存压缩后的私有临时图片对象，用于 worker 恢复、重试和清理。
    - 删除 Cloud Profile、云端正式 records 或按明确策略处理、chat history、identifiable AI conversation data，并清理本地 account-bound cache。
    - 如果 V1 不发布完整删除账号入口，必须在文档和 UI 中明确边界，不能假装已实现。
 

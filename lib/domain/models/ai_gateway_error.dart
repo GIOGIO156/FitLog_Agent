@@ -3,6 +3,7 @@ enum AiGatewayErrorCode {
   subscriptionRequired,
   deviceReplaced,
   gatewayTimeout,
+  deliveryBackendUnavailable,
   providerUnavailable,
   providerFailure,
   requestSchemaMismatch,
@@ -30,6 +31,8 @@ extension AiGatewayErrorCodeValue on AiGatewayErrorCode {
         return 'device_replaced';
       case AiGatewayErrorCode.gatewayTimeout:
         return 'gateway_timeout';
+      case AiGatewayErrorCode.deliveryBackendUnavailable:
+        return 'delivery_backend_unavailable';
       case AiGatewayErrorCode.providerUnavailable:
         return 'provider_unavailable';
       case AiGatewayErrorCode.providerFailure:
@@ -123,6 +126,8 @@ AiGatewayErrorCode aiGatewayErrorCodeFromValue(String? value) {
       return AiGatewayErrorCode.deviceReplaced;
     case 'gateway_timeout':
       return AiGatewayErrorCode.gatewayTimeout;
+    case 'delivery_backend_unavailable':
+      return AiGatewayErrorCode.deliveryBackendUnavailable;
     case 'provider_unavailable':
       return AiGatewayErrorCode.providerUnavailable;
     case 'provider_failure':

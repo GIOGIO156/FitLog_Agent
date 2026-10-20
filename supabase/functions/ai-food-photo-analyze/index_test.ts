@@ -1,9 +1,11 @@
 import {
   buildOpenAiVisionRequestBody,
   buildQwenVisionRequestBody,
+  errorMessageForCode,
   extractOpenAiVisionCompletion,
   extractQwenCompletion,
   foodDraftForClient,
+  logStatusForCode,
   parsePhotoAnalysisRequest,
   parseProviderFoodDraftBody,
   PhotoGatewayRequestError,
@@ -40,6 +42,14 @@ Deno.test("parsePhotoAnalysisRequest accepts up to three compact supported image
   assertEquals(parsed.images[0].mimeType, "image/jpeg");
   assertEquals(parsed.modelChoice, "qwen");
   assertEquals(parsed.userNote, "米饭吃了一半");
+});
+
+Deno.test("delivery backend unavailable is a stable photo Gateway error", () => {
+  assertEquals(
+    errorMessageForCode("delivery_backend_unavailable"),
+    "The AI delivery backend is unavailable.",
+  );
+  assertEquals(logStatusForCode("delivery_backend_unavailable"), "error");
 });
 
 Deno.test("OpenAI and Qwen image adapters share scoped food evidence policy", () => {

@@ -36,53 +36,38 @@ Each AI path separates four responsibilities. Surface orchestration owns entry, 
 
 ## Reliable AI Delivery
 
-For ordinary AI Chat turns and Add Food photo analysis, "the user can come back and see the result" means that once the Edge Function returns `202 accepted`, the request lifecycle is cloud-owned and no longer depends on the Flutter page, foreground state, or process lifetime. A later visit must show one of three recoverable states: still processing, succeeded with the existing business result, or failed with a stable retry action. Provider outages can still prevent a valid answer, but they must not make an accepted request disappear or spin forever.
+For ordinary AI Chat turns, "the user can come back and see the result" means that once the Edge Function returns `202 accepted`, the request lifecycle is cloud-owned and no longer depends on the Flutter page, foreground state, or process lifetime. A later visit to the same Chat session must show one of three recoverable states: still processing, succeeded through canonical chat history, or failed with a stable retry action. Opening the AI tab starts on a fresh conversation unless the user explicitly selected a session or the same mounted page was already on that session; completed or failed background work must not steal focus.
+
+Add Food photo analysis is a page-owned synchronous request in the current product. If the user backgrounds the app and later returns to the same mounted analysis page, the in-flight request may finish and the page opens Food Preview on resume. If the Flutter process or page is killed, Add Food photo analysis is treated as fully gone: the app does not restore the images, text, result, status card, or retry action. This keeps the fast Provider hot path for the common waiting case instead of adding temporary Storage, Worker reload, and polling delay to every food photo analysis.
 
 ```mermaid
 flowchart TD
-    A["User sends Chat or starts photo analysis"] --> B["Local input and stable request ID exist"]
-    B --> C["Upload complete request; images enter private temporary storage"]
-    C --> D["Edge validates auth, format, resources, subscription, and active device"]
-    D --> E{"Request atomically persisted?"}
-    E -->|No| F["No accepted response; client keeps input for retry"]
-    E -->|Yes| G["202 accepted + request_id"]
+    A["User sends AI Chat"] --> B["Edge validates auth, subscription, active device, and schema"]
+    B --> C{"Accepted?"}
+    C -->|No| D["Client keeps local input/error state"]
+    C -->|Yes| E["Persist/validate target session and ai_delivery_requests row"]
+    E --> F["202 accepted + request_id"]
+    F --> G["waitUntil or service worker claims queued request"]
+    G --> H["Original Chat decision pipeline runs"]
+    H --> I{"Delivery status"}
+    I -->|succeeded| J["Canonical chat messages/history show the answer"]
+    I -->|failed| K["Correct session shows stable failure and retry"]
+    I -->|cancelled| L["Deleted session/request stays hidden; late results are discarded"]
 
-    G --> H["App may background or be killed"]
-    G --> I["EdgeRuntime.waitUntil tries immediate execution"]
-    G --> J["Service-role worker later processes queued or stale leased requests"]
-
-    I --> K["Atomic claim with bounded lease"]
-    J --> K
-    K --> L["Reuse existing AI Chat or photo-analysis pipeline"]
-    L --> M{"Business type"}
-
-    M -->|AI Chat| N["Idempotently write existing session/message"]
-    M -->|Photo analysis| O["Store temporary draft result"]
-
-    N --> P["Request status becomes succeeded"]
-    O --> P
-    K -->|Retryable failure| Q["Record attempt and stage, then requeue within max attempts"]
-    Q --> J
-    K -->|Retry boundary reached| R["Stable failed status and error code"]
-
-    H --> S["App starts, resumes, or opens related surface"]
-    S --> T["Query user's pending and recent terminal requests"]
-    T --> U{"Kind and status"}
-
-    U -->|Chat processing| V["Show processing in the correct session"]
-    U -->|Chat complete| W["Refresh canonical session/message"]
-    U -->|Photo processing| X["Show recoverable analysis status card"]
-    U -->|Photo complete| Y["Let user open Food Preview"]
-    U -->|Failed| Z["Show stable failure and retry"]
-
-    Y --> AA{"User decision"}
-    AA -->|Confirm| AB["Existing confirmed save writes official food record"]
-    AA -->|Discard or expire| AC["Temporary draft/images are cleaned by retention policy"]
+    M["User starts Add Food analysis"] --> N["Mounted page sends direct image-capable request"]
+    N --> O{"Page still alive when result returns?"}
+    O -->|Yes, foreground| P["Open Food Preview"]
+    O -->|Yes, backgrounded| Q["Store result in page memory and open Preview on resume"]
+    O -->|No| R["No Add Food input/result/status is restored"]
+    P --> S{"User decision"}
+    Q --> S
+    S -->|Confirm| T["Existing confirmed save writes official food record"]
+    S -->|Discard| U["Draft disappears with the editor flow"]
 ```
 
-The shared delivery layer is intentionally narrow: request ownership, `kind`, `queued`/`running`/`succeeded`/`failed`, atomic claim, lease expiry, attempt limit, stable error code, timestamps, privacy-safe observability, idempotency, and short retention. It does not interpret Chat answers, Food Draft fields, provider prompts, RAG content, or official records.
+The shared AI Chat delivery layer is intentionally narrow: request ownership, `kind`, `queued`/`running`/`succeeded`/`failed`/`cancelled`, atomic claim, lease expiry, attempt limit, stable error code, timestamps, privacy-safe observability, idempotency, and short retention. It does not interpret Chat answers, Food Draft fields, provider prompts, RAG content, or official records.
 
-AI Chat delivery keeps `ai_chat_sessions` and `ai_chat_messages` as the only chat history. The accepted path persists or validates the target session before returning, then the worker records the assistant turn with a request/client idempotency key so duplicate workers do not create duplicate user-visible messages. Photo delivery stores request images in a private temporary bucket before accepted, persists the existing Food Draft response envelope as a temporary result, and never writes `food_records` until the user opens Food Preview and saves through the existing editor.
+AI Chat delivery keeps `ai_chat_sessions` and `ai_chat_messages` as the only chat history. The accepted path persists or validates the target session before returning, then the worker records the assistant turn with a request/client idempotency key so duplicate workers do not create duplicate user-visible messages. Deleting a Chat session cancels queued/running/failed delivery rows, hides the session, cleans temporary assets where possible, and prevents late worker results from recreating user-visible history.
 
 `chat_decision.v2` is the only active ordinary-Chat decision contract. In fixed precedence it consumes an eligible clarification reply, applies safety and fixed-entry constraints, accepts small symmetric high-confidence rules, and otherwise invokes one bounded planner. Its output jointly fixes the capability, allowed and selected output family, authorized Context request, clarification state, and attachment policy. The former legacy decision branch and its runtime flags are retired; its comparator remains only in deterministic historical-parity tests and cannot affect production. Planner failure is a system failure, not evidence that the user is ambiguous.
 
@@ -118,7 +103,7 @@ AI-adjacent compatibility features and Agent workflows must remain distinguishab
 | Prompt template copy | Its sole entry is Paste AI Result. It establishes a reusable external food-estimation chat contract: send once per new external chat, then submit photos, descriptions, and corrections before pasting the complete JSON back into the app. Its highest-priority rules require exactly one JSON object and require the model to finalize serialized items before deriving all top-level totals from them. The template follows the same evidence principle as internal food drafting: text normally supplements part of the image, and a clear scoped user fact overrides estimation only for its food and field. The card recommends the ChatGPT GPTs **FitLog 中文助手** and **FitLog Estimator**. Replies retain the existing complete flat JSON schema; keys stay in English, while natural-language values follow the user's current primary language. Trailing `estimation_notes` is normally empty and is limited to necessary non-duplicative supplemental information. The copied Prompt language follows the app language. | User-mediated external AI, not app-internal AI or an Edge prompt. |
 | External AI JSON paste | User pastes externally generated food JSON and FitLog parses it locally using the established food-estimate schema. | User-mediated external AI, not app-internal AI. |
 | `source = ai_paste` | Marks the origin of a confirmed compatibility-flow food record. | Provenance only, not proof of an internal model call. |
-| Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze`; the entry fixes the Food Draft family, validates it, and either opens Food Preview on the synchronous compatibility path or returns an accepted delivery row whose completed status card opens Food Preview after the user taps it. | Deterministic server-mediated draft workflow, without Chat intent inference. |
+| Add Food AI analysis | Sends text and zero to three optional images to `ai-food-photo-analyze` through the mounted page's direct request; the entry fixes the Food Draft family, validates it, and opens Food Preview when the synchronous result returns. If the page/process is gone, no input, result, status card, or retry UI is restored. | Deterministic server-mediated draft workflow, without Chat intent inference. |
 | AI Chat | Sends text and up to three images through Qwen after all gates pass. Selecting unconfigured ChatGPT produces a transient unavailable error and no request; the Gateway handles high-confidence intent first and otherwise lets the configured model select from bounded output types. | Server-mediated answer or draft generation. |
 | Structured RAG | Builds typed, minimum-necessary server-side context for routed read-only workflows. | Server-mediated read-only context. |
 | Document RAG | Searches the stable bilingual design corpus for app-logic questions. | Server-mediated read-only evidence. |
@@ -151,7 +136,7 @@ The AI page must make capability and authority visible without exposing provider
 - The composer remains editable while sending is unavailable, but the send action stays disabled until every runtime gate passes.
 - The usable Qwen selection is device-local. Exact models and provider credentials remain server-side. An unavailable ChatGPT selection enters the current UI only for brief tap feedback, then the selector automatically slides back to Qwen; it is not persisted as an active provider.
 - Up to three JPEG, PNG, or WebP attachments are supported. Current requests route through Qwen. Selecting unconfigured ChatGPT in AI Chat or Add Food AI analysis shows the normal transient `current model unavailable` error, preserves input, sends no provider request, and restores the Qwen selection through the shared sliding control. This UI recovery is not provider fallback and never converts the original tap into a Qwen request; the status pill continues to reflect subscription, device, and Gateway readiness only.
-- Small local picker-recovery markers may restore composer text, selected provider, attachments, or Add Food analysis after Android activity recreation. Recovery never queues or sends content and never bypasses real account/Gateway readiness.
+- Small local picker-recovery markers may restore AI Chat composer text, selected provider, and attachments after Android activity recreation. Add Food photo analysis no longer has durable local recovery: leaving a mounted page alive across a normal background transition is supported, but process death discards the in-progress form. Recovery never queues or sends content and never bypasses real account/Gateway readiness.
 - Intent clarification is represented by a persisted `ai_chat_clarification.v2` object with an opaque ID and allowlisted options. The client sends a typed option reply with a stable request ID; the server claims and consumes it idempotently before any new intent inference. Missing business fields receive at most one follow-up. Repeated no-progress signatures terminate as a stable error.
 - Current images are used in the same turn whenever the request is clear. An unclear image does not reopen intent selection when clear user text is already sufficient for the selected answer or draft; uncertainty stays in the result instead. A clarification may retain only a runtime attachment lease scoped to account and session; the database, history, logs, and RAG corpus never retain pixels. Reload, restart, local-data clearing, logout, or account switch invalidates that lease and changes the visible state to reattach-required.
 - Unsent composer text survives tab switches and temporary disabled states during the current runtime. Send start clears it into a pending turn; failure restores it. Logout or account switch clears it.
@@ -161,7 +146,7 @@ The AI page must make capability and authority visible without exposing provider
 - Explicit workflows fix their result family. Model output selection in ordinary Chat controls response shape only and grants no write, delete, or settings authority.
 - The Answer basis panel separates reference documents, used data, missing dimensions, and limited actions. Same-chat continuity is not presented as authoritative evidence.
 
-Lifecycle recovery follows each surface's product source of truth. Before `202 accepted`, local recovery stores only enough input to retry and never pretends the server has taken over. After `202 accepted`, AI Chat recovers by reloading canonical `ai_chat_sessions`, `ai_chat_messages`, and matching delivery rows; pending or failed rows are shown inside the correct session. Add Food photo analysis recovers through `ai_delivery_requests`: pending work appears as an AI-page status card, completed work opens the existing Food Preview only after the user taps it, and failed work exposes retry. None of these states writes official food records without confirmation.
+Lifecycle recovery follows each surface's product source of truth. Before `202 accepted`, AI Chat local recovery stores only enough picker/composer input to retry and never pretends the server has taken over. After `202 accepted`, AI Chat recovers by reloading canonical `ai_chat_sessions`, `ai_chat_messages`, and matching delivery rows; pending or failed rows are shown inside the correct session and never auto-open a stale session. Add Food photo analysis is page-owned in the normal product flow: the mounted page sends the direct request, stays loading while alive, opens the existing Food Preview on validated success, and returns to an editable error state on failure. If the Add Food page or process is lost, its form/result is lost. None of these states writes official food records without confirmation.
 
 Readiness is distinct from request activity:
 
@@ -187,11 +172,11 @@ Inputs may include a text description, up to three current-request images, selec
 1. AI extracts candidate foods, portions, cooking method, nutrition, and uncertainty.
 2. Material ambiguity produces a bounded clarification rather than a confident guess.
 3. The Gateway validates the versioned Food Draft, requires its date to match the resolved target date, and normalizes meal totals from item totals.
-4. Add Food opens Food Preview directly only for synchronous completed responses; accepted async photo delivery first returns an AI-page status card, and the completed card opens Preview only after the user taps it. Chat shows the accepted date and an artifact card, then opens Preview only after review.
+4. Add Food opens Food Preview directly for completed responses while the analysis page still exists. If that page/process is gone, the Add Food result is not restored. Chat shows the accepted date and an artifact card, then opens Preview only after review.
 5. The user may change the date through the themed calendar control and edit the remaining draft fields.
 6. Only the normal confirmed save path writes official food records.
 
-Original images and base64 payloads are not retained in logs, chat history, or official records. Accepted async image requests keep compressed images only in private temporary Storage until worker retry/recovery and retention cleanup no longer need them. Compact metadata may record image count, input kind, mime type, compressed length, validation result, and safety/error category.
+Original images and base64 payloads are not retained in logs, chat history, or official records. Accepted AI Chat image requests keep compressed images only in private temporary Storage until worker retry/recovery, terminal cleanup, or retention cleanup no longer need them. Add Food photo analysis uses the page-owned direct request path and does not create a cross-process recovery row in the normal product flow. Compact metadata may record image count, input kind, mime type, compressed length, validation result, and safety/error category.
 
 ### Workout Draft Workflow
 
@@ -271,7 +256,7 @@ All provider replies are untrusted until the Gateway validates the provider-inde
 Cloud retention may include:
 
 - AI sessions and accepted final chat messages;
-- short-lived `ai_delivery_requests` rows and private temporary photo objects for accepted delivery;
+- short-lived `ai_delivery_requests` rows and private temporary photo objects for accepted AI Chat delivery;
 - validated artifact/evidence snapshots needed for review and history;
 - request metadata needed for reliability, billing audit, abuse prevention, and debugging;
 - compact sanitized debug summaries.

@@ -77,6 +77,33 @@ Deno.test("clear soup consumption with an image becomes a food draft", async () 
   assertEquals(plannerCalled, false);
 });
 
+Deno.test("generic image requests use the multimodal planner", async () => {
+  let plannerCalled = false;
+  const result = await buildApprovedChatDecision(
+    request("帮我看看这个", { withImage: true }),
+    async () => {
+      plannerCalled = true;
+      return {
+        schema_version: "chat_decision.v2",
+        capability: "general_chat",
+        planned_workflow: "general_chat",
+        allowed_output_families: ["text"],
+        selected_output_family: "text",
+        entities: [],
+        requested_context: [],
+        retrieval_needs: [],
+        confidence: 0.74,
+        reasons: ["model_image_intent"],
+        requires_clarification: false,
+      };
+    },
+  );
+  assertEquals(result.planned_workflow, "general_chat");
+  assertEquals(result.selected_output_family, "text");
+  assertEquals(result.reasons, ["model_image_intent"]);
+  assertEquals(plannerCalled, true);
+});
+
 Deno.test("legacy implicit food quantities remain a deterministic food draft", async () => {
   const result = await buildApprovedChatDecision(
     request("鸡胸 200g 米饭 150g"),
@@ -188,19 +215,21 @@ Deno.test("mixed answer and workout write intent returns bounded typed options",
 });
 
 Deno.test("unclassified requests fail honestly when planner is unavailable", async () => {
-  await assertRejects(
+  const error = await assertRejects(
     () => buildApprovedChatDecision(request("帮我看看这个")),
     ChatDecisionPlanningError,
     "planner_unavailable",
   );
+  assertEquals(error.reason, "not_configured");
 });
 
 Deno.test("invalid model decisions are not converted into clarification", async () => {
-  await assertRejects(
+  const error = await assertRejects(
     () => buildApprovedChatDecision(request("帮我看看这个"), async () => ({})),
     ChatDecisionPlanningError,
     "planner_output_invalid",
   );
+  assertEquals(error.reason, "decision_contract_invalid");
 });
 
 function request(

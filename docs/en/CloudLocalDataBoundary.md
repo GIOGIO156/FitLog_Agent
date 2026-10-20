@@ -20,7 +20,7 @@ Pre-login compatibility behavior remains local. Offline official-write queues, c
 - Pages with confirmed account-bound cache should open from local data without waiting for active-device recovery or cloud refresh once the signed-in auth account is known.
 - Official data must not be lost because local cache is evicted.
 - AI may draft, explain, and review, but official data changes still require user confirmation and cloud success.
-- Before Edge returns `202 accepted`, AI input remains local retry state. After `202 accepted`, `ai_delivery_requests` is the cloud authority for request lifecycle, independent of the Flutter process.
+- Before Edge returns `202 accepted`, AI Chat input remains local retry state and must not be treated as cloud-owned work. After `202 accepted`, `ai_delivery_requests` is the cloud authority for the AI Chat request lifecycle. AI Chat exposes that authority across process death inside the correct session without auto-opening stale sessions. Add Food photo analysis uses a mounted-page direct request: page/process loss intentionally restores no input, result, status card, or retry UI.
 
 ## Runtime Account State Machine
 
@@ -93,8 +93,8 @@ Transition rules:
 | Workout records | sessions, sets, workout records | Cloud | Confirmed day read model and partial cache |
 | Daily summaries | selected-day totals and compact context | Rebuildable cloud projection | Confirmed summary cache |
 | Local-only app data | theme, runtime UI state, unfinished prompts, local export files | Local | Local authority |
-| Drafts | unsent prompts, pre-accepted Add Food input, manual/AI new-workout drafts | Local until accepted or confirmed | Draft storage only; saved-workout edits remain page-local |
-| AI delivery requests | accepted Chat turns and accepted photo-analysis drafts | Cloud/service `ai_delivery_requests` | Runtime display cache and polling trigger only |
+| Drafts | unsent Chat prompts, manual/AI new-workout drafts, mounted Add Food analysis form state | Local until accepted, confirmed, or page loss | Draft storage only; saved-workout edits and Add Food analysis form state remain page-local |
+| AI delivery requests | accepted Chat turns | Cloud/service `ai_delivery_requests` | Chat recovery source; deleted sessions cancel queued/running work and hide late results |
 | AI records | chat sessions, messages, final answers, request metadata | Cloud/service after their phases | Runtime display cache only |
 
 ## Source Of Truth Rules
@@ -116,7 +116,7 @@ Transition rules:
 - After cloud success, update the local confirmed read model and the affected `daily_summaries` projection/cache.
 - If cloud write fails, preserve the previous official state and keep any user draft/edit in a retryable non-official state.
 - AI cannot silently modify diet goals, apply carb tapering, delete records, or write official records; user confirmation and the official write path are required.
-- AI Chat/photo analysis may return `202 accepted` after auth, subscription, active-device, payload, idempotency, and image persistence succeed. From that point, page disposal, app backgrounding, or process loss must not delete the request; worker recovery is cloud-owned.
+- AI Chat may return `202 accepted` after auth, subscription, active-device, payload, idempotency, and required image persistence succeed. From that point, worker recovery is cloud-owned and app process loss must not delete the server row. Add Food photo analysis uses a mounted-page direct request in the normal product path; it exposes waiting/success/failure only while that page remains alive.
 - There is no offline official-write queue. Offline user edits remain drafts until an explicit online save succeeds.
 - Workout lifecycle autosave and official save are ordered mutations of one local draft. Before the official call, the app persists `committing` plus one mutation id, target plan, payload hash, save timestamp, and calculation weight; this state blocks lifecycle autosave, editing, automatic editor restoration, and the workout-in-progress notification.
 - `commit_workout_plan_v1` validates the active device and writes the replacement/create operation, all sessions, all sets, and a hash-only mutation ledger in one PostgreSQL transaction. The account/mutation key is idempotent: the same hash returns the original result, while a different hash is a conflict. The SQLite compatibility path applies the official local rows and its local hash-only ledger in one transaction under the same rule.
@@ -323,6 +323,12 @@ Enter repair or reconciliation:
 - Export and account repair use cloud official records or summaries as the authority.
 - Account deletion should delete Cloud Profile, cloud official records, identifiable chat history, and identifiable AI request/response data.
 
+Authentication diagnostics are device-local, bounded troubleshooting metadata in a separate SharedPreferences journal (`fitlog.auth.diagnostics.v1`), independent of SQLite and account-cache clearing. The journal retains 200 recent events and 20 failure incidents; each incident keeps up to five preceding and five following events. Successful events do not evict incidents; newer incidents eventually replace the oldest incident. Data survives process restart, sign-out, and later successful login. This diagnostic build preserves the existing session-clearing and device-replacement decisions; diagnostics do not authorize offline cloud access or change session validity.
+
+Events record process/run order, lifecycle, session presence and access expiry, session-storage read/write/clear outcomes, recovery/refresh/login outcomes, explicit sign-out and login-gate reasons, and active-device checks. Auth HTTP metadata includes operation, duration, HTTP status, allowlisted server error code, and server-versus-phone clock offset when a Date header is available. Snapshots include actual APK version/build, Android/device model, install/update times, network transport and OS validation flags, exposed VPN/proxy flags, automatic time, battery-saving/optimization and background restrictions. These are observations, not proof that a VPN or a phone setting caused failure; unavailable readings are marked unavailable. No diagnostic network probes are added.
+
+The journal excludes passwords, access/refresh/OTP tokens, email/account/session/device identifiers, API keys, request/response bodies, arbitrary exception messages, IPs, SSIDs, proxy addresses, and unrelated user records. Only exception type and categorized failure are retained. Collection/storage failures are best-effort and cannot change authentication results; a bounded snapshot timeout cannot block authentication. Export waits for queued events, creates a local JSON file, and opens the Android/iOS system share sheet from either the login page or signed-in Account card. The app does not automatically upload this journal; the user chooses a share destination. Cancellation or failure to open sharing preserves the file and journal. Normal retention bounds remain in force after export; export and successful login do not clear the journal.
+
 ## Page Rules
 
 Root auth gate:
@@ -365,7 +371,7 @@ AI:
 
 - AI context must not trust local SQLite cache as the final authority.
 - Use Cloud Profile plus cloud `daily_summaries` or controlled summary/context builders.
-- Accepted AI request lifecycle is cloud-authoritative in `ai_delivery_requests`; client polling, resume refresh, and AI-page status cards are display/repair paths only.
+- Accepted AI Chat request lifecycle is cloud-authoritative in `ai_delivery_requests`; Chat polling/resume refresh is a display/repair path only. Add Food photo analysis remains page-owned and does not restore after page/process loss.
 - Chat success refreshes canonical cloud `ai_chat_sessions`/`ai_chat_messages`; photo-analysis success remains a temporary cloud Food Draft result until the user opens Preview and saves.
 - Official writes from AI drafts require user confirmation and the normal cloud write path.
 
@@ -392,7 +398,7 @@ The following components enforce this boundary:
 - Active device claim / guard: Supabase RPCs `claim_active_device`, `assert_active_device`, and `release_active_device`; Flutter repository lives at `lib/data/repositories/active_device_repository.dart`, with runtime state in `lib/domain/models/cloud_runtime_context.dart`.
 - The Profile gate must treat `offline_readonly` and refresh errors with matching cache as renderable states, not full-page errors.
 - The AI page may read subscription display cache for status presentation, while real send capability remains controlled by Gateway and server entitlement checks.
-- Reliable AI delivery: `supabase/migrations/202608090001_ai_async_delivery_requests.sql`, worker actions in `supabase/functions/ai-chat-route/index.ts` and `supabase/functions/ai-food-photo-analyze/index.ts`, plus `lib/data/repositories/ai_chat_repository.dart` and `lib/features/ai/ai_chat_controller.dart`.
+- Reliable AI delivery: `supabase/migrations/202608090001_ai_async_delivery_requests.sql`, hardening and cleanup in `supabase/migrations/202608110001_ai_delivery_recovery_hardening.sql`, worker actions in `supabase/functions/ai-chat-route/index.ts` and `supabase/functions/ai-food-photo-analyze/index.ts`, plus `lib/data/repositories/ai_chat_repository.dart`, `lib/data/remote/ai_food_photo_analysis_client.dart`, `lib/features/ai/ai_chat_controller.dart`, and `lib/features/food/photo_food_analysis_page.dart`.
 
 ## Verification Invariants
 
@@ -433,7 +439,7 @@ Automated tests and manual acceptance should preserve these invariants:
 - A failed cloud write does not create or overwrite an official local record.
 - Failed foreground create, update, or delete actions show a readable error and retry/recovery path instead of appearing to do nothing.
 - An older device cannot create, update, delete, or send AI after `device_replaced`; the error must not be shown as an ordinary upload failure.
-- Accepted AI Chat/photo requests survive app backgrounding and process loss; returning to the app shows processing, success, or stable failure/retry instead of losing the request.
+- Accepted AI Chat requests survive app backgrounding and process loss; returning to the same session shows processing, success, or stable failure/retry instead of losing the request. Add Food photo analysis survives ordinary background/return only while the original page remains mounted; process death restores no input, result, status card, or retry surface.
 - A photo-analysis result remains a temporary draft and does not create official food records until the user saves Food Preview.
 - A successful cloud write updates local read models and affected summaries.
 - Backgrounding during a successful new-workout save cannot recreate the cleared local draft. An ambiguous result remains a locked confirmation item until the original mutation is confirmed or retried; only a definite pre-commit failure becomes editable again.

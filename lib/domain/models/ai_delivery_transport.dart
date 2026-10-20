@@ -1,6 +1,6 @@
 enum AiDeliveryKind { aiChat, foodPhotoAnalysis }
 
-enum AiDeliveryStatus { queued, running, succeeded, failed }
+enum AiDeliveryStatus { queued, running, succeeded, failed, cancelled }
 
 class AiDeliveryTransport {
   const AiDeliveryTransport({
@@ -66,6 +66,8 @@ AiDeliveryStatus _statusFromValue(String? value) {
       return AiDeliveryStatus.succeeded;
     case 'failed':
       return AiDeliveryStatus.failed;
+    case 'cancelled':
+      return AiDeliveryStatus.cancelled;
     case 'queued':
     default:
       return AiDeliveryStatus.queued;

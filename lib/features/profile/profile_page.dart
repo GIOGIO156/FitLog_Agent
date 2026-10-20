@@ -23,6 +23,7 @@ import '../../core/widgets/fitlog_notifications.dart';
 import '../../core/widgets/fitlog_ui.dart';
 import '../../core/widgets/glass_panel.dart';
 import '../../core/widgets/profile_form_fields.dart';
+import '../../core/widgets/auth_diagnostics_export_button.dart';
 import '../../data/repositories/phase2_repository_exception.dart';
 import '../../domain/models/calorie_calibration_state.dart';
 import '../../domain/models/carb_taper_review_result.dart';
@@ -35,6 +36,7 @@ import '../../domain/models/user_profile.dart';
 import '../../domain/models/weight_log.dart';
 import '../../domain/services/carb_cycling_calculator.dart';
 import '../../domain/services/macro_target_calculator.dart';
+import '../../export/file_share_service.dart';
 import '../account/account_controller.dart';
 import '../ai/ai_chat_controller.dart';
 import '../ai/ai_chat_image_recovery.dart';
@@ -1676,6 +1678,16 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _shareExport(String filePath) async {
+    final shared = await FileShareService.shareFile(
+      filePath,
+      origin: FileShareService.originFor(context),
+    );
+    if (mounted && !shared) {
+      FitLogNotifications.error(context, context.stringsRead.exportShareFailed);
+    }
+  }
+
   Future<void> _exportXlsx() async {
     final service = context.read<AppServices>().xlsxExportService;
     final strings = context.stringsRead;
@@ -1686,10 +1698,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      FitLogNotifications.success(
-        context,
-        strings.exportReady('XLSX', filePath),
-      );
+      await _shareExport(filePath);
     } catch (e) {
       if (!mounted) {
         return;
@@ -1715,10 +1724,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) {
         return;
       }
-      FitLogNotifications.success(
-        context,
-        strings.exportReady('CSV', filePath),
-      );
+      await _shareExport(filePath);
     } catch (e) {
       if (!mounted) {
         return;
@@ -1768,7 +1774,7 @@ class _ProfilePageState extends State<ProfilePage> {
     await services.database.clearAllLocalData();
     await Future.wait<void>(<Future<void>>[
       AiChatImageRecoveryStore.clearPending().catchError((_) {}),
-      PhotoFoodAnalysisRecoveryStore.clearPending().catchError((_) {}),
+      PhotoFoodAnalysisLegacyRecoveryCleanup.clear().catchError((_) {}),
       WorkoutEditorResumeStore.clear().catchError((_) {}),
     ]);
 
@@ -3093,6 +3099,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                               label: Text(strings.signOutAccount),
                             ),
+                            const AuthDiagnosticsExportButton(),
                           ],
                         ),
                       ),
@@ -3530,11 +3537,19 @@ class _ProfileSignInGateState extends State<_ProfileSignInGate>
   }
 
   Widget _buildAuthPanel(TextTheme textTheme) {
-    return switch (_mode) {
+    final panel = switch (_mode) {
       _ProfileAuthMode.landing => _buildLandingPanel(textTheme),
       _ProfileAuthMode.signIn => _buildSignInPanel(textTheme),
       _ProfileAuthMode.register => _buildRegisterPanel(textTheme),
     };
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        panel,
+        const SizedBox(height: 8),
+        const AuthDiagnosticsExportButton(),
+      ],
+    );
   }
 
   Widget _buildLandingPanel(TextTheme textTheme) {

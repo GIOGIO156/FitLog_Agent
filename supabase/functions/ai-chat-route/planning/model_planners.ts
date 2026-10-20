@@ -3,14 +3,20 @@ import type { ProviderRuntimeConfig } from "../providers.ts";
 import type { ModelTaskPlanner } from "./task_planner.ts";
 import type { ModelChatDecisionPlanner } from "./chat_decision.ts";
 import type { RetrievalRewritePlanner } from "../rag/retrieval_retry.ts";
+import {
+  PlannerCallError,
+  type PlannerFailureReason,
+} from "./chat_decision_contract.ts";
 
 const plannerTimeoutMs = 5000;
 const chatDecisionPlannerTimeoutMs = 8000;
+const chatDecisionImagePlannerTimeoutMs = 15000;
 
 export function createModelChatDecisionPlanner(
   choice: ModelChoice,
   config: ProviderRuntimeConfig,
   fetchImpl: typeof fetch = fetch,
+  timeoutMs = chatDecisionPlannerTimeoutMs,
 ): ModelChatDecisionPlanner | undefined {
   if (!plannerConfigured(choice, config)) return undefined;
   return async (input) =>
@@ -33,7 +39,9 @@ export function createModelChatDecisionPlanner(
         input,
       },
       fetchImpl,
-      chatDecisionPlannerTimeoutMs,
+      hasPlannerImages(input)
+        ? Math.max(timeoutMs, chatDecisionImagePlannerTimeoutMs)
+        : timeoutMs,
     );
 }
 
@@ -84,59 +92,113 @@ async function callPlannerJson(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = choice === "chatgpt"
-      ? await fetchImpl("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${config.openAiApiKey}`,
-          "content-type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: config.openAiModel,
-          instructions: prompt.system,
-          input: openAiPlannerInput(
-            plannerPayload.input,
-            plannerPayload.images,
-          ),
-          text: { format: { type: "json_object" } },
-        }),
-      })
-      : await fetchImpl(config.qwenBaseUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${config.qwenApiKey}`,
-          "content-type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: config.qwenModel,
-          messages: [
-            { role: "system", content: prompt.system },
-            {
-              role: "user",
-              content: qwenPlannerContent(
-                plannerPayload.input,
-                plannerPayload.images,
-              ),
-            },
-          ],
-          response_format: { type: "json_object" },
-          enable_thinking: false,
-        }),
-      });
-    if (!response.ok) throw new Error("planner_provider_failure");
-    const body = await response.json();
+    let response: Response;
+    try {
+      response = choice === "chatgpt"
+        ? await fetchImpl("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.openAiApiKey}`,
+            "content-type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: config.openAiModel,
+            instructions: prompt.system,
+            input: openAiPlannerInput(
+              plannerPayload.input,
+              plannerPayload.images,
+            ),
+            text: { format: { type: "json_object" } },
+          }),
+        })
+        : await fetchImpl(config.qwenBaseUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.qwenApiKey}`,
+            "content-type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: config.qwenModel,
+            messages: [
+              { role: "system", content: prompt.system },
+              {
+                role: "user",
+                content: qwenPlannerContent(
+                  plannerPayload.input,
+                  plannerPayload.images,
+                ),
+              },
+            ],
+            response_format: { type: "json_object" },
+            enable_thinking: false,
+          }),
+        });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new PlannerCallError("client_timeout");
+      }
+      throw new PlannerCallError("network_or_fetch_error");
+    }
+    if (!response.ok) {
+      throw new PlannerCallError(plannerHttpFailureReason(response.status));
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (_) {
+      throw new PlannerCallError("provider_response_json_invalid");
+    }
     const text = choice === "chatgpt"
       ? openAiOutputText(body)
-      : body?.choices?.[0]?.message?.content;
+      : qwenOutputText(body);
     if (typeof text !== "string" || text.trim() === "") {
-      throw new Error("planner_output_missing");
+      throw new PlannerCallError("provider_output_missing");
     }
-    return JSON.parse(text);
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      throw new PlannerCallError("planner_json_invalid");
+    }
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function plannerHttpFailureReason(status: number): PlannerFailureReason {
+  if (status === 408 || status === 504) return "provider_timeout_response";
+  if (status === 429) return "provider_rate_limited";
+  if (status === 401 || status === 403) return "provider_auth_rejected";
+  if (status >= 400 && status < 500) return "provider_client_error";
+  if (status >= 500 && status < 600) return "provider_server_error";
+  return "provider_http_error";
+}
+
+function hasPlannerImages(input: Record<string, unknown>): boolean {
+  if (typeof input.image_count === "number" && input.image_count > 0) {
+    return true;
+  }
+  return Array.isArray(input.images) && input.images.length > 0;
+}
+
+function qwenOutputText(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return null;
+  }
+  const choices = (body as Record<string, unknown>).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return null;
+  const first = choices[0];
+  if (typeof first !== "object" || first === null || Array.isArray(first)) {
+    return null;
+  }
+  const message = (first as Record<string, unknown>).message;
+  if (
+    typeof message !== "object" || message === null || Array.isArray(message)
+  ) {
+    return null;
+  }
+  return (message as Record<string, unknown>).content;
 }
 
 interface PlannerImage {

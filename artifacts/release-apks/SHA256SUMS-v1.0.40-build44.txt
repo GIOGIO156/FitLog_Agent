@@ -1,0 +1,3 @@
+4e9599b8ac860e411d96e19c705c0afceb7f4e1393d031535abeaf98109991b1  fitlog-agent-v1.0.40-build44-armeabi-v7a-release.apk
+ab4958f95b6c69a58f7d5d78440de9af8c29267a6133ed141853daaf4fcf717d  fitlog-agent-v1.0.40-build44-arm64-v8a-release.apk
+4696473305672ee5bdaa001ffa8558a67b50842af49e73a15cc5a2cbd4b02f87  fitlog-agent-v1.0.40-build44-x86_64-release.apk

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:supabase/supabase.dart' as supabase;
 
 import '../../core/config/supabase_pkce_storage.dart';
+import '../../core/diagnostics/auth_diagnostics.dart';
 import '../../domain/models/auth_session.dart';
 import 'phase2_repository_exception.dart';
 
@@ -68,15 +69,38 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<AuthSession> loadSession() async {
+    AuthDiagnostics.instance.record('session_restore_start');
     try {
       final storedSessionJson = await sessionStorage.readSessionJson();
+      AuthDiagnostics.instance.record(
+        'session_restore_storage',
+        data: {
+          'stored_session_present':
+              storedSessionJson != null && storedSessionJson.trim().isNotEmpty,
+        },
+      );
       if (storedSessionJson != null && storedSessionJson.trim().isNotEmpty) {
+        try {
+          final stored = supabase.Session.fromJson(
+            jsonDecode(storedSessionJson) as Map<String, dynamic>,
+          );
+          AuthDiagnostics.instance.record(
+            'session_restore_metadata',
+            data: {
+              'access_expired': stored?.isExpired,
+              'access_expires_at': stored?.expiresAt,
+            },
+          );
+        } catch (_) {
+          // Recovery below remains responsible for validation and auth behavior.
+        }
         final response = await client.auth.recoverSession(storedSessionJson);
         final recoveredSession = response.session ?? client.auth.currentSession;
         final recoveredUser =
             response.user ?? recoveredSession?.user ?? client.auth.currentUser;
         if (recoveredSession != null && recoveredUser != null) {
           await sessionStorage.writeSession(recoveredSession);
+          AuthDiagnostics.instance.record('session_restore_success');
           return _toAuthSession(session: recoveredSession, user: recoveredUser);
         }
       }
@@ -84,11 +108,24 @@ class SupabaseAuthRepository implements AuthRepository {
       final session = client.auth.currentSession;
       final user = client.auth.currentUser;
       if (session == null || user == null) {
+        AuthDiagnostics.instance.record(
+          'session_restore_signed_out',
+          data: {'reason': 'no_session'},
+        );
         return const AuthSession.signedOut();
       }
       await sessionStorage.writeSession(session);
       return _toAuthSession(session: session, user: user);
     } catch (error) {
+      AuthDiagnostics.instance.record(
+        'session_restore_failure',
+        failure: true,
+        error: error,
+      );
+      AuthDiagnostics.instance.record(
+        'session_clear_requested',
+        data: {'reason': 'restore_exception'},
+      );
       await sessionStorage.clear();
       throw _authExceptionFor(error);
     }
@@ -99,6 +136,7 @@ class SupabaseAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) async {
+    AuthDiagnostics.instance.record('password_login_start');
     try {
       final response = await client.auth.signInWithPassword(
         email: email.trim(),
@@ -110,10 +148,21 @@ class SupabaseAuthRepository implements AuthRepository {
         throw const Phase2RepositoryException('auth_failed');
       }
       await sessionStorage.writeSession(session);
+      AuthDiagnostics.instance.record('password_login_success');
       return _toAuthSession(session: session, user: user);
     } on Phase2RepositoryException {
+      AuthDiagnostics.instance.record(
+        'password_login_failure',
+        failure: true,
+        data: {'reason': 'missing_session'},
+      );
       rethrow;
     } catch (error) {
+      AuthDiagnostics.instance.record(
+        'password_login_failure',
+        failure: true,
+        error: error,
+      );
       throw _authExceptionFor(error);
     }
   }
@@ -159,51 +208,47 @@ class SupabaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {
+    AuthDiagnostics.instance.record(
+      'session_clear_requested',
+      data: {'reason': 'sign_out'},
+    );
     await sessionStorage.clear();
     try {
       await client.auth.signOut();
     } catch (error) {
       final exception = _authExceptionFor(error);
-      if (exception.code != 'auth_network_error') {
+      // Preserve the pre-diagnostics sign-out downgrade, independently of the
+      // more precise error categories now presented to users.
+      final text = error.toString().toLowerCase();
+      final previouslyNonNetwork = const [
+        'invalid login credentials',
+        'invalid_credentials',
+        'email not confirmed',
+        'email_not_confirmed',
+        'email_not_verified',
+        'already registered',
+        'already exists',
+        'user_already_exists',
+        'otp',
+        'token',
+        'expired',
+        'rate limit',
+        'too many',
+      ].any(text.contains);
+      final previouslyNetwork = const [
+        'socket',
+        'failed host lookup',
+        'network',
+        'connection',
+      ].any(text.contains);
+      if (previouslyNonNetwork || !previouslyNetwork) {
         throw exception;
       }
     }
   }
 
   Phase2RepositoryException _authExceptionFor(Object error) {
-    final details = error.toString();
-    final normalized = details.toLowerCase();
-    if (normalized.contains('invalid login credentials') ||
-        normalized.contains('invalid_credentials')) {
-      return Phase2RepositoryException('invalid_credentials', details);
-    }
-    if (normalized.contains('email not confirmed') ||
-        normalized.contains('email_not_confirmed') ||
-        normalized.contains('email_not_verified')) {
-      return Phase2RepositoryException('email_not_confirmed', details);
-    }
-    if (normalized.contains('already registered') ||
-        normalized.contains('already exists') ||
-        normalized.contains('user_already_exists')) {
-      return Phase2RepositoryException('email_already_registered', details);
-    }
-    if (normalized.contains('otp') ||
-        normalized.contains('token') ||
-        normalized.contains('expired')) {
-      return Phase2RepositoryException('otp_invalid_or_expired', details);
-    }
-    if (normalized.contains('rate limit') ||
-        normalized.contains('too many') ||
-        normalized.contains('over email send rate limit')) {
-      return Phase2RepositoryException('auth_rate_limited', details);
-    }
-    if (normalized.contains('socket') ||
-        normalized.contains('failed host lookup') ||
-        normalized.contains('network') ||
-        normalized.contains('connection')) {
-      return Phase2RepositoryException('auth_network_error', details);
-    }
-    return Phase2RepositoryException('auth_failed', details);
+    return Phase2RepositoryException(authFailureCode(error));
   }
 
   AuthSession _toAuthSession({

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:supabase/supabase.dart' as supabase;
 
+import '../../domain/models/ai_delivery_request.dart';
 import '../../domain/models/ai_food_photo_analysis.dart';
 import '../../domain/models/ai_gateway_error.dart';
 
@@ -13,6 +14,10 @@ abstract class AiFoodPhotoAnalysisClient {
   Future<AiFoodPhotoAnalysisResponse> analyze(
     AiFoodPhotoAnalysisRequest request,
   );
+
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String requestId,
+  }) async => null;
 }
 
 class NoopAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
@@ -65,6 +70,25 @@ class SupabaseAiFoodPhotoAnalysisClient extends AiFoodPhotoAnalysisClient {
       );
     }
     return _decodeFoodAnalysisResponse(data, legacyDate: request.selectedDate);
+  }
+
+  @override
+  Future<AiDeliveryRequest?> getDeliveryRequest({
+    required String requestId,
+  }) async {
+    if (requestId.isEmpty) {
+      return null;
+    }
+    final rows = await client
+        .from('ai_delivery_requests')
+        .select()
+        .eq('request_id', requestId)
+        .eq('kind', 'food_photo_analysis')
+        .limit(1);
+    if (rows.isEmpty) {
+      return null;
+    }
+    return AiDeliveryRequest.fromMap(Map<String, dynamic>.from(rows.first));
   }
 }
 
