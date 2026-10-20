@@ -18,6 +18,8 @@ FitLog 使用本地 SQLite 保存兼容状态、确定性本地服务数据、�
 | AI 文档索引 | 面向 Document RAG 的版本化 active-build 稳定文档 chunks 与 embeddings。 | Supabase Postgres lexical/vector candidate retrieval，只允许 service role staging、activation、search 与 rollback。 |
 | In-memory providers | 选中日期、刷新版本、App services、语言状态和运行时摘要。 | 只用于短暂运行期协调。 |
 
+认证会话 JSON 与有界认证诊断 journal 分别保存在 SharedPreferences（`fitlog.supabase.auth.session` 与 `fitlog.auth.diagnostics.v1`）。journal 保存事件/进程顺序、受保护失败上下文、脱敏手机快照、配对 HTTP `request_sequence`、`http_response_received`、可选 UUID `server_request_id`、连接分类及可选数字 `os_error_code`。字段按增量扩展，旧 journal 仍可读取。诊断 JSON 导出为本地 documents 文件。保留规则、敏感信息排除、会话清除判定见 [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md#安全与隐私)。该存储不改变 SQLite schema version。
+
 当前本地数据库名：`fitlog_local.db`。
 
 当前本地 SQLite schema version：`21`。

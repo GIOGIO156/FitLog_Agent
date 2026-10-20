@@ -18,6 +18,8 @@ FitLog uses local SQLite for compatibility state, deterministic local services, 
 | AI document index | Versioned active-build stable documentation chunks and embeddings for Document RAG. | Supabase Postgres lexical/vector candidate retrieval with service-role-only staging, activation, search, and rollback. |
 | In-memory providers | Selected date, refresh version, app services, language state, and runtime summaries. | Ephemeral runtime coordination only. |
 
+Authentication session JSON and the bounded authentication diagnostic journal are stored separately in SharedPreferences (`fitlog.supabase.auth.session` and `fitlog.auth.diagnostics.v1`). The journal stores event/run order, protected failure context, sanitized phone snapshots, paired HTTP `request_sequence`, `http_response_received`, optional UUID `server_request_id`, transport classification and optional numeric `os_error_code`. New fields are additive; older journals remain readable. Diagnostic JSON exports are local document files. Retention, secret exclusions, session-clearing decisions are defined in [CloudLocalDataBoundary.md](CloudLocalDataBoundary.md#security-and-privacy). This storage does not change SQLite schema version.
+
 Current local database name: `fitlog_local.db`.
 
 Current local SQLite schema version: `21`.

@@ -37,6 +37,9 @@ migrate_working_dir/
 /artifacts/release-apks/*.apk
 /artifacts/release-apks/SHA256SUMS.txt
 
+# Locally retained diagnostic Debug APK artifacts
+/artifacts/debug-apks/*.apk
+
 # Local build configuration
 /config/supabase.local.json
 /supabase/.env*.local
@@ -49,6 +52,7 @@ app.*.symbols
 app.*.map.json
 
 # Android Studio will place build artifacts here
+/android/.kotlin/
 /android/app/debug
 /android/app/profile
 /android/app/release

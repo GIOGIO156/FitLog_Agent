@@ -20,6 +20,12 @@ String authFailureCode(Object error) {
     return 'auth_tls_error';
   }
   final text = error.toString().toLowerCase();
+  // GoTrue wraps a malformed successful HTTP response as a retryable fetch
+  // exception, even though transport succeeded. Keep it distinct from sockets.
+  if (error is supabase.AuthRetryableFetchException &&
+      text.contains('formatexception:')) {
+    return 'auth_server_error';
+  }
   if (text.contains('failed host lookup') ||
       text.contains('name resolution') ||
       text.contains('getaddrinfo')) {
@@ -75,6 +81,45 @@ String authFailureCode(Object error) {
   }
   if (error is FormatException) return 'auth_storage_invalid';
   return 'auth_failed';
+}
+
+/// Classifications and numeric OS codes only; never persist raw error text,
+/// socket addresses, certificate contents, or URLs carried by exceptions.
+Map<String, Object?> authTransportDetails(Object error) {
+  final category = authFailureCode(error);
+  if (!const {
+    'auth_dns_error',
+    'auth_tls_error',
+    'auth_timeout',
+    'auth_network_error',
+  }.contains(category)) {
+    return {};
+  }
+  final text = error.toString().toLowerCase();
+  final osError = switch (error) {
+    SocketException e => e.osError,
+    TlsException e => e.osError,
+    _ => null,
+  };
+  final kind = switch (text) {
+    _ when category == 'auth_dns_error' => 'dns_lookup_failed',
+    _ when category == 'auth_tls_error' => 'tls_handshake_failed',
+    _ when text.contains('connection refused') => 'connection_refused',
+    _ when text.contains('connection reset') => 'connection_reset',
+    _ when text.contains('connection abort') => 'connection_aborted',
+    _ when text.contains('network is unreachable') => 'network_unreachable',
+    _
+        when text.contains('no route to host') ||
+            text.contains('host is unreachable') =>
+      'host_unreachable',
+    _ when text.contains('broken pipe') => 'broken_pipe',
+    _ when category == 'auth_timeout' => 'connection_timeout',
+    _ => 'transport_unknown',
+  };
+  return {
+    'transport_failure': kind,
+    if (osError != null) 'os_error_code': osError.errorCode,
+  };
 }
 
 class AuthDiagnostics {
@@ -138,6 +183,7 @@ class AuthDiagnostics {
           if (error != null) ...{
             'failure_category': authFailureCode(error),
             'exception_type': error.runtimeType.toString(),
+            ...authTransportDetails(error),
             if (error is supabase.AuthException) ...{
               'http_status': int.tryParse(error.statusCode ?? ''),
               'auth_error_code': safeServerCode(error.code),
@@ -269,6 +315,9 @@ class AuthDiagnostics {
       'access_expired',
       'access_expires_at',
       'duration_ms',
+      'request_sequence',
+      'http_response_received',
+      'server_request_id',
       'http_status',
       'server_clock_offset_ms',
       'auth_host',

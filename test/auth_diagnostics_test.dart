@@ -212,6 +212,95 @@ void main() {
   );
 
   test(
+    'socket diagnostics pair requests and retain numeric errors without secrets',
+    () async {
+      var snapshots = 0;
+      final log = AuthDiagnostics(
+        snapshot: () async => {
+          'network': snapshots++ == 0 ? 'wifi' : 'cellular',
+          'network_validated': true,
+        },
+      );
+      final client = AuthDiagnosticHttpClient(
+        MockClient((request) async {
+          log.lifecycle = 'paused';
+          throw const SocketException(
+            'Connection reset: password=secret-password',
+            osError: OSError('private address and token', 104),
+          );
+        }),
+        diagnostics: log,
+      );
+      await expectLater(
+        client.post(
+          Uri.parse(
+            'https://example.invalid/auth/v1/token?grant_type=password',
+          ),
+          body: 'secret-password',
+        ),
+        throwsA(isA<SocketException>()),
+      );
+      final exported = await log.exportJson();
+      final events = (jsonDecode(exported)['recent'] as List).cast<Map>();
+      final start = events.singleWhere((e) => e['event'] == 'auth_http_start');
+      final failure = events.singleWhere(
+        (e) => e['event'] == 'auth_http_failure',
+      );
+      expect(start['request_sequence'], failure['request_sequence']);
+      expect(start['phone']['network'], 'wifi');
+      expect(failure['phone']['network'], 'cellular');
+      expect(failure['lifecycle'], 'paused');
+      expect(failure['operation'], 'password_login');
+      expect(failure['http_response_received'], isFalse);
+      expect(failure['os_error_code'], 104);
+      expect(failure['transport_failure'], 'connection_reset');
+      expect(exported, isNot(contains('secret-password')));
+      expect(exported, isNot(contains('private address')));
+      client.close();
+    },
+  );
+
+  test('HTTP response tracing only accepts UUID request identifiers', () async {
+    final log = journal(recent: 20);
+    var calls = 0;
+    final client = AuthDiagnosticHttpClient(
+      MockClient(
+        (request) async => http.Response(
+          '{"code":"invalid_credentials","message":"private-body"}',
+          400,
+          headers: {
+            'sb-request-id': calls++ == 0
+                ? '12345678-1234-1234-1234-123456789abc'
+                : 'secret-token',
+          },
+        ),
+      ),
+      diagnostics: log,
+    );
+    for (var i = 0; i < 2; i++) {
+      await client.post(
+        Uri.parse('https://example.invalid/auth/v1/token?grant_type=password'),
+      );
+    }
+    final exported = await log.exportJson();
+    final results = (jsonDecode(exported)['recent'] as List)
+        .cast<Map>()
+        .where((e) => e['event'] == 'auth_http_result')
+        .toList();
+    expect(results.first['http_response_received'], isTrue);
+    expect(results.first['http_status'], 400);
+    expect(
+      results.first['server_request_id'],
+      '12345678-1234-1234-1234-123456789abc',
+    );
+    expect(results.last['server_request_id'], isNull);
+    expect(results.last['request_sequence'], 2);
+    expect(exported, isNot(contains('secret-token')));
+    expect(exported, isNot(contains('private-body')));
+    client.close();
+  });
+
+  test(
     'password connection failure is no longer shown as OTP failure',
     () async {
       final client = supabase.SupabaseClient(

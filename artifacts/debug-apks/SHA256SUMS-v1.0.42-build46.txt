@@ -1,0 +1,3 @@
+d18bd5cf9be42736ef3dd579a591014d136d33874fdb9e9d3f5154eac4c489db  fitlog-agent-v1.0.42-build46-arm64-v8a-debug.apk
+070b1c30047948b2c4700717d14827e9bc224cecf181ee8b273b175946475b43  fitlog-agent-v1.0.42-build46-armeabi-v7a-debug.apk
+63dfd2db47a35d86bdb9d0662ca6816343affa0ff6072775269de41dffcfb2e5  fitlog-agent-v1.0.42-build46-x86_64-debug.apk

@@ -23,7 +23,7 @@ class AppConstants {
   static const String sourceAiPaste = 'ai_paste';
   static const String sourceAiPhoto = 'ai_photo';
   static const String sourceManual = 'manual';
-  static const String currentAppVersion = '1.0.41+45';
+  static const String currentAppVersion = '1.0.43+47';
 
   static final List<String> bodyParts = ExerciseCatalog.bodyParts;
 

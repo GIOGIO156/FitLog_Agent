@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-20 Authentication Transport Diagnostics
+
+### Added
+
+- Paired authentication HTTP request sequence numbers, response-received flags, available status and UUID-shaped server request IDs, plus fixed transport failure classifications and numeric OS error codes. Password login and refresh use the same diagnostics; request-start/completion snapshots retain network and lifecycle context. No raw exception messages, credentials, socket addresses, arbitrary headers, or request/response bodies are persisted. Previous failure incidents survive successful logins and exports.
+
+### Changed
+
+- Withdrawn the interim `1.0.42+46` Debug recovery page, retained-session state, and SDK session-clear interception. Authentication, session restoration/clearing, sign-out, and page routing match the `1.0.41+45` baseline, preserving the observed failure behavior while investigating connection failures. Malformed service responses have a more accurate service-error classification without changing authentication control flow.
+- The friend-facing diagnostic build uses configured split Release APKs, keeping the normal build mode while retaining application-level diagnostics. Local APK binaries and Kotlin compiler caches are excluded from Git.
+
+### Validation
+
+- `flutter analyze` reported no issues and all 312 Flutter tests passed, including socket error redaction, request pairing, response tracing, unchanged session deletion after offline recovery failure, and unchanged sign-out downgrade behavior. Authentication/repository, SDK persistence, account-controller, auth-session model, and Profile UI sources match the `1.0.41+45` baseline. Eight documentation checks passed; the local 21-source/668-chunk Document RAG seed was regenerated without upload or activation. SQLite schema remains v21.
+- Built configured split Release APKs for `1.0.43+47` in 39.8 seconds. All three ABIs passed package/version, non-debug mode, signing-certificate continuity, backend-configuration, new-diagnostic code, original exit-reason, share-provider, and output-consistency checks. Recovery UI and session-clear interception markers are absent. Versioned packages and checksums are retained under `artifacts/release-apks/`. Actual connection-failure reproduction remains pending on the friend's phone.
+
+
 ## 2026-10-20 Export Sharing
 
 ### Changed
